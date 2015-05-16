@@ -1,6 +1,7 @@
 #pragma once
 
 #include <istream>
+#include <string>
 #include <unordered_set>
 
 #include "ELexerToken.h"
@@ -29,10 +30,14 @@ public:
 protected:
 	bool isKeyword(const std::string& text) const;
 
+	void lexSingleCharLexeme(std::istream& stream, ELexerToken tokenType);
+	void lexSingleOrDoubleCharLexeme(std::istream& stream, ELexerToken singleToken, char nextPossible, ELexerToken doubleToken);
+	void lexSingleOrDoubleCharLexeme(std::istream& stream, ELexerToken singleToken, char nextPossible0, ELexerToken doubleToken0, char nextPossible1, ELexerToken doubleToken1);
+
 	void lexNumeric(std::istream& stream);
 	void lexIdentifierOrKeyword(std::istream& stream);
 	void lexString(std::istream& stream);
-	void lexCommentOrDivideAssignOrSlash(std::istream& stream);
+	void lexComment(std::istream& stream);
 
 private:
 	std::unordered_set<std::string> m_keywords;

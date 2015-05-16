@@ -9,7 +9,6 @@ enum class ELexerToken
 	Identifier,
 	Keyword, /**< Keyword. */
 
-	Apostrophe, /**< '''. */
 	Dot, /**< '.'. */
 	Colon, /**< ':'. */
 	Semicolon, /**< ';'. */
@@ -40,6 +39,10 @@ enum class ELexerToken
 	Dash, /**< '-'. */
 
 	// Compound instructions
+	DoubleColon, /**< '::'. */
+	DoublePipe, /**< '||'. */
+	DoubleAmpersand, /**< '&&'. */
+
 	Increment, /**< '++'. */
 	Decrement, /**< '--' */
 	AddAssign, /**< '+=' */
