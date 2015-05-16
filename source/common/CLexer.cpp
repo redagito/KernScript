@@ -6,12 +6,11 @@
 // TODO Debug only, remove later
 #include <iostream>
 
-unsigned int CLexer::getNextToken(std::istream& stream, ELexerToken& token)
+unsigned int CLexer::lex(std::istream& stream)
 {
 	// Reset lexeme and token
 	m_currentLexeme.clear();
 	m_currentToken = ELexerToken::Invalid;
-
 
 	// Peek next char
 	char next = stream.peek();
@@ -19,7 +18,7 @@ unsigned int CLexer::getNextToken(std::istream& stream, ELexerToken& token)
 	// For counting whitespaces
 	unsigned int blankSkipped = 0;
 	// Skip blanks
-	while (std::isblank(next))
+	while (next == ' ' || next == '\t')
 	{
 		// Skip blank
 		stream.get();
@@ -33,6 +32,11 @@ unsigned int CLexer::getNextToken(std::istream& stream, ELexerToken& token)
 	{
 		// The next lexeme is a numeric type, either int or float
 		lexNumeric(stream);
+	}
+	else if (std::isalpha(next))
+	{
+		// Either identifier or keyword
+		lexIdentifierOrKeyword(stream);
 	}
 	else
 	{
@@ -118,11 +122,23 @@ unsigned int CLexer::getNextToken(std::istream& stream, ELexerToken& token)
 			// Either '=' or '=='
 			lexSingleOrDoubleCharLexeme(stream, ELexerToken::Assign, '=', ELexerToken::Equal);
 			break;
+		case '*':
+			// Either '*' or '*='
+			lexSingleOrDoubleCharLexeme(stream, ELexerToken::Asterisk, '=', ELexerToken::MultiplyAssign);
+			break;
+		case '+':
+			// Either '+' or '+=' or '++'
+			lexSingleOrDoubleCharLexeme(stream, ELexerToken::Plus, '=', ELexerToken::AddAssign, '+', ELexerToken::Increment);
+			break;
+		case '-':
+			// Either '-' or '-=' or '--'
+			lexSingleOrDoubleCharLexeme(stream, ELexerToken::Dash, '=', ELexerToken::SubtractAssign, '-', ELexerToken::Decrement);
+			break;
 		case '"':
 			lexString(stream);
 			break;
 		case '\n':
-			m_currentToken = ELexerToken::NewLine;
+			lexSingleCharLexeme(stream, ELexerToken::NewLine);
 			break;
 		case EOF:
 			m_currentToken = ELexerToken::End;
@@ -133,14 +149,17 @@ unsigned int CLexer::getNextToken(std::istream& stream, ELexerToken& token)
 			break;
 		}
 	}
-
-	token = m_currentToken;
 	return blankSkipped;
 }
 
 const std::string& CLexer::getLexeme() const
 {
 	return m_currentLexeme;
+}
+
+ELexerToken CLexer::getToken() const
+{
+	return m_currentToken;
 }
 
 void CLexer::addKeyword(const std::string& keyword)
@@ -304,6 +323,13 @@ void CLexer::lexString(std::istream& stream)
 		else
 		{
 			escaped = false;
+		}
+
+		// Check for line break (which is invalid in strings) or unexpected EOF stream signal
+		if (stream.peek() == '\n' || stream.peek() == EOF)
+		{
+			m_currentToken = ELexerToken::Invalid;
+			return;
 		}
 		m_currentLexeme.push_back(c);
 	}

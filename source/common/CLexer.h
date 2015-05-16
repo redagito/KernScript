@@ -13,16 +13,17 @@ class CLexer
 {
 public:
 	/**
-	* \brief Gets next token from stream.
+	* \brief Extracts next token/lexeme from stream.
 	* \return Number of whitespaces skipped.
 	* Writes token and internal lexeme.
 	*/
-	unsigned int getNextToken(std::istream& stream, ELexerToken& token);
+	unsigned int lex(std::istream& stream);
 
 	/**
 	* \brief Returns the current lexeme, set by getNextToken().
 	*/
 	const std::string& getLexeme() const;
+	ELexerToken getToken() const;
 
 	void addKeyword(const std::string& keyword);
 	void removeKeyword(const std::string& keyword);
