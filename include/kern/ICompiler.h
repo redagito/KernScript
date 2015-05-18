@@ -9,6 +9,7 @@ namespace kern
 class ICompiler
 {
 public:
+	virtual ~ICompiler();
 	virtual bool compile(std::istream& sourceCode, std::ostream& asmCode) = 0;
 };
 
