@@ -17,6 +17,7 @@ public:
 
 	CValue();
 	CValue(const CValue& value);
+	CValue(CValue&& value);
 	CValue(int32_t value);
 	CValue(float value);
 	CValue(const std::string& value);
@@ -27,6 +28,9 @@ public:
 	bool convert(float& value) const;
 	bool convert(std::string& value) const;
 
+	CValue& operator=(const CValue& rhs);
+	CValue& operator=(CValue&& rhs);
+
 private:
 	union
 	{
@@ -34,5 +38,5 @@ private:
 		float m_float;
 		char* m_string = nullptr;
 	};
-	EType m_type;
+	EType m_type = EType::Invalid;
 };

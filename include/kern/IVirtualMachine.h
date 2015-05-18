@@ -14,6 +14,7 @@ public:
 	virtual ~IVirtualMachine();
 
 	virtual bool load(std::istream& byteCode) = 0;
+	virtual bool runScript() = 0;
 
 	/**
 	* \brief Extern function management.

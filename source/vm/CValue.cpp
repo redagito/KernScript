@@ -10,26 +10,12 @@ CValue::CValue()
 
 CValue::CValue(const CValue& value)
 {
-	m_type = value.m_type;
-	switch (m_type)
-	{
-	case EType::Integer:
-		m_integer = value.m_integer;
-		break;
-	case EType::Float:
-		m_float = value.m_float;
-		break;
-	case EType::String:
-		{
-			size_t length = strlen(value.m_string) + 1;
-			m_string = new char[length];
-			memcpy(m_string, value.m_string, length);
-			break;
-		}	
-	default:
-		// Invalid
-		break;
-	}
+	(*this) = value;
+}
+
+CValue::CValue(CValue&& value)
+{
+	(*this) = value;
 }
 
 CValue::CValue(int32_t value)
@@ -46,6 +32,7 @@ CValue::CValue(float value)
 
 CValue::CValue(const std::string& value)
 {
+	m_type = EType::String;
 	m_string = new char[value.length() + 1];
 	memcpy(m_string, value.data(), value.length());
 	m_string[value.length()] = '\0';
@@ -118,4 +105,79 @@ bool CValue::convert(std::string& value) const
 		// Unknown or invalid conversion
 		return false;
 	}
+}
+
+CValue& CValue::operator=(const CValue& rhs)
+{
+	if (this == &rhs)
+	{
+		// Same object, return
+	}
+
+	if (m_type == EType::String)
+	{
+		delete[] m_string;
+		m_string = nullptr;
+	}
+
+	m_type = rhs.m_type;
+	switch (m_type)
+	{
+	case EType::Integer:
+		m_integer = rhs.m_integer;
+		break;
+	case EType::Float:
+		m_float = rhs.m_float;
+		break;
+	case EType::String:
+		{
+			size_t length = strlen(rhs.m_string) + 1;
+			m_string = new char[length];
+			memcpy(m_string, rhs.m_string, length);
+		}
+		break;
+	default:
+		// Invalid
+		break;
+	}
+	return *this;
+}
+
+CValue& CValue::operator=(CValue&& rhs)
+{
+	if (this == &rhs)
+	{
+		// Same object, return
+	}
+
+	if (m_type == EType::String)
+	{
+		delete[] m_string;
+		m_string = nullptr;
+	}
+
+	m_type = rhs.m_type;
+	switch (m_type)
+	{
+	case EType::Integer:
+		m_integer = rhs.m_integer;
+		rhs.m_integer = 0;
+		break;
+	case EType::Float:
+		m_float = rhs.m_float;
+		rhs.m_float = 0.f;
+		break;
+	case EType::String:
+		{
+			m_string = rhs.m_string;
+			rhs.m_string = nullptr;
+		}
+		break;
+	default:
+		// Invalid
+		break;
+	}
+	rhs.m_type = EType::Invalid;
+
+	return *this;
 }

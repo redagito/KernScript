@@ -1,35 +1,38 @@
-#pagma once
+#pragma once
 
-#include "SInstruction.h"
+#include <cstdint>
+#include <string>
+
+typedef uint16_t InstructionId;
 
 // System
-SInstruction instrNop = { "nop", 0 }; /**< No operation. */
-SInstruction instrPause = { "pause", 1 }; /**< Pause operation (breakpoint, for debugging). */
-SInstruction instrExit = { "exit", 2 }; /**< Exit operation, immediately ends script. */
+const InstructionId instrNop = 0; /**< No operation. */
+const InstructionId instrPause = 1; /**< Pause operation (breakpoint, for debugging). */
+const InstructionId instrExit = 2; /**< Exit operation, immediately ends script. */
 
 // Stack management
-SInstruction instrPush = { "push", 3 }; /**< Push value to stack. */
-SInstruction instrPop = { "pop", 4 }; /**< Pop value from stack. */
+const InstructionId instrPush = 3; /**< Push value to stack. */
+const InstructionId instrPop = 4; /**< Pop value from stack. */
 
 // Function calling
-SInstruction instrCall = { "call", 5 }; /**< Call script function. */
-SInstruction instrCalle = { "calle", 6 }; /**< Call extern function. */
+const InstructionId instrCall = 5; /**< Call script function. */
+const InstructionId instrCalle = 6; /**< Call extern function. */
 
 // Arithmetic operations
-SInstruction instrAdd = { "add", 7 }; /**< Add. */
-SInstruction instrSub = { "sub", 8 }; /**< Subtract. */
-SInstruction instrMul = { "mul", 9 }; /**< Multiply. */
-SInstruction instrDiv = { "div", 10 }; /**< Divide. */
-SInstruction instrInc = { "inc", 11 }; /**< Increment. */
-SInstruction instrDec = { "dec", 12 }; /**< Decrement. */
+const InstructionId instrAdd = 7; /**< Add. */
+const InstructionId instrSub = 8; /**< Subtract. */
+const InstructionId instrMul = 9; /**< Multiply. */
+const InstructionId instrDiv = 10; /**< Divide. */
+const InstructionId instrInc = 11; /**< Increment. */
+const InstructionId instrDec = 12; /**< Decrement. */
 
 // Logical operations
-SInstruction instrAnd = { "and", 14 }; /**< Logical AND. */
-SInstruction instrOr = { "or", 15 }; /**< Logical OR. */
-SInstruction instrNot = { "not", 16 }; /**< Logical NOT. */
-SInstruction instrXor = { "xor", 17 }; /**< Logical XOR. */
+const InstructionId instrAnd = 13; /**< Logical AND. */
+const InstructionId instrOr = 14; /**< Logical OR. */
+const InstructionId instrNot = 15; /**< Logical NOT. */
+const InstructionId instrXor = 16; /**< Logical XOR. */
 
 // Flow control
-SInstruction instrJmp = { "jmp", 18 }; /**< Unconditional jump. */
-SInstruction instrJe = { "je", 19 }; /**< Jump if equal. */
-SInstruction instrJne = { "jne", 20 }; /**< Jump if not equal. */
+const InstructionId instrJmp = 18; /**< Unconditional jump. */
+const InstructionId instrJe = 19; /**< Jump if equal. */
+const InstructionId instrJne = 20; /**< Jump if not equal. */

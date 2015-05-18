@@ -8,11 +8,14 @@
 #include "kern/IExternFunction.h"
 
 #include "CValue.h"
+#include "common/Instructions.h"
 
 class CVirtualMachine : public kern:: IVirtualMachine
 {
 public:
 	bool load(std::istream& byteCode);
+
+	bool runScript();
 
 	void addFunction(const std::string& functionName, kern::IExternFunction* function);
 	void removeFunction(const std::string& functionName);
@@ -27,7 +30,7 @@ public:
 	void setReturnValue(const std::string& value);
 	
 protected:
-	
+	bool executeInstruction(InstructionId id);
 	
 private:
 	std::unordered_map<std::string, std::unique_ptr<kern::IExternFunction>> m_externFunctions;
