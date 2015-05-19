@@ -257,16 +257,11 @@ bool CAssembler::serializeExternFunctions(std::ostream& stream) const
 	// Serialize extern functions
 	for (const auto& externFunction : m_externFunctions)
 	{
-		serialize(externFunction, stream);
-		// Write name
-		// Write size
-		// uint32_t length = externFunction.name.length();
-		// stream.write((char*)&length, 4);
-		// Write data
-		// stream.write(externFunction.name.data(), length);
-		
-		// Write argument count
-		// stream.write((char*)&externFunction.argCount, sizeof(externFunction.argCount));
+		// Serialize extern function
+		if (!serialize(externFunction, stream))
+		{
+			return false;
+		}
 	}
 	return stream.good();
 }
