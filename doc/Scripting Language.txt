@@ -1,0 +1,2 @@
+Function : 'func' Identifier '(' Identifier (',' Identifier)* ')' Block
+Block : '{' Statements* '}'

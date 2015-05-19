@@ -28,6 +28,8 @@ public:
 	void addKeyword(const std::string& keyword);
 	void removeKeyword(const std::string& keyword);
 
+	void ignoreNewLine(bool state);
+
 protected:
 	bool isKeyword(const std::string& text) const;
 
@@ -44,4 +46,5 @@ private:
 	std::unordered_set<std::string> m_keywords;
 	std::string m_currentLexeme;
 	ELexerToken m_currentToken = ELexerToken::Invalid;
+	bool m_ignoreNewLine = false;
 };

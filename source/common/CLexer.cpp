@@ -18,11 +18,14 @@ unsigned int CLexer::lex(std::istream& stream)
 	// For counting whitespaces
 	unsigned int blankSkipped = 0;
 	// Skip blanks
-	while (next == ' ' || next == '\t')
+	while (next == ' ' || next == '\t' || m_ignoreNewLine && next == '\n')
 	{
 		// Skip blank
 		stream.get();
-		++blankSkipped;
+		if (next != '\n')
+		{
+			++blankSkipped;
+		}		
 		// Peek next
 		next = stream.peek();
 	}
@@ -170,6 +173,11 @@ void CLexer::addKeyword(const std::string& keyword)
 void CLexer::removeKeyword(const std::string& keyword)
 {
 	m_keywords.erase(keyword);
+}
+
+void CLexer::ignoreNewLine(bool state)
+{
+	m_ignoreNewLine = state;
 }
 
 bool CLexer::isKeyword(const std::string& text) const

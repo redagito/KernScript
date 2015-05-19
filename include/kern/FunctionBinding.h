@@ -36,7 +36,7 @@ public:
 
 	bool call(IVirtualMachine& vm)
 	{
-		ReturnValue retVal = m_function();
+		ReturnType retVal = m_function();
 		vm.setReturnValue(retVal);
 		return true;
 	}
@@ -95,7 +95,7 @@ public:
 		{
 			return false;
 		}
-		ReturnValue retVal = m_function(arg0);
+		ReturnType retVal = m_function(arg0);
 		vm.setReturnValue(retVal);
 		return true;
 	}
@@ -166,7 +166,7 @@ public:
 			return false;
 		}
 		
-		ReturnValue retVal = m_function(arg0, arg1);
+		ReturnType retVal = m_function(arg0, arg1);
 		vm.setReturnValue(retVal);
 		return true;
 	}
@@ -181,7 +181,7 @@ class CExternFunction<void, ArgType0, ArgType1> : public IExternFunction
 public:
 	CExternFunction(void (*function)(ArgType0, ArgType1))
 		:
-		m_function(function);
+		m_function(function)
 	{
 		// Empty
 	}
@@ -220,7 +220,7 @@ class CExternFunction<ReturnType, ArgType0, ArgType1, ArgType2> : public IExtern
 public:
 	CExternFunction(ReturnType (*function)(ArgType0, ArgType1, ArgType2))
 		:
-		m_function(function);
+		m_function(function)
 	{
 		// Empty
 	}
@@ -247,7 +247,7 @@ public:
 			return false;
 		}
 		
-		ReturnValue retVal = m_function(arg0, arg1, arg2);
+		ReturnType retVal = m_function(arg0, arg1, arg2);
 		vm.setReturnValue(retVal);
 		return true;
 	}
@@ -262,7 +262,7 @@ class CExternFunction<void, ArgType0, ArgType1, ArgType2> : public IExternFuncti
 public:
 	CExternFunction(void (*function)(ArgType0, ArgType1, ArgType2))
 		:
-		m_function(function);
+		m_function(function)
 	{
 		// Empty
 	}
@@ -304,7 +304,7 @@ class CExternFunction<ReturnType, ArgType0, ArgType1, ArgType2, ArgType3> : publ
 public:
 	CExternFunction(ReturnType (*function)(ArgType0, ArgType1, ArgType2, ArgType3))
 		:
-		m_function(function);
+		m_function(function)
 	{
 		// Empty
 	}
@@ -334,7 +334,7 @@ public:
 			return false;
 		}
 		
-		ReturnValue retVal = m_function(arg0, arg1, arg2, arg3);
+		ReturnType retVal = m_function(arg0, arg1, arg2, arg3);
 		vm.setReturnValue(retVal);
 		return true;
 	}
@@ -349,7 +349,7 @@ class CExternFunction<void, ArgType0, ArgType1, ArgType2, ArgType3> : public IEx
 public:
 	CExternFunction(void (*function)(ArgType0, ArgType1, ArgType2, ArgType3))
 		:
-		m_function(function);
+		m_function(function)
 	{
 		// Empty
 	}

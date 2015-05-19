@@ -6,13 +6,25 @@
 namespace kern
 {
 
-class IExternFunction;
+class IExternFunction; /**< Forward declare, needed for cyclic dependency. */
 
+/**
+* \brief Virtual machine interface class.
+*
+* The virtual machine provides functionality for executing byte code (compiled/assembled scripts)
+* and interfacing with the host application.
+*/
 class IVirtualMachine
 {
 public:
+	/**
+	* \brief Virtual destructor for interface class.
+	*/
 	virtual ~IVirtualMachine();
 
+	/**
+	* \brief Loads byte code from input stream.
+	*/
 	virtual bool load(std::istream& byteCode) = 0;
 	virtual bool runScript() = 0;
 

@@ -74,7 +74,7 @@ bool CVirtualMachine::executeInstruction(InstructionId id)
 	case instrExit:
 		break;
 	
-	case instrPush:
+	case instrPushi:
 		break;
 	case instrPop:
 		break;

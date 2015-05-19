@@ -1,8 +1,9 @@
 #pragma once
 
 #include <stack>
-#include <memory>
 #include <unordered_map>
+#include <vector>
+#include <memory>
 
 #include "kern/IVirtualMachine.h"
 #include "kern/IExternFunction.h"
@@ -35,4 +36,6 @@ protected:
 private:
 	std::unordered_map<std::string, std::unique_ptr<kern::IExternFunction>> m_externFunctions;
 	std::stack<CValue> m_runtimeStack;
+	
+	std::vector<std::string> m_strings; /**< String constants. */
 };
