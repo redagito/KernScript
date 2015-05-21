@@ -6,15 +6,15 @@ project(KernScript)
 
 # Include
 include_directories(
-	${CMAKE_SOURCE_DIR}/source/
-	${CMAKE_SOURCE_DIR}/include/
+	${CMAKE_CURRENT_SOURCE_DIR}/source/
+	${CMAKE_CURRENT_SOURCE_DIR}/include/
 )
 
 # Sources
 file(GLOB_RECURSE SRC_FILES
-	${CMAKE_SOURCE_DIR}/source/*.cpp
-	${CMAKE_SOURCE_DIR}/source/*.h
-	${CMAKE_SOURCE_DIR}/include/*.h
+	${CMAKE_CURRENT_SOURCE_DIR}/source/*.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/source/*.h
+	${CMAKE_CURRENT_SOURCE_DIR}/include/*.h
 )
 
 # Add third party sources
