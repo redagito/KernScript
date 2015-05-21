@@ -26,7 +26,11 @@ public:
 	* \brief Loads byte code from input stream.
 	*/
 	virtual bool load(std::istream& byteCode) = 0;
-	virtual bool runScript() = 0;
+	
+	/**
+	* \brief Calls script function.
+	*/
+	virtual bool callFunction(const std::string& functionName) = 0;
 
 	/**
 	* \brief Extern function management.

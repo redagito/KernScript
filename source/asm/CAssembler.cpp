@@ -128,6 +128,20 @@ bool CAssembler::parseFunction(std::istream& stream)
 				ss << m_lexer.getLexeme();
 				ss >> instruction.args[0];
 			}
+			else if (m_lexer.getLexeme() == "pushs")
+			{
+				// Push string instruction
+				instruction.id = instrPushs;
+				// Expects one string constant as argumment
+				m_lexer.lex(stream);
+				if (m_lexer.getToken() != ELexerToken::String)
+				{
+					std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+					return false;
+				}
+				// TODO Add string to strings list and write id
+				return false;
+			}
 			else if (m_lexer.getLexeme() == "calle")
 			{
 				// Call extern function instruction
@@ -289,20 +303,8 @@ bool CAssembler::serializeFunctions(std::ostream& stream) const
 		
 		for (const auto& instruction : function.instructions)
 		{
-			// Write instruction id
-			stream.write((char*)&instruction.id, sizeof(InstructionId));
-			// Write parameters
-			switch (instruction.id)
+			if (!serialize(instruction, stream))
 			{
-			case instrNop:
-				// No parameter
-				break;
-			case instrPushi:
-			case instrCalle:
-				// One parameter
-				stream.write((char*) &instruction.args[0], sizeof(ArgumentType));
-				break;
-			default:
 				return false;
 			}
 		}
