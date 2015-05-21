@@ -24,6 +24,16 @@ bool CVirtualMachine::load(std::istream& byteCode)
 	return true;
 }
 
+void CVirtualMachine::clearScripts()
+{
+	m_currentFunctionIndex = 0;
+	m_currentInstructionIndex = 0;
+	// Clear script data
+	m_strings.clear();
+	m_externFunctions.clear();
+	m_functions.clear();
+}
+
 bool CVirtualMachine::callFunction(const std::string& functionName)
 {
 	if (!getFunctionIndex(functionName, m_currentFunctionIndex))
@@ -208,6 +218,11 @@ bool CVirtualMachine::execute(const SInstruction& instruction)
 	case instrPushi:
 		// Arg 0 is integer value
 		m_runtimeStack.push(CValue(instruction.args[0]));
+		++m_currentInstructionIndex;
+		break;
+	case instrPushf:
+		// Arg 0 is float value
+		m_runtimeStack.push(CValue(*((float*) &instruction.args[0])));
 		++m_currentInstructionIndex;
 		break;
 	case instrPop:

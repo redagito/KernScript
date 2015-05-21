@@ -9,6 +9,7 @@ CAssembler::CAssembler()
 	m_lexer.addKeyword("extern");
 	m_lexer.addKeyword("calle");
 	m_lexer.addKeyword("pushi");
+	m_lexer.addKeyword("pushf");
 	// Disable emitting of newline token
 	m_lexer.ignoreNewLine(true);
 }
@@ -127,6 +128,25 @@ bool CAssembler::parseFunction(std::istream& stream)
 				std::stringstream ss;
 				ss << m_lexer.getLexeme();
 				ss >> instruction.args[0];
+			}
+			if (m_lexer.getLexeme() == "pushf")
+			{
+				// Push float instruction
+				instruction.id = instrPushf;
+				// Expects one float constant as argument
+				m_lexer.lex(stream);
+				if (m_lexer.getToken() != ELexerToken::Float)
+				{
+					std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+					return false;
+				}
+				// TODO Slow!!!
+				std::stringstream ss;
+				ss << m_lexer.getLexeme();
+				float temp;
+				ss >> temp;
+				// Store float binary data in arg
+				memcpy((void*) &instruction.args[0], (void*) &temp, sizeof(float));
 			}
 			else if (m_lexer.getLexeme() == "pushs")
 			{

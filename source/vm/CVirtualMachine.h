@@ -18,6 +18,8 @@ class CVirtualMachine : public kern:: IVirtualMachine
 public:
 	bool load(std::istream& byteCode);
 
+	void clearScripts();
+
 	bool callFunction(const std::string& functionName);
 
 	void addFunction(const std::string& functionName, kern::IExternFunction* function);

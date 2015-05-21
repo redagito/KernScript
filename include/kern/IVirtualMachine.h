@@ -26,7 +26,14 @@ public:
 	* \brief Loads byte code from input stream.
 	*/
 	virtual bool load(std::istream& byteCode) = 0;
-	
+
+	/**
+	* \brief Clears script data.
+	*
+	* Does not clear extern functions.
+	*/
+	virtual void clearScripts() = 0;
+
 	/**
 	* \brief Calls script function.
 	*/
