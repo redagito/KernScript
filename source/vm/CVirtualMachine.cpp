@@ -45,7 +45,15 @@ bool CVirtualMachine::callFunction(const std::string& functionName)
 	bool running = true;
 	while (running)
 	{
-		running = execute(m_functions.at(m_currentFunctionIndex).instructions.at(m_currentInstructionIndex));
+		// Instruction index out of bounds?
+		if (m_currentInstructionIndex >= m_functions.at(m_currentFunctionIndex).instructions.size())
+		{
+			running = false;
+		}
+		else
+		{
+			running = execute(m_functions.at(m_currentFunctionIndex).instructions.at(m_currentInstructionIndex));
+		}
 	}
 	return true;
 }
@@ -201,12 +209,6 @@ bool CVirtualMachine::getFunctionIndex(const std::string& functionName, uint32_t
 
 bool CVirtualMachine::execute(const SInstruction& instruction)
 {
-	// Instruction index out of bounds?
-	if (m_currentInstructionIndex >= m_functions.at(m_currentFunctionIndex).instructions.size())
-	{
-		return false;
-	}
-	
 	switch (instruction.id)
 	{
 	case EInstructíon::Nop:
