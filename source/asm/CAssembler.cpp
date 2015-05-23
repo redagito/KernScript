@@ -8,6 +8,7 @@ CAssembler::CAssembler()
 	m_lexer.addKeyword("func");
 	m_lexer.addKeyword("extern");
 	m_lexer.addKeyword("calle");
+	m_lexer.addKeyword("call");
 	m_lexer.addKeyword("pushi");
 	m_lexer.addKeyword("pushf");
 	// Disable emitting of newline token
