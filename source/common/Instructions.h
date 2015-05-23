@@ -3,42 +3,45 @@
 #include <cstdint>
 #include <string>
 
-typedef uint16_t InstructionId;
+enum class EInstructíon
+{
+	// System
+	Nop = 0, /**< No operation. */
+	Break, /**< Breakpoint, for debugging. */
+	Exit, /**< Exit operation, immediately ends script. */
 
-// System
-const InstructionId instrNop = 0; /**< No operation. */
-const InstructionId instrPause = 1; /**< Pause operation (breakpoint, for debugging). */
-const InstructionId instrExit = 2; /**< Exit operation, immediately ends script. */
+	// Runtime stack manipulation
+	Pushv, /**< Push value to stack. */
+	Pushi, /**< Push integer constant to stack. */
+	Pushu, /**< Push unsigned integer constant to stack. */
+	Pushf, /**< Push float constant to stack. */
+	Pushs, /**< Push string constant to stack. */
+	Pop, /**< Pop value from stack. */
 
-// Stack management
-const InstructionId instrPushv = 3; /**< Push value to stack. */
-const InstructionId instrPushi = 4; /**< Push integer constant to stack. */
-const InstructionId instrPushf = 5; /**< Push float constant to stack. */
-const InstructionId instrPushs = 6; /**< Push string constant to stack. */
-const InstructionId instrPop = 7; /**< Pop value from stack. */
+	// Function calling
+	Call, /**< Call script function. */
+	Calle, /**< Call extern function. */
+	Ret, /**< Return from script function. */
 
-// Function calling
-const InstructionId instrCall = 8; /**< Call script function. */
-const InstructionId instrCalle = 9; /**< Call extern function. */
+	// Arithmetic operations
+	Add, /**< Add. */
+	Sub, /**< Subtract. */
+	Mul, /**< Multiply. */
+	Div, /**< Divide. */
+	Inc, /**< Increment. */
+	Dec, /**< Decrement. */
 
-// Arithmetic operations
-const InstructionId instrAdd = 10; /**< Add. */
-const InstructionId instrSub = 11; /**< Subtract. */
-const InstructionId instrMul = 12; /**< Multiply. */
-const InstructionId instrDiv = 13; /**< Divide. */
-const InstructionId instrInc = 14; /**< Increment. */
-const InstructionId instrDec = 15; /**< Decrement. */
+	// Logical operations
+	And, /**< Logical AND. */
+	Or, /**< Logical OR. */
+	Not, /**< Logical NOT. */
+	Xor, /**< Logical XOR. */
 
-// Logical operations
-const InstructionId instrAnd = 16; /**< Logical AND. */
-const InstructionId instrOr = 17; /**< Logical OR. */
-const InstructionId instrNot = 18; /**< Logical NOT. */
-const InstructionId instrXor = 19; /**< Logical XOR. */
-
-// Flow control
-const InstructionId instrJmp = 20; /**< Unconditional jump. */
-const InstructionId instrJe = 21; /**< Jump if equal. */
-const InstructionId instrJne = 22; /**< Jump if not equal. */
+	// Flow control
+	Jmp, /**< Unconditional jump. */
+	Je, /**< Jump if equal. */
+	Jne /**< Jump if not equal. */
+};
 
 /**
 * \brief Provides instruction specific information for id based lookup.
@@ -51,17 +54,20 @@ struct SInstructionLookup
 
 const SInstructionLookup instructions[] = {
 	{ "nop", 0 },
-	{ "pause", 0 },
+	{ "break", 0 },
 	{ "exit", 0 },
 	
 	{ "pushv", 1 },
 	{ "pushi", 1 },
+	{ "pushu", 1 },
 	{ "pushf", 1 },
 	{ "pushs", 1 },
 	{ "pop", 0 },
 	
 	{ "call", 1 },
 	{ "calle", 1 },
+	{ "ret", 0 },
+
 	{ "add", 2 },
 	{ "sub", 2 },
 	{ "mul", 2 },

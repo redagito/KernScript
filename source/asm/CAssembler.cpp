@@ -116,7 +116,7 @@ bool CAssembler::parseFunction(std::istream& stream)
 			if (m_lexer.getLexeme() == "pushi")
 			{
 				// Push integer instruction
-				instruction.id = instrPushi;
+				instruction.id = EInstructíon::Pushi;
 				// Expects one integer constant as argument
 				m_lexer.lex(stream);
 				if (m_lexer.getToken() != ELexerToken::Integer)
@@ -132,7 +132,7 @@ bool CAssembler::parseFunction(std::istream& stream)
 			if (m_lexer.getLexeme() == "pushf")
 			{
 				// Push float instruction
-				instruction.id = instrPushf;
+				instruction.id = EInstructíon::Pushf;
 				// Expects one float constant as argument
 				m_lexer.lex(stream);
 				if (m_lexer.getToken() != ELexerToken::Float)
@@ -151,7 +151,7 @@ bool CAssembler::parseFunction(std::istream& stream)
 			else if (m_lexer.getLexeme() == "pushs")
 			{
 				// Push string instruction
-				instruction.id = instrPushs;
+				instruction.id = EInstructíon::Pushs;
 				// Expects one string constant as argumment
 				m_lexer.lex(stream);
 				if (m_lexer.getToken() != ELexerToken::String)
@@ -165,7 +165,7 @@ bool CAssembler::parseFunction(std::istream& stream)
 			else if (m_lexer.getLexeme() == "calle")
 			{
 				// Call extern function instruction
-				instruction.id = instrCalle;
+				instruction.id = EInstructíon::Calle;
 				// Expects one identifier
 				m_lexer.lex(stream);
 				if (m_lexer.getToken() != ELexerToken::Identifier)

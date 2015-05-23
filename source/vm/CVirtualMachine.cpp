@@ -201,42 +201,53 @@ bool CVirtualMachine::getFunctionIndex(const std::string& functionName, uint32_t
 
 bool CVirtualMachine::execute(const SInstruction& instruction)
 {
+	// Instruction index out of bounds?
+	if (m_currentInstructionIndex >= m_functions.at(m_currentFunctionIndex).instructions.size())
+	{
+		return false;
+	}
+	
 	switch (instruction.id)
 	{
-	case instrNop:
+	case EInstructíon::Nop:
 		++m_currentInstructionIndex;
 		break;
-	case instrPause:
+	case EInstructíon::Break:
 		// Not impelmented
 		++m_currentInstructionIndex;
 		break;
-	case instrExit:
+	case EInstructíon::Exit:
 		// Retunr false to signal end of script
 		return false;
 		break;
 	
-	case instrPushi:
+	case EInstructíon::Pushi:
 		// Arg 0 is integer value
 		m_runtimeStack.push(CValue(instruction.args[0]));
 		++m_currentInstructionIndex;
 		break;
-	case instrPushf:
+	case EInstructíon::Pushf:
 		// Arg 0 is float value
 		m_runtimeStack.push(CValue(*((float*) &instruction.args[0])));
 		++m_currentInstructionIndex;
 		break;
-	case instrPop:
+	case EInstructíon::Pop:
 		// Remove top element from runtime stack
 		m_runtimeStack.pop();
 		++m_currentInstructionIndex;
 		break;
 
-	case instrCall:
-		// Not implemented
-		return false;
-		++m_currentInstructionIndex;
+	case EInstructíon::Call:
+		// Push next instruction and current function index for return call
+		m_runtimeStack.push(CValue(m_currentInstructionIndex + 1));
+		m_runtimeStack.push(CValue(m_currentFunctionIndex));
+		// Arg 0 is function index
+		// TODO Needs cast?
+		m_currentFunctionIndex = instruction.args[0];
+		// Reset instruction index
+		m_currentInstructionIndex = 0;
 		break;
-	case instrCalle:
+	case EInstructíon::Calle:
 		{
 			// Call external, arg 0 is extern function index
 			const SExternFunction& externFunction = m_externFunctions.at(instruction.args[0]);
@@ -255,66 +266,60 @@ bool CVirtualMachine::execute(const SInstruction& instruction)
 			++m_currentInstructionIndex;
 			break;
 		}
-	case instrAdd:
+	case EInstructíon::Add:
 		// Not implemented
 		return false;
 		break;
-	case instrSub:
+	case EInstructíon::Sub:
 		// Not implemented
 		return false;
 		break;
-	case instrMul:
+	case EInstructíon::Mul:
 		// Not implemented
 		return false;
 		break;
-	case instrDiv:
+	case EInstructíon::Div:
 		// Not implemented
 		return false;
 		break;
-	case instrInc:
+	case EInstructíon::Inc:
 		// Not implemented
 		return false;
 		break;
-	case instrDec:
-		// Not implemented
-		return false;
-		break;
-
-	case instrAnd:
-		// Not implemented
-		return false;
-		break;
-	case instrOr:
-		// Not implemented
-		return false;
-		break;
-	case instrNot:
-		// Not implemented
-		return false;
-		break;
-	case instrXor:
+	case EInstructíon::Dec:
 		// Not implemented
 		return false;
 		break;
 
-	case instrJmp:
+	case EInstructíon::And:
 		// Not implemented
 		return false;
 		break;
-	case instrJe:
+	case EInstructíon::Or:
 		// Not implemented
 		return false;
 		break;
-	case instrJne:
+	case EInstructíon::Not:
 		// Not implemented
 		return false;
 		break;
-	}
+	case EInstructíon::Xor:
+		// Not implemented
+		return false;
+		break;
 
-	// Instruction index out of bounds?
-	if (m_currentInstructionIndex >= m_functions.at(m_currentFunctionIndex).instructions.size())
-	{
+	case EInstructíon::Jmp:
+		// Not implemented
 		return false;
+		break;
+	case EInstructíon::Je:
+		// Not implemented
+		return false;
+		break;
+	case EInstructíon::Jne:
+		// Not implemented
+		return false;
+		break;
 	}
 
 	return true;

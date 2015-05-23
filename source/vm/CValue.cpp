@@ -24,6 +24,12 @@ CValue::CValue(int32_t value)
 	m_integer = value;
 }
 
+CValue::CValue(uint32_t value)
+{
+	m_type = EType::UnsignedInteger;
+	m_unsignedInteger = value;
+}
+
 CValue::CValue(float value)
 {
 	m_type = EType::Float;
@@ -53,8 +59,33 @@ bool CValue::convert(int32_t& value) const
 	case EType::Integer:
 		value = m_integer;
 		return true;
+	case EType::UnsignedInteger:
+		value = (int32_t) m_unsignedInteger;
+		return true;
 	case EType::Float:
-		value = (int32_t) m_float;
+		value = (int32_t)m_float;
+		return true;
+	case EType::String:
+		// String conversion TODO
+		return false;
+	default:
+		// Unknown or invalid conversion
+		return false;
+	}
+}
+
+bool CValue::convert(uint32_t& value) const
+{
+	switch (m_type)
+	{
+	case EType::Integer:
+		value = (uint32_t)m_integer;
+		return true;
+	case EType::UnsignedInteger:
+		value = m_unsignedInteger;
+		return true;
+	case EType::Float:
+		value = (uint32_t) m_float;
 		return true;
 	case EType::String:
 		// String conversion TODO
@@ -70,7 +101,10 @@ bool CValue::convert(float& value) const
 	switch (m_type)
 	{
 	case EType::Integer:
-		value = (float) m_integer;
+		value = (float)m_integer;
+		return true;
+	case EType::UnsignedInteger:
+		value = (float)m_unsignedInteger;
 		return true;
 	case EType::Float:
 		value = m_float;
@@ -92,6 +126,10 @@ bool CValue::convert(std::string& value) const
 	{
 	case EType::Integer:
 		ss << m_integer;
+		value = ss.str();
+		return true;
+	case EType::UnsignedInteger:
+		ss << m_unsignedInteger;
 		value = ss.str();
 		return true;
 	case EType::Float:
@@ -125,6 +163,9 @@ CValue& CValue::operator=(const CValue& rhs)
 	{
 	case EType::Integer:
 		m_integer = rhs.m_integer;
+		break;
+	case EType::UnsignedInteger:
+		m_unsignedInteger = rhs.m_unsignedInteger;
 		break;
 	case EType::Float:
 		m_float = rhs.m_float;
@@ -162,6 +203,10 @@ CValue& CValue::operator=(CValue&& rhs)
 	case EType::Integer:
 		m_integer = rhs.m_integer;
 		rhs.m_integer = 0;
+		break;
+	case EType::UnsignedInteger:
+		m_unsignedInteger = rhs.m_unsignedInteger;
+		rhs.m_unsignedInteger = 0;
 		break;
 	case EType::Float:
 		m_float = rhs.m_float;
