@@ -37,6 +37,8 @@ public:
 	CValue& operator+=(const CValue& rhs);
 	CValue& operator-=(const CValue& rhs);
 
+	bool operator<=(const CValue& rhs);
+
 private:
 	union
 	{

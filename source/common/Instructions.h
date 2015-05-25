@@ -41,7 +41,9 @@ enum class EInstructíon
 	Jmp, /**< Unconditional jump. */
 	Je, /**< Jump if equal. */
 	Jne, /**< Jump if not equal. */
+	Jg, /**< Jump if greater. */
 	Jge, /**< Jump if greater or equal. */
+	Jl, /**< Jump if less. */
 	Jle /**< Jump if less or equal. */
 };
 
@@ -70,13 +72,13 @@ const SInstructionLookup instructions[] = {
 	{ "calle", 1 },
 	{ "ret", 0 },
 
-	{ "add", 2 },
-	{ "sub", 2 },
-	{ "mul", 2 },
-	{ "div", 2 },
+	{ "add", 0 },
+	{ "sub", 0 },
+	{ "mul", 0 },
+	{ "div", 0 },
 
-	{ "inc", 1 },
-	{ "dec", 1 },
+	{ "inc", 0 },
+	{ "dec", 0 },
 
 	{ "and", 2 },
 	{ "or", 2 },
@@ -85,5 +87,9 @@ const SInstructionLookup instructions[] = {
 
 	{ "jmp", 1 },
 	{ "je", 1 },
-	{ "jne", 1 }
+	{ "jne", 1 },
+	{ "jg", 1 },
+	{ "jge", 1 },
+	{ "jl", 1 },
+	{ "jle", 1 }
 }; 

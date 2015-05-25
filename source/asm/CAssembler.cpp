@@ -2,12 +2,15 @@
 
 #include <sstream>
 #include <iostream>
+#include <unordered_map>
+#include <tuple>
 
 CAssembler::CAssembler()
 {
 	// Assembler specific
 	m_lexer.addKeyword("func");
 	m_lexer.addKeyword("extern");
+	m_lexer.addKeyword("label");
 
 	// Instructions
 	m_lexer.addKeyword("pushi");
@@ -19,6 +22,8 @@ CAssembler::CAssembler()
 
 	m_lexer.addKeyword("add");
 	m_lexer.addKeyword("sub");
+
+	m_lexer.addKeyword("jle");
 
 	// Disable emitting of newline token
 	m_lexer.ignoreNewLine(true);
@@ -105,6 +110,11 @@ bool CAssembler::parseFunction(std::istream& stream)
 		return false;
 	}
 	
+	// Store labels for resolving jumps
+	std::unordered_map<std::string, uint32_t> labels;
+	// Stores jump instructions to be resolved after end of pass
+	std::list<std::tuple<SInstruction*, std::string>> unresolvedJumps;
+
 	// Store function name
 	SFunction function;
 	function.name = m_lexer.getLexeme();
@@ -123,7 +133,25 @@ bool CAssembler::parseFunction(std::istream& stream)
 		switch (m_lexer.getToken())
 		{
 		case ELexerToken::Keyword:
-			if (m_lexer.getLexeme() == "pushi")
+			if (m_lexer.getLexeme() == "label")
+			{
+				// Instruction index alias for jumps
+				// Expects identifier for label name
+				m_lexer.lex(stream);
+				if (m_lexer.getToken() != ELexerToken::Identifier)
+				{
+					std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+					return false;
+				}
+				// Check if label already exists
+				if (labels.find(m_lexer.getLexeme()) != labels.end())
+				{
+					std::cout << "The label '" << m_lexer.getLexeme() << "' already exists." << std::endl;
+				}
+				// Point to next instruction -> set to current size
+				labels[m_lexer.getLexeme()] = function.instructions.size();
+			}
+			else if (m_lexer.getLexeme() == "pushi")
 			{
 				// Push integer instruction
 				instruction.id = EInstructíon::Pushi;
@@ -138,6 +166,9 @@ bool CAssembler::parseFunction(std::istream& stream)
 				std::stringstream ss;
 				ss << m_lexer.getLexeme();
 				ss >> instruction.args[0];
+
+				// Add assembled instruction
+				function.instructions.push_back(instruction);
 			}
 			else if (m_lexer.getLexeme() == "pushf")
 			{
@@ -156,7 +187,10 @@ bool CAssembler::parseFunction(std::istream& stream)
 				float temp;
 				ss >> temp;
 				// Store float binary data in arg
-				memcpy((void*) &instruction.args[0], (void*) &temp, sizeof(float));
+				memcpy((void*)&instruction.args[0], (void*)&temp, sizeof(float));
+
+				// Add assembled instruction
+				function.instructions.push_back(instruction);
 			}
 			else if (m_lexer.getLexeme() == "pushs")
 			{
@@ -171,6 +205,9 @@ bool CAssembler::parseFunction(std::istream& stream)
 				}
 				// TODO Add string to strings list and write id
 				return false;
+
+				// Add assembled instruction
+				function.instructions.push_back(instruction);
 			}
 			else if (m_lexer.getLexeme() == "call")
 			{
@@ -190,6 +227,8 @@ bool CAssembler::parseFunction(std::istream& stream)
 					std::cout << "The identifier is not a function: " << m_lexer.getLexeme() << std::endl;
 					return false;
 				}
+				// Add assembled instruction
+				function.instructions.push_back(instruction);
 			}
 			else if (m_lexer.getLexeme() == "calle")
 			{
@@ -209,27 +248,54 @@ bool CAssembler::parseFunction(std::istream& stream)
 					std::cout << "The identifier is not an extern function: " << m_lexer.getLexeme() << std::endl;
 					return false;
 				}
+				// Add assembled instruction
+				function.instructions.push_back(instruction);
 			}
 			else if (m_lexer.getLexeme() == "ret")
 			{
 				// Return from function
 				instruction.id = EInstructíon::Ret;
 				// No arguments
+
+				// Add assembled instruction
+				function.instructions.push_back(instruction);
 			}
 			else if (m_lexer.getLexeme() == "add")
 			{
 				// Add top 2 parameters from stack and push result to stack
 				instruction.id = EInstructíon::Add;
 				// No arguments
+
+				// Add assembled instruction
+				function.instructions.push_back(instruction);
 			}
 			else if (m_lexer.getLexeme() == "sub")
 			{
 				// Subtract top 2 parameters from stack and push result to stack
 				instruction.id = EInstructíon::Sub;
 				// No arguments
+
+				// Add assembled instruction
+				function.instructions.push_back(instruction);
 			}
-			// Add assembled instruction
-			function.instructions.push_back(instruction);
+			else if (m_lexer.getLexeme() == "jle")
+			{
+				// Compare top 2 parameters from stack and jump to label if less or equal
+				instruction.id = EInstructíon::Jle;
+				// Expects identifier for label name as argument
+				m_lexer.lex(stream);
+				if (m_lexer.getToken() != ELexerToken::Identifier)
+				{
+					std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+					return false;
+				}
+
+				// Add assembled instruction
+				function.instructions.push_back(instruction);
+
+				// Add instruction to unresolved jumps
+				unresolvedJumps.push_back(std::make_tuple(&function.instructions.back(), m_lexer.getLexeme()));
+			}
 			break;
 		case ELexerToken::Comment:
 		case ELexerToken::NewLine:
@@ -243,6 +309,20 @@ bool CAssembler::parseFunction(std::istream& stream)
 	}
 	while (m_lexer.getToken() != ELexerToken::CloseBrace);
 	
+	// Resolve jumps
+	for (auto& entry : unresolvedJumps)
+	{
+		auto label = labels.find(std::get<1>(entry));
+		if (label == labels.end())
+		{
+			std::cout << "Unresolved jump instruction: Label '" << std::get<1>(entry) << "' does not exist." << std::endl;
+			return false;
+		}
+		// Set instruction arg 0 to target instruction index
+		// TODO Check for infinite loops?
+		std::get<0>(entry)->args[0] = label->second;
+	}
+
 	// Add assembled function
 	m_functions.push_back(function);
 	return true;

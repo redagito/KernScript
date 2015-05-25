@@ -260,3 +260,19 @@ CValue& CValue::operator-=(const CValue& rhs)
 	}
 	return *this;
 }
+
+bool CValue::operator<=(const CValue& rhs)
+{
+	// Arithmetic subtract
+	switch (m_type)
+	{
+	case EType::Integer:
+		switch (rhs.m_type)
+		{
+		case EType::Integer:
+			// Integer with integer
+			return m_integer <= rhs.m_integer;
+		}
+	}
+	return false;
+}
