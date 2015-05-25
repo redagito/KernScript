@@ -19,8 +19,11 @@ protected:
 	bool parseFunction(std::istream& stream);
 	bool parseExternFunction(std::istream& stream);
 	
+	bool isFunction(const std::string& name);
+	bool getFunctionId(const std::string& name, int32_t& id);
+
 	bool isExternFunction(const std::string& name);
-	int32_t getExternFunctionId(const std::string& name);
+	bool getExternFunctionId(const std::string& name, int32_t& id);
 	
 	/**
 	* \brief Serialization.

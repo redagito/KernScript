@@ -44,7 +44,7 @@ protected:
 
 	bool getFunctionIndex(const std::string& functionName, uint32_t& index);
 
-	bool execute(const SInstruction& instruction);
+	bool execute();
 	
 private:
 	/**
@@ -56,6 +56,17 @@ private:
 		std::vector<SInstruction> instructions; /**< Assembled instructions. */
 	};
 
+	/**
+	* \brief Represents function and instruction index to return to, after instruction ret is executed.
+	*/
+	struct SReturnData
+	{
+		SReturnData();
+		SReturnData(uint32_t funcIndex, uint32_t instrIndex);
+		uint32_t functionIndex = 0;
+		uint32_t instructionIndex = 0;
+	};
+
 	std::vector<std::string> m_strings; /**< String constants. */
 	std::vector<SFunction> m_functions; /**< Assembled script functions. */
 	std::vector<SExternFunction> m_externFunctions;
@@ -63,6 +74,7 @@ private:
 	std::unordered_map<std::string, std::unique_ptr<kern::IExternFunction>> m_externFunctionsMap; /**< Extern functions. */
 
 	std::stack<CValue> m_runtimeStack; /**< Active runtuime stack. */
+	std::stack<SReturnData> m_callStack; /**< Function call stack for instruction ret. */
 	uint32_t m_currentFunctionIndex; /**< Index of active function. */
 	uint32_t m_currentInstructionIndex; /**< Index of active instruction. */
 };

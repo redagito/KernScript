@@ -4,6 +4,18 @@
 
 #include "common/Instructions.h"
 
+
+CVirtualMachine::SReturnData::SReturnData()
+{
+
+}
+
+CVirtualMachine::SReturnData::SReturnData(uint32_t funcIndex, uint32_t instrIndex)
+{
+	functionIndex = funcIndex;
+	instructionIndex = instrIndex;
+}
+
 bool CVirtualMachine::load(std::istream& byteCode)
 {
 	// Load string constants
@@ -45,15 +57,7 @@ bool CVirtualMachine::callFunction(const std::string& functionName)
 	bool running = true;
 	while (running)
 	{
-		// Instruction index out of bounds?
-		if (m_currentInstructionIndex >= m_functions.at(m_currentFunctionIndex).instructions.size())
-		{
-			running = false;
-		}
-		else
-		{
-			running = execute(m_functions.at(m_currentFunctionIndex).instructions.at(m_currentInstructionIndex));
-		}
+		running = execute();
 	}
 	return true;
 }
@@ -207,8 +211,21 @@ bool CVirtualMachine::getFunctionIndex(const std::string& functionName, uint32_t
 	return false;
 }
 
-bool CVirtualMachine::execute(const SInstruction& instruction)
+bool CVirtualMachine::execute()
 {
+	SInstruction instruction;
+	// Check for out of bounds instruction index
+	if (m_functions.at(m_currentFunctionIndex).instructions.size() <= m_currentInstructionIndex)
+	{
+		// Implicit return
+		instruction.id = EInstructíon::Ret;
+	}
+	else
+	{
+		// Retrieve current instruction
+		instruction = m_functions.at(m_currentFunctionIndex).instructions.at(m_currentInstructionIndex);
+	}
+
 	switch (instruction.id)
 	{
 	case EInstructíon::Nop:
@@ -241,8 +258,7 @@ bool CVirtualMachine::execute(const SInstruction& instruction)
 
 	case EInstructíon::Call:
 		// Push next instruction and current function index for return call
-		m_runtimeStack.push(CValue(m_currentInstructionIndex + 1));
-		m_runtimeStack.push(CValue(m_currentFunctionIndex));
+		m_callStack.push(SReturnData(m_currentFunctionIndex, m_currentInstructionIndex + 1));
 		// Arg 0 is function index
 		// TODO Needs cast?
 		m_currentFunctionIndex = instruction.args[0];
@@ -268,6 +284,17 @@ bool CVirtualMachine::execute(const SInstruction& instruction)
 			++m_currentInstructionIndex;
 			break;
 		}
+	case EInstructíon::Ret:
+		// Return from script function
+		if (m_callStack.empty())
+		{
+			// Empty stack indicates either error state or end of script
+			return false;
+		}
+		m_currentFunctionIndex = m_callStack.top().functionIndex;
+		m_currentInstructionIndex = m_callStack.top().instructionIndex;
+		m_callStack.pop();
+		break;
 	case EInstructíon::Add:
 		// Not implemented
 		return false;

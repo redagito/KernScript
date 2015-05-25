@@ -9,6 +9,8 @@ CAssembler::CAssembler()
 	m_lexer.addKeyword("extern");
 	m_lexer.addKeyword("calle");
 	m_lexer.addKeyword("call");
+	m_lexer.addKeyword("ret");
+
 	m_lexer.addKeyword("pushi");
 	m_lexer.addKeyword("pushf");
 	// Disable emitting of newline token
@@ -130,7 +132,7 @@ bool CAssembler::parseFunction(std::istream& stream)
 				ss << m_lexer.getLexeme();
 				ss >> instruction.args[0];
 			}
-			if (m_lexer.getLexeme() == "pushf")
+			else if (m_lexer.getLexeme() == "pushf")
 			{
 				// Push float instruction
 				instruction.id = EInstructíon::Pushf;
@@ -163,6 +165,25 @@ bool CAssembler::parseFunction(std::istream& stream)
 				// TODO Add string to strings list and write id
 				return false;
 			}
+			else if (m_lexer.getLexeme() == "call")
+			{
+				// Call script function instruction
+				instruction.id = EInstructíon::Call;
+				// Expects one identifier
+				m_lexer.lex(stream);
+				if (m_lexer.getToken() != ELexerToken::Identifier)
+				{
+					std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+					return false;
+				}
+				// Identifier must be script function
+				// Set function index
+				if (!getFunctionId(m_lexer.getLexeme(), instruction.args[0]))
+				{
+					std::cout << "The identifier is not a function: " << m_lexer.getLexeme() << std::endl;
+					return false;
+				}
+			}
 			else if (m_lexer.getLexeme() == "calle")
 			{
 				// Call extern function instruction
@@ -175,13 +196,18 @@ bool CAssembler::parseFunction(std::istream& stream)
 					return false;
 				}
 				// Identifier must be extern function
-				if (!isExternFunction(m_lexer.getLexeme()))
+				// Set function index
+				if (!getExternFunctionId(m_lexer.getLexeme(), instruction.args[0]))
 				{
 					std::cout << "The identifier is not an extern function: " << m_lexer.getLexeme() << std::endl;
 					return false;
 				}
-				// Set function index
-				instruction.args[0] = getExternFunctionId(m_lexer.getLexeme());
+			}
+			else if (m_lexer.getLexeme() == "ret")
+			{
+				// Return from function
+				instruction.id = EInstructíon::Ret;
+				// No arguments
 			}
 			// Add assembled instruction
 			function.instructions.push_back(instruction);
@@ -235,34 +261,49 @@ bool CAssembler::parseExternFunction(std::istream& stream)
 	return true;
 }
 
-bool CAssembler::isExternFunction(const std::string& name)
+
+bool CAssembler::isFunction(const std::string& name)
+{
+	int32_t id;
+	return getFunctionId(name, id);
+}
+
+bool CAssembler::getFunctionId(const std::string& name, int32_t& id)
 {
 	// Linear search
 	// TODO Slow?
+	id = 0;
+	for (const auto& function : m_functions)
+	{
+		if (function.name == name)
+		{
+			return true;
+		}
+		++id;
+	}
+	return false;
+}
+
+bool CAssembler::isExternFunction(const std::string& name)
+{
+	int32_t id;
+	return getExternFunctionId(name, id);
+}
+
+bool CAssembler::getExternFunctionId(const std::string& name, int32_t& id)
+{
+	// Linear search
+	// TODO Slow?
+	id = 0;
 	for (const auto& externFunction : m_externFunctions)
 	{
 		if (externFunction.name == name)
 		{
 			return true;
 		}
+		++id;
 	}
 	return false;
-}
-
-int32_t CAssembler::getExternFunctionId(const std::string& name)
-{
-	// Linear search
-	// TODO Slow?
-	int32_t index = 0;
-	for (const auto& externFunction : m_externFunctions)
-	{
-		if (externFunction.name == name)
-		{
-			return index;
-		}
-		++index;
-	}
-	return -1;
 }
 
 bool CAssembler::serializeStrings(std::ostream& stream) const
