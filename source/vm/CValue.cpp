@@ -149,7 +149,7 @@ CValue& CValue::operator=(const CValue& rhs)
 {
 	if (this == &rhs)
 	{
-		// Same object, return
+		return *this;
 	}
 
 	if (m_type == EType::String)
@@ -189,6 +189,7 @@ CValue& CValue::operator=(CValue&& rhs)
 	if (this == &rhs)
 	{
 		// Same object, return
+		return *this;
 	}
 
 	if (m_type == EType::String)
@@ -224,5 +225,38 @@ CValue& CValue::operator=(CValue&& rhs)
 	}
 	rhs.m_type = EType::Invalid;
 
+	return *this;
+}
+
+
+CValue& CValue::operator+=(const CValue& rhs)
+{
+	// Arithmetic add
+	switch (m_type)
+	{
+	case EType::Integer:
+		switch (rhs.m_type)
+		{
+		case EType::Integer:
+			// Integer with integer
+			m_integer += rhs.m_integer;
+		}
+	}
+	return *this;
+}
+
+CValue& CValue::operator-=(const CValue& rhs)
+{
+	// Arithmetic subtract
+	switch (m_type)
+	{
+	case EType::Integer:
+		switch (rhs.m_type)
+		{
+		case EType::Integer:
+			// Integer with integer
+			m_integer -= rhs.m_integer;
+		}
+	}
 	return *this;
 }

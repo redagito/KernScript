@@ -34,6 +34,9 @@ public:
 	CValue& operator=(const CValue& rhs);
 	CValue& operator=(CValue&& rhs);
 
+	CValue& operator+=(const CValue& rhs);
+	CValue& operator-=(const CValue& rhs);
+
 private:
 	union
 	{

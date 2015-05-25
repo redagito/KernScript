@@ -45,7 +45,12 @@ protected:
 	bool getFunctionIndex(const std::string& functionName, uint32_t& index);
 
 	bool execute();
-	
+
+	/**
+	* \brief Pops value from runtime stack into supplied variable.
+	*/
+	bool popValue(CValue& val);
+
 private:
 	/**
 	* \brief Assembled function.

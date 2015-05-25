@@ -40,7 +40,9 @@ enum class EInstructíon
 	// Flow control
 	Jmp, /**< Unconditional jump. */
 	Je, /**< Jump if equal. */
-	Jne /**< Jump if not equal. */
+	Jne, /**< Jump if not equal. */
+	Jge, /**< Jump if greater or equal. */
+	Jle /**< Jump if less or equal. */
 };
 
 /**

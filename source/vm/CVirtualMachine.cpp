@@ -296,12 +296,28 @@ bool CVirtualMachine::execute()
 		m_callStack.pop();
 		break;
 	case EInstructíon::Add:
-		// Not implemented
-		return false;
+		{
+			CValue x;
+			// 2 Values needed
+			if (!popValue(x) || m_runtimeStack.empty())
+			{
+				return false;
+			}
+			m_runtimeStack.top() += x;
+			++m_currentInstructionIndex;
+		}
 		break;
 	case EInstructíon::Sub:
-		// Not implemented
-		return false;
+		{
+			CValue x;
+			// 2 Values needed
+			if (!popValue(x) || m_runtimeStack.empty())
+			{
+				return false;
+			}
+			m_runtimeStack.top() -= x;
+			++m_currentInstructionIndex;
+		}
 		break;
 	case EInstructíon::Mul:
 		// Not implemented
@@ -351,5 +367,16 @@ bool CVirtualMachine::execute()
 		break;
 	}
 
+	return true;
+}
+
+bool CVirtualMachine::popValue(CValue& val)
+{
+	if (m_runtimeStack.empty())
+	{
+		return false;
+	}
+	val = std::move(m_runtimeStack.top());
+	m_runtimeStack.pop();
 	return true;
 }

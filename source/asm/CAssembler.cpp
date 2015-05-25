@@ -5,14 +5,21 @@
 
 CAssembler::CAssembler()
 {
+	// Assembler specific
 	m_lexer.addKeyword("func");
 	m_lexer.addKeyword("extern");
-	m_lexer.addKeyword("calle");
-	m_lexer.addKeyword("call");
-	m_lexer.addKeyword("ret");
 
+	// Instructions
 	m_lexer.addKeyword("pushi");
 	m_lexer.addKeyword("pushf");
+	
+	m_lexer.addKeyword("call");
+	m_lexer.addKeyword("calle");
+	m_lexer.addKeyword("ret");
+
+	m_lexer.addKeyword("add");
+	m_lexer.addKeyword("sub");
+
 	// Disable emitting of newline token
 	m_lexer.ignoreNewLine(true);
 }
@@ -207,6 +214,18 @@ bool CAssembler::parseFunction(std::istream& stream)
 			{
 				// Return from function
 				instruction.id = EInstructíon::Ret;
+				// No arguments
+			}
+			else if (m_lexer.getLexeme() == "add")
+			{
+				// Add top 2 parameters from stack and push result to stack
+				instruction.id = EInstructíon::Add;
+				// No arguments
+			}
+			else if (m_lexer.getLexeme() == "sub")
+			{
+				// Subtract top 2 parameters from stack and push result to stack
+				instruction.id = EInstructíon::Sub;
 				// No arguments
 			}
 			// Add assembled instruction
