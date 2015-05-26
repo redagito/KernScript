@@ -19,7 +19,7 @@ bool deserialize(SInstruction& instruction, std::istream& stream)
 	// Read id
 	uint16_t id;
 	stream.read((char*) &id, sizeof(id));
-	instruction.id = (EInstructíon) id;
+	instruction.id = (EInstruction) id;
 	// Number of arguments depends on instruction id
 	for (unsigned int i = 0; i < instructions[id].argCount; ++i)
 	{

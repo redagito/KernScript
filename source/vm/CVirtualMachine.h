@@ -16,6 +16,8 @@
 class CVirtualMachine : public kern:: IVirtualMachine
 {
 public:
+	CVirtualMachine();
+
 	bool load(std::istream& byteCode);
 
 	void clearScripts();
@@ -47,6 +49,11 @@ protected:
 	bool execute();
 
 	/**
+	* \brief Pushes value on top of runtime stack.
+	*/
+	void pushValue(const CValue& value);
+
+	/**
 	* \brief Pops value from runtime stack into supplied variable.
 	*/
 	bool popValue(CValue& val);
@@ -70,6 +77,7 @@ private:
 		SReturnData(uint32_t funcIndex, uint32_t instrIndex);
 		uint32_t functionIndex = 0;
 		uint32_t instructionIndex = 0;
+		uint32_t runtimeStackBaseIndex = 0;
 	};
 
 	std::vector<std::string> m_strings; /**< String constants. */
@@ -78,7 +86,7 @@ private:
 
 	std::unordered_map<std::string, std::unique_ptr<kern::IExternFunction>> m_externFunctionsMap; /**< Extern functions. */
 
-	std::stack<CValue> m_runtimeStack; /**< Active runtuime stack. */
+	std::vector<CValue> m_runtimeStack; /**< Active runtime stack. */
 	std::stack<SReturnData> m_callStack; /**< Function call stack for instruction ret. */
 	uint32_t m_currentFunctionIndex; /**< Index of active function. */
 	uint32_t m_currentInstructionIndex; /**< Index of active instruction. */

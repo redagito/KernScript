@@ -8,6 +8,12 @@
 
 unsigned int CLexer::lex(std::istream& stream)
 {
+	if (m_ignoreLex)
+	{
+		m_ignoreLex = false;
+		return m_blankSkipped;
+	}
+
 	// Reset lexeme and token
 	m_currentLexeme.clear();
 	m_currentToken = ELexerToken::Invalid;
@@ -16,7 +22,7 @@ unsigned int CLexer::lex(std::istream& stream)
 	char next = stream.peek();
 
 	// For counting whitespaces
-	unsigned int blankSkipped = 0;
+	m_blankSkipped = 0;
 	// Skip blanks
 	while (next == ' ' || next == '\t' || m_ignoreNewLine && next == '\n')
 	{
@@ -24,7 +30,7 @@ unsigned int CLexer::lex(std::istream& stream)
 		stream.get();
 		if (next != '\n')
 		{
-			++blankSkipped;
+			++m_blankSkipped;
 		}		
 		// Peek next
 		next = stream.peek();
@@ -152,7 +158,7 @@ unsigned int CLexer::lex(std::istream& stream)
 			break;
 		}
 	}
-	return blankSkipped;
+	return m_blankSkipped;
 }
 
 const std::string& CLexer::getLexeme() const
@@ -173,6 +179,11 @@ void CLexer::addKeyword(const std::string& keyword)
 void CLexer::removeKeyword(const std::string& keyword)
 {
 	m_keywords.erase(keyword);
+}
+
+void CLexer::ignoreNextLex()
+{
+	m_ignoreLex = true;
 }
 
 void CLexer::ignoreNewLine(bool state)

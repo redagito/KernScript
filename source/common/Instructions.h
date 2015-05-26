@@ -3,13 +3,19 @@
 #include <cstdint>
 #include <string>
 
-enum class EInstructíon
+enum class EInstruction
 {
 	// System
 	Nop = 0, /**< No operation. */
 	Break, /**< Breakpoint, for debugging. */
 	Exit, /**< Exit operation, immediately ends script. */
 
+	// Data management
+	Movv, /**< Move variable to variable. */
+	Movi, /**< Move integer to variable. */
+	Movf, /**< Move float to variable. */
+	Movs, /**< Move string to variable. */
+	
 	// Runtime stack manipulation
 	Pushv, /**< Push value to stack. */
 	Pushi, /**< Push integer constant to stack. */
@@ -17,6 +23,7 @@ enum class EInstructíon
 	Pushf, /**< Push float constant to stack. */
 	Pushs, /**< Push string constant to stack. */
 	Pop, /**< Pop value from stack. */
+	Popv, /**< Pop value from stack into variable. */
 
 	// Function calling
 	Call, /**< Call script function. */
@@ -61,12 +68,18 @@ const SInstructionLookup instructions[] = {
 	{ "break", 0 },
 	{ "exit", 0 },
 	
+	{ "movv", 1 },
+	{ "movi", 1 },
+	{ "movf", 1 },
+	{ "movs", 1 },
+	
 	{ "pushv", 1 },
 	{ "pushi", 1 },
 	{ "pushu", 1 },
 	{ "pushf", 1 },
 	{ "pushs", 1 },
 	{ "pop", 0 },
+	{ "popv", 1 },
 	
 	{ "call", 1 },
 	{ "calle", 1 },

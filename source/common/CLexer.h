@@ -28,6 +28,10 @@ public:
 	void addKeyword(const std::string& keyword);
 	void removeKeyword(const std::string& keyword);
 
+	/**
+	* \brief Ignore the next lex command and maintain current the state.
+	*/
+	void ignoreNextLex();
 	void ignoreNewLine(bool state);
 
 protected:
@@ -47,4 +51,6 @@ private:
 	std::string m_currentLexeme;
 	ELexerToken m_currentToken = ELexerToken::Invalid;
 	bool m_ignoreNewLine = false;
+	bool m_ignoreLex = false;
+	unsigned int m_blankSkipped = 0;
 };

@@ -13,7 +13,7 @@ typedef int32_t ArgumentType;
 */
 struct SInstruction
 {
-	EInstructíon id = EInstructíon::Nop; /**< Instruction id. */
+	EInstruction id = EInstruction::Nop; /**< Instruction id. */
 	ArgumentType args[4]; /**< Max 4 arguments supported per instruction. */
 };
 

@@ -16,6 +16,12 @@ CVirtualMachine::SReturnData::SReturnData(uint32_t funcIndex, uint32_t instrInde
 	instructionIndex = instrIndex;
 }
 
+CVirtualMachine::CVirtualMachine()
+{
+	// Reserve stack size
+	m_runtimeStack.reserve(1024 * 256);
+}
+
 bool CVirtualMachine::load(std::istream& byteCode)
 {
 	// Load string constants
@@ -74,43 +80,43 @@ void CVirtualMachine::removeFunction(const ::std::string& functionName)
 
 bool CVirtualMachine::popParameter(int& value)
 {
-	bool ret = m_runtimeStack.top().convert(value);
-	m_runtimeStack.pop();
+	bool ret = m_runtimeStack.back().convert(value);
+	m_runtimeStack.pop_back();
 	return ret;
 }
 
 bool CVirtualMachine::popParameter(float& value)
 {
-	bool ret = m_runtimeStack.top().convert(value);
-	m_runtimeStack.pop();
+	bool ret = m_runtimeStack.back().convert(value);
+	m_runtimeStack.pop_back();
 	return ret;
 }
 
 bool CVirtualMachine::popParameter(::std::string& value)
 {
-	bool ret = m_runtimeStack.top().convert(value);
-	m_runtimeStack.pop();
+	bool ret = m_runtimeStack.back().convert(value);
+	m_runtimeStack.pop_back();
 	return ret;
 }
 
 void CVirtualMachine::setReturnValue()
 {
-	m_runtimeStack.push(CValue(0));
+	m_runtimeStack.push_back(CValue(0));
 }
 
 void CVirtualMachine::setReturnValue(int value)
 {
-	m_runtimeStack.push(CValue(value));
+	m_runtimeStack.push_back(CValue(value));
 }
 
 void CVirtualMachine::setReturnValue(float value)
 {
-	m_runtimeStack.push(CValue(value));
+	m_runtimeStack.push_back(CValue(value));
 }
 
 void CVirtualMachine::setReturnValue(const std::string& value)
 {
-	m_runtimeStack.push(CValue(value));
+	m_runtimeStack.push_back(CValue(value));
 }
 
 bool CVirtualMachine::deserializeStrings(std::istream& stream)
@@ -218,7 +224,7 @@ bool CVirtualMachine::execute()
 	if (m_functions.at(m_currentFunctionIndex).instructions.size() <= m_currentInstructionIndex)
 	{
 		// Implicit return
-		instruction.id = EInstructíon::Ret;
+		instruction.id = EInstruction::Ret;
 	}
 	else
 	{
@@ -228,35 +234,35 @@ bool CVirtualMachine::execute()
 
 	switch (instruction.id)
 	{
-	case EInstructíon::Nop:
+	case EInstruction::Nop:
 		++m_currentInstructionIndex;
 		break;
-	case EInstructíon::Break:
+	case EInstruction::Break:
 		// Not impelmented
 		++m_currentInstructionIndex;
 		break;
-	case EInstructíon::Exit:
+	case EInstruction::Exit:
 		// Retunr false to signal end of script
 		return false;
 		break;
 	
-	case EInstructíon::Pushi:
+	case EInstruction::Pushi:
 		// Arg 0 is integer value
-		m_runtimeStack.push(CValue(instruction.args[0]));
+		m_runtimeStack.push_back(CValue(instruction.args[0]));
 		++m_currentInstructionIndex;
 		break;
-	case EInstructíon::Pushf:
+	case EInstruction::Pushf:
 		// Arg 0 is float value
-		m_runtimeStack.push(CValue(*((float*) &instruction.args[0])));
+		m_runtimeStack.push_back(CValue(*((float*)&instruction.args[0])));
 		++m_currentInstructionIndex;
 		break;
-	case EInstructíon::Pop:
+	case EInstruction::Pop:
 		// Remove top element from runtime stack
-		m_runtimeStack.pop();
+		m_runtimeStack.pop_back();
 		++m_currentInstructionIndex;
 		break;
 
-	case EInstructíon::Call:
+	case EInstruction::Call:
 		// Push next instruction and current function index for return call
 		m_callStack.push(SReturnData(m_currentFunctionIndex, m_currentInstructionIndex + 1));
 		// Arg 0 is function index
@@ -265,14 +271,14 @@ bool CVirtualMachine::execute()
 		// Reset instruction index
 		m_currentInstructionIndex = 0;
 		break;
-	case EInstructíon::Calle:
+	case EInstruction::Calle:
 		{
 			// Call external, arg 0 is extern function index
 			const SExternFunction& externFunction = m_externFunctions.at(instruction.args[0]);
 			
 			// Check if function exists
 			// TODO Check if arg count ok
-			auto& entry = m_externFunctionsMap.find(externFunction.name);
+			auto entry = m_externFunctionsMap.find(externFunction.name);
 			if (entry == m_externFunctionsMap.end())
 			{
 				// Function does not exist
@@ -284,7 +290,7 @@ bool CVirtualMachine::execute()
 			++m_currentInstructionIndex;
 			break;
 		}
-	case EInstructíon::Ret:
+	case EInstruction::Ret:
 		// Return from script function
 		if (m_callStack.empty())
 		{
@@ -295,7 +301,7 @@ bool CVirtualMachine::execute()
 		m_currentInstructionIndex = m_callStack.top().instructionIndex;
 		m_callStack.pop();
 		break;
-	case EInstructíon::Add:
+	case EInstruction::Add:
 		{
 			CValue x;
 			// 2 Values needed
@@ -303,11 +309,11 @@ bool CVirtualMachine::execute()
 			{
 				return false;
 			}
-			m_runtimeStack.top() += x;
+			m_runtimeStack.back() += x;
 			++m_currentInstructionIndex;
 		}
 		break;
-	case EInstructíon::Sub:
+	case EInstruction::Sub:
 		{
 			CValue x;
 			// 2 Values needed
@@ -315,57 +321,57 @@ bool CVirtualMachine::execute()
 			{
 				return false;
 			}
-			m_runtimeStack.top() -= x;
+			m_runtimeStack.back() -= x;
 			++m_currentInstructionIndex;
 		}
 		break;
-	case EInstructíon::Mul:
+	case EInstruction::Mul:
 		// Not implemented
 		return false;
 		break;
-	case EInstructíon::Div:
+	case EInstruction::Div:
 		// Not implemented
 		return false;
 		break;
-	case EInstructíon::Inc:
+	case EInstruction::Inc:
 		// Not implemented
 		return false;
 		break;
-	case EInstructíon::Dec:
-		// Not implemented
-		return false;
-		break;
-
-	case EInstructíon::And:
-		// Not implemented
-		return false;
-		break;
-	case EInstructíon::Or:
-		// Not implemented
-		return false;
-		break;
-	case EInstructíon::Not:
-		// Not implemented
-		return false;
-		break;
-	case EInstructíon::Xor:
+	case EInstruction::Dec:
 		// Not implemented
 		return false;
 		break;
 
-	case EInstructíon::Jmp:
+	case EInstruction::And:
 		// Not implemented
 		return false;
 		break;
-	case EInstructíon::Je:
+	case EInstruction::Or:
 		// Not implemented
 		return false;
 		break;
-	case EInstructíon::Jne:
+	case EInstruction::Not:
 		// Not implemented
 		return false;
 		break;
-	case EInstructíon::Jle:
+	case EInstruction::Xor:
+		// Not implemented
+		return false;
+		break;
+
+	case EInstruction::Jmp:
+		// Not implemented
+		return false;
+		break;
+	case EInstruction::Je:
+		// Not implemented
+		return false;
+		break;
+	case EInstruction::Jne:
+		// Not implemented
+		return false;
+		break;
+	case EInstruction::Jle:
 		{
 			// Compare top 2 values from stack, x <= y
 			CValue y;
@@ -392,13 +398,18 @@ bool CVirtualMachine::execute()
 	return true;
 }
 
+void CVirtualMachine::pushValue(const CValue& val)
+{
+	m_runtimeStack.push_back(val);
+}
+
 bool CVirtualMachine::popValue(CValue& val)
 {
 	if (m_runtimeStack.empty())
 	{
 		return false;
 	}
-	val = std::move(m_runtimeStack.top());
-	m_runtimeStack.pop();
+	val = std::move(m_runtimeStack.back());
+	m_runtimeStack.pop_back();
 	return true;
 }

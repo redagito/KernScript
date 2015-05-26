@@ -4,17 +4,21 @@
 #include <iostream>
 #include <unordered_map>
 #include <tuple>
+#include <cstring>
 
 CAssembler::CAssembler()
 {
 	// Assembler specific
 	m_lexer.addKeyword("func");
 	m_lexer.addKeyword("extern");
+	m_lexer.addKeyword("var");
 	m_lexer.addKeyword("label");
 
 	// Instructions
+	m_lexer.addKeyword("pushv");
 	m_lexer.addKeyword("pushi");
 	m_lexer.addKeyword("pushf");
+	m_lexer.addKeyword("popv");	
 	
 	m_lexer.addKeyword("call");
 	m_lexer.addKeyword("calle");
@@ -110,8 +114,12 @@ bool CAssembler::parseFunction(std::istream& stream)
 		return false;
 	}
 	
-	// Store labels for resolving jumps
+	// Stores labels for resolving jumps
 	std::unordered_map<std::string, uint32_t> labels;
+	// Stores variables with relative stack address
+	std::unordered_map<std::string, uint32_t> variables;
+	// Required stack size for variables
+	uint32_t stackSize = 0;
 	// Stores jump instructions to be resolved after end of pass
 	std::list<std::tuple<SInstruction*, std::string>> unresolvedJumps;
 
@@ -147,14 +155,97 @@ bool CAssembler::parseFunction(std::istream& stream)
 				if (labels.find(m_lexer.getLexeme()) != labels.end())
 				{
 					std::cout << "The label '" << m_lexer.getLexeme() << "' already exists." << std::endl;
+					return false;
 				}
 				// Point to next instruction -> set to current size
 				labels[m_lexer.getLexeme()] = function.instructions.size();
 			}
+			else if (m_lexer.getLexeme() == "var")
+			{
+				// Variable declare
+				// Expects identifier
+				m_lexer.lex(stream);
+				if (m_lexer.getToken() != ELexerToken::Identifier)
+				{
+					std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+					return false;
+				}
+				// Variable name
+				std::string varName = m_lexer.getLexeme();
+				// Size, default 1
+				uint32_t size = 1;
+					
+				// Might be array declare
+				// var x [ 10 ]
+				m_lexer.lex(stream);
+				if (m_lexer.getToken() == ELexerToken::OpenBracket)
+				{
+					// Open bracket -> variable is array
+					// Expects integer literal for array size
+					m_lexer.lex(stream);
+					if (m_lexer.getToken() != ELexerToken::Integer)
+					{
+						std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+						return false;
+					}
+					
+					// Convert to uint32
+					std::stringstream ss(m_lexer.getLexeme());
+					ss >> size;
+					if (size == 0)
+					{
+						std::cout << "Invalid array size." << std::endl;
+						return false;
+					}
+					
+					// Expect close bracket
+					m_lexer.lex(stream);
+					if (m_lexer.getToken() != ELexerToken::CloseBracket)
+					{
+						std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+						return false;
+					}
+				}
+				else
+				{
+					// Look ahead consumed additional token, ignore next lex
+					m_lexer.ignoreNextLex();
+				}
+				// Set variable offset to current stack size
+				variables[varName] = stackSize;
+				// Increment stack size by required variable size
+				stackSize += size;
+			}
+			else if (m_lexer.getLexeme() == "pushv")
+			{
+				// Push variable instruction
+				instruction.id = EInstruction::Pushv;
+				// Expects one identifiet as argument
+				m_lexer.lex(stream);
+				if (m_lexer.getToken() != ELexerToken::Identifier)
+				{
+					std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+					return false;
+				}
+				
+				// Identifier must be valid variable name
+				auto entry = variables.find(m_lexer.getLexeme());
+				if (entry == variables.end())
+				{
+					std::cout << "Unknown variable name: " << m_lexer.getLexeme() << std::endl;
+					return false;
+				}
+				
+				// Set arg 0 to relative variable stack index
+				instruction.args[0] = *((int32_t*) &entry->second);
+
+				// Add assembled instruction
+				function.instructions.push_back(instruction);
+			}
 			else if (m_lexer.getLexeme() == "pushi")
 			{
 				// Push integer instruction
-				instruction.id = EInstructíon::Pushi;
+				instruction.id = EInstruction::Pushi;
 				// Expects one integer constant as argument
 				m_lexer.lex(stream);
 				if (m_lexer.getToken() != ELexerToken::Integer)
@@ -173,7 +264,7 @@ bool CAssembler::parseFunction(std::istream& stream)
 			else if (m_lexer.getLexeme() == "pushf")
 			{
 				// Push float instruction
-				instruction.id = EInstructíon::Pushf;
+				instruction.id = EInstruction::Pushf;
 				// Expects one float constant as argument
 				m_lexer.lex(stream);
 				if (m_lexer.getToken() != ELexerToken::Float)
@@ -195,7 +286,7 @@ bool CAssembler::parseFunction(std::istream& stream)
 			else if (m_lexer.getLexeme() == "pushs")
 			{
 				// Push string instruction
-				instruction.id = EInstructíon::Pushs;
+				instruction.id = EInstruction::Pushs;
 				// Expects one string constant as argumment
 				m_lexer.lex(stream);
 				if (m_lexer.getToken() != ELexerToken::String)
@@ -209,10 +300,36 @@ bool CAssembler::parseFunction(std::istream& stream)
 				// Add assembled instruction
 				function.instructions.push_back(instruction);
 			}
+			else if (m_lexer.getLexeme() == "popv")
+			{
+				// Pop variable instruction
+				instruction.id = EInstruction::Popv;
+				// Expects one identifier as argument
+				m_lexer.lex(stream);
+				if (m_lexer.getToken() != ELexerToken::Identifier)
+				{
+					std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+					return false;
+				}
+				
+				// Identifier must be valid variable name
+				auto entry = variables.find(m_lexer.getLexeme());
+				if (entry == variables.end())
+				{
+					std::cout << "Unknown variable name: " << m_lexer.getLexeme() << std::endl;
+					return false;
+				}
+				
+				// Set arg 0 to relative variable stack index
+				instruction.args[0] = *((int32_t*) &entry->second);
+
+				// Add assembled instruction
+				function.instructions.push_back(instruction);
+			}
 			else if (m_lexer.getLexeme() == "call")
 			{
 				// Call script function instruction
-				instruction.id = EInstructíon::Call;
+				instruction.id = EInstruction::Call;
 				// Expects one identifier
 				m_lexer.lex(stream);
 				if (m_lexer.getToken() != ELexerToken::Identifier)
@@ -233,7 +350,7 @@ bool CAssembler::parseFunction(std::istream& stream)
 			else if (m_lexer.getLexeme() == "calle")
 			{
 				// Call extern function instruction
-				instruction.id = EInstructíon::Calle;
+				instruction.id = EInstruction::Calle;
 				// Expects one identifier
 				m_lexer.lex(stream);
 				if (m_lexer.getToken() != ELexerToken::Identifier)
@@ -254,7 +371,7 @@ bool CAssembler::parseFunction(std::istream& stream)
 			else if (m_lexer.getLexeme() == "ret")
 			{
 				// Return from function
-				instruction.id = EInstructíon::Ret;
+				instruction.id = EInstruction::Ret;
 				// No arguments
 
 				// Add assembled instruction
@@ -263,7 +380,7 @@ bool CAssembler::parseFunction(std::istream& stream)
 			else if (m_lexer.getLexeme() == "add")
 			{
 				// Add top 2 parameters from stack and push result to stack
-				instruction.id = EInstructíon::Add;
+				instruction.id = EInstruction::Add;
 				// No arguments
 
 				// Add assembled instruction
@@ -272,7 +389,7 @@ bool CAssembler::parseFunction(std::istream& stream)
 			else if (m_lexer.getLexeme() == "sub")
 			{
 				// Subtract top 2 parameters from stack and push result to stack
-				instruction.id = EInstructíon::Sub;
+				instruction.id = EInstruction::Sub;
 				// No arguments
 
 				// Add assembled instruction
@@ -281,7 +398,7 @@ bool CAssembler::parseFunction(std::istream& stream)
 			else if (m_lexer.getLexeme() == "jle")
 			{
 				// Compare top 2 parameters from stack and jump to label if less or equal
-				instruction.id = EInstructíon::Jle;
+				instruction.id = EInstruction::Jle;
 				// Expects identifier for label name as argument
 				m_lexer.lex(stream);
 				if (m_lexer.getToken() != ELexerToken::Identifier)
