@@ -11,10 +11,15 @@ CAssembler::CAssembler()
 	// Assembler specific
 	m_lexer.addKeyword("func");
 	m_lexer.addKeyword("extern");
-	m_lexer.addKeyword("var");
+	m_lexer.addKeyword("var"); // Variable
+	m_lexer.addKeyword("vara"); // Variable array
 	m_lexer.addKeyword("label");
 
 	// Instructions
+	m_lexer.addKeyword("movv");
+	m_lexer.addKeyword("movi");
+	m_lexer.addKeyword("movf");
+	
 	m_lexer.addKeyword("pushv");
 	m_lexer.addKeyword("pushi");
 	m_lexer.addKeyword("pushf");
@@ -172,49 +177,204 @@ bool CAssembler::parseFunction(std::istream& stream)
 				}
 				// Variable name
 				std::string varName = m_lexer.getLexeme();
-				// Size, default 1
-				uint32_t size = 1;
-					
-				// Might be array declare
-				// var x [ 10 ]
-				m_lexer.lex(stream);
-				if (m_lexer.getToken() == ELexerToken::OpenBracket)
-				{
-					// Open bracket -> variable is array
-					// Expects integer literal for array size
-					m_lexer.lex(stream);
-					if (m_lexer.getToken() != ELexerToken::Integer)
-					{
-						std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
-						return false;
-					}
-					
-					// Convert to uint32
-					std::stringstream ss(m_lexer.getLexeme());
-					ss >> size;
-					if (size == 0)
-					{
-						std::cout << "Invalid array size." << std::endl;
-						return false;
-					}
-					
-					// Expect close bracket
-					m_lexer.lex(stream);
-					if (m_lexer.getToken() != ELexerToken::CloseBracket)
-					{
-						std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
-						return false;
-					}
-				}
-				else
-				{
-					// Look ahead consumed additional token, ignore next lex
-					m_lexer.ignoreNextLex();
-				}
+				
 				// Set variable offset to current stack size
 				variables[varName] = stackSize;
-				// Increment stack size by required variable size
+				
+				// Increment stack size by one for single variable declare
+				stackSize += 1;
+			}
+			else if (m_lexer.getLexeme() == "vara")
+			{
+				// Variable array declare
+				// Expects identifier
+				m_lexer.lex(stream);
+				if (m_lexer.getToken() != ELexerToken::Identifier)
+				{
+					std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+					return false;
+				}
+				// Variable name
+				std::string varName = m_lexer.getLexeme();
+				
+				// Expect integer array size
+				m_lexer.lex(stream);
+				if (m_lexer.getToken() != ELexerToken::Integer)
+				{
+					std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+					return false;
+				}
+					
+				// Convert to array size
+				uint32_t size = 1;
+				std::stringstream ss(m_lexer.getLexeme());
+				ss >> size;
+				if (size == 0)
+				{
+					std::cout << "Invalid array size." << std::endl;
+					return false;
+				}
+				
+				// Set variable array offset to current stack size
+				variables[varName] = stackSize;
+				// Increment stack size by array size
 				stackSize += size;
+			}
+			else if (m_lexer.getLexeme() == "movv")
+			{
+				// Move variable to variable instruction
+				instruction.id = EInstruction::Movv;
+				
+				// Expects 2 identifier as arguments, separated by ',' token
+				// First identifier
+				m_lexer.lex(stream);
+				if (m_lexer.getToken() != ELexerToken::Identifier)
+				{
+					std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+					return false;
+				}
+				
+				// Identifier must be valid variable name
+				auto entry1 = variables.find(m_lexer.getLexeme());
+				if (entry1 == variables.end())
+				{
+					std::cout << "Unknown variable name: " << m_lexer.getLexeme() << std::endl;
+					return false;
+				}
+				
+				// Expect ',' separator
+				m_lexer.lex(stream);
+				if (m_lexer.getToken() != ELexerToken::Comma)
+				{
+					std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+					return false;
+				}
+				
+				// Second identifier
+				m_lexer.lex(stream);
+				if (m_lexer.getToken() != ELexerToken::Identifier)
+				{
+					std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+					return false;
+				}
+				
+				// Identifier must be valid variable name
+				auto entry2 = variables.find(m_lexer.getLexeme());
+				if (entry2 == variables.end())
+				{
+					std::cout << "Unknown variable name: " << m_lexer.getLexeme() << std::endl;
+					return false;
+				}
+				
+				// Set arg 0 to relative variable stack index of var1
+				instruction.args[0] = *((int32_t*) &entry1->second);
+				// Set arg 1 to relative variable stack index of var2
+				instruction.args[1] = *((int32_t*) &entry2->second);
+				
+				// Add assembled instruction
+				function.instructions.push_back(instruction);
+			}
+			else if (m_lexer.getLexeme() == "movi")
+			{
+				// Move integer to variable instruction
+				instruction.id = EInstruction::Movi;
+				
+				// Expects identifier and integer value as arguments, separated by ',' token
+				// Expect identifier
+				m_lexer.lex(stream);
+				if (m_lexer.getToken() != ELexerToken::Identifier)
+				{
+					std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+					return false;
+				}
+				
+				// Identifier must be valid variable name
+				auto entry1 = variables.find(m_lexer.getLexeme());
+				if (entry1 == variables.end())
+				{
+					std::cout << "Unknown variable name: " << m_lexer.getLexeme() << std::endl;
+					return false;
+				}
+				
+				// Expect ',' separator
+				m_lexer.lex(stream);
+				if (m_lexer.getToken() != ELexerToken::Comma)
+				{
+					std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+					return false;
+				}
+				
+				// Expect integer
+				m_lexer.lex(stream);
+				if (m_lexer.getToken() != ELexerToken::Integer)
+				{
+					std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+					return false;
+				}
+				
+				int32_t value;
+				std::stringstream ss(m_lexer.getLexeme());
+				ss >> value;
+				
+				// Set arg 0 to relative variable stack index of var1
+				instruction.args[0] = *((int32_t*) &entry1->second);
+				// Set arg 1 to integer value
+				instruction.args[1] = value;
+				
+				// Add assembled instruction
+				function.instructions.push_back(instruction);
+			}
+			else if (m_lexer.getLexeme() == "movf")
+			{
+				// Move float to variable instruction
+				instruction.id = EInstruction::Movf;
+				
+				// Expects identifier and float value as arguments, separated by ',' token
+				// Expect identifier
+				m_lexer.lex(stream);
+				if (m_lexer.getToken() != ELexerToken::Identifier)
+				{
+					std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+					return false;
+				}
+				
+				// Identifier must be valid variable name
+				auto entry1 = variables.find(m_lexer.getLexeme());
+				if (entry1 == variables.end())
+				{
+					std::cout << "Unknown variable name: " << m_lexer.getLexeme() << std::endl;
+					return false;
+				}
+				
+				// Expect ',' separator
+				m_lexer.lex(stream);
+				if (m_lexer.getToken() != ELexerToken::Comma)
+				{
+					std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+					return false;
+				}
+				
+				// Expect float
+				m_lexer.lex(stream);
+				if (m_lexer.getToken() != ELexerToken::Float)
+				{
+					std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+					return false;
+				}
+				
+				// Convert to float
+				// TODO Slow!!
+				float value;
+				std::stringstream ss(m_lexer.getLexeme());
+				ss >> value;
+				
+				// Set arg 0 to relative variable stack index of var1
+				instruction.args[0] = *((int32_t*) &entry1->second);
+				// Set arg 1 to float value
+				instruction.args[1] = *((int32_t*) &value);
+				
+				// Add assembled instruction
+				function.instructions.push_back(instruction);
 			}
 			else if (m_lexer.getLexeme() == "pushv")
 			{
@@ -425,7 +585,10 @@ bool CAssembler::parseFunction(std::istream& stream)
 		}
 	}
 	while (m_lexer.getToken() != ELexerToken::CloseBrace);
-	
+
+	// Set stack size needed for local variables
+	function.stackSize = stackSize;
+
 	// Resolve jumps
 	for (auto& entry : unresolvedJumps)
 	{
@@ -562,8 +725,8 @@ bool CAssembler::serializeFunctions(std::ostream& stream) const
 {
 	// Write function count
 	uint32_t size = m_functions.size();
-	stream.write((char*)&size, sizeof(size));
-	
+	stream.write((char*) &size, sizeof(size));
+
 	// Serialize functions
 	for (const auto& function : m_functions)
 	{
@@ -573,7 +736,10 @@ bool CAssembler::serializeFunctions(std::ostream& stream) const
 		stream.write((char*)&length, sizeof(length));
 		// Write data
 		stream.write(function.name.data(), length);
-		
+				
+		// Write stack size
+		stream.write((char*) &function.stackSize, sizeof(function.stackSize));
+
 		// Write instructions
 		// Write instruction size
 		size = function.instructions.size();
@@ -586,6 +752,7 @@ bool CAssembler::serializeFunctions(std::ostream& stream) const
 				return false;
 			}
 		}
+		
 	}
 	return stream.good();
 }

@@ -24,11 +24,11 @@ unsigned int CLexer::lex(std::istream& stream)
 	// For counting whitespaces
 	m_blankSkipped = 0;
 	// Skip blanks
-	while (next == ' ' || next == '\t' || m_ignoreNewLine && next == '\n')
+	while (next == ' ' || next == '\t' || next == '\r' || m_ignoreNewLine && next == '\n')
 	{
 		// Skip blank
 		stream.get();
-		if (next != '\n')
+		if (next != '\n' && next != '\r')
 		{
 			++m_blankSkipped;
 		}		

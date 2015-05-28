@@ -40,6 +40,7 @@ private:
 	struct SFunction
 	{
 		std::string name; /**< Function name. */
+		uint32_t stackSize = 0; /**< Stack size needed for local variables. */
 		std::list<SInstruction> instructions; /**< Assembled instructions. */
 	};
 	

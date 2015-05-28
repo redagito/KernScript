@@ -5,20 +5,22 @@
 #include "common/Instructions.h"
 
 
-CVirtualMachine::SReturnData::SReturnData()
+CVirtualMachine::SFunctionFrame::SFunctionFrame()
 {
 
 }
 
-CVirtualMachine::SReturnData::SReturnData(uint32_t funcIndex, uint32_t instrIndex)
+CVirtualMachine::SFunctionFrame::SFunctionFrame(uint32_t funcIndex, uint32_t instrIndex, uint32_t stackBaseIndex)
 {
 	functionIndex = funcIndex;
 	instructionIndex = instrIndex;
+	runtimeStackBaseIndex = stackBaseIndex;
 }
 
 CVirtualMachine::CVirtualMachine()
 {
-	// Reserve stack size
+	// Reserve runtime stack size.
+	// TODO Remove hardcoded value
 	m_runtimeStack.reserve(1024 * 256);
 }
 
@@ -46,6 +48,7 @@ void CVirtualMachine::clearScripts()
 {
 	m_currentFunctionIndex = 0;
 	m_currentInstructionIndex = 0;
+	m_currentRuntimeStackBaseIndex = 0;
 	// Clear script data
 	m_strings.clear();
 	m_externFunctions.clear();
@@ -187,10 +190,14 @@ bool CVirtualMachine::deserializeFunctions(std::istream& stream)
 			function.name.push_back(c);
 		}
 
+		// Read stack size
+		stream.read((char*) &function.stackSize, sizeof(function.stackSize));
+
 		// Read instructions
 		// Instructions size
 		stream.read((char*) &size, sizeof(size));
 		function.instructions.resize(size);
+		// Instructions
 		for (auto& instruction : function.instructions)
 		{
 			if (!deserialize(instruction, stream))
@@ -242,10 +249,29 @@ bool CVirtualMachine::execute()
 		++m_currentInstructionIndex;
 		break;
 	case EInstruction::Exit:
-		// Retunr false to signal end of script
+		// Return false to signal end of script
 		return false;
 		break;
-	
+		
+	case EInstruction::Movv:
+		// Move variable to variable
+		// Arg 0 is variable index of destination
+		// Arg 1 is variable index of source
+		m_runtimeStack[m_currentRuntimeStackBaseIndex + *((uint32_t*) &instruction.args[0])] = m_runtimeStack.at(m_currentRuntimeStackBaseIndex + *((uint32_t*) &instruction.args[1]));
+		break;
+	case EInstruction::Movi:
+		// Move integer to variable
+		// Arg 0 is variable index of destination
+		// Arg 1 is source integer value
+		m_runtimeStack[m_currentRuntimeStackBaseIndex + *((uint32_t*) &instruction.args[0])] = instruction.args[1];
+		break;
+	case EInstruction::Movf:
+		// Move float to variable
+		// Arg 0 is variable index of destination
+		// Arg 1 is source float value
+		m_runtimeStack[m_currentRuntimeStackBaseIndex + *((uint32_t*) &instruction.args[0])] = *((float*) &instruction.args[1]);
+		break;
+		
 	case EInstruction::Pushi:
 		// Arg 0 is integer value
 		m_runtimeStack.push_back(CValue(instruction.args[0]));
@@ -263,13 +289,16 @@ bool CVirtualMachine::execute()
 		break;
 
 	case EInstruction::Call:
-		// Push next instruction and current function index for return call
-		m_callStack.push(SReturnData(m_currentFunctionIndex, m_currentInstructionIndex + 1));
+		// Push next instruction and current function index and base stack index for return call
+		m_callStack.push(SFunctionFrame(m_currentFunctionIndex, m_currentInstructionIndex + 1, m_currentRuntimeStackBaseIndex));
 		// Arg 0 is function index
-		// TODO Needs cast?
-		m_currentFunctionIndex = instruction.args[0];
+		m_currentFunctionIndex = *((uint32_t*) &instruction.args[0]);
 		// Reset instruction index
 		m_currentInstructionIndex = 0;
+		// Set new runtime stack base index for the called function
+		m_currentRuntimeStackBaseIndex = m_runtimeStack.size();
+		// Resize runtime stack with local stack size of called function
+		m_runtimeStack.resize(m_runtimeStack.size() + m_functions.at(m_currentFunctionIndex).stackSize);
 		break;
 	case EInstruction::Calle:
 		{
@@ -297,8 +326,16 @@ bool CVirtualMachine::execute()
 			// Empty stack indicates either error state or end of script
 			return false;
 		}
+		// Resize runtime stack to remove local function variables but one.
+		// The variable and local stack index 0 holds the return value and is not cleared.
+		m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
+		
+		// Retrieve function index of previous function
 		m_currentFunctionIndex = m_callStack.top().functionIndex;
+		// Restore active function index
 		m_currentInstructionIndex = m_callStack.top().instructionIndex;
+		// Restore runtime stack base index for the active function
+		m_currentRuntimeStackBaseIndex = m_callStack.top().runtimeStackBaseIndex;
 		m_callStack.pop();
 		break;
 	case EInstruction::Add:
@@ -364,12 +401,48 @@ bool CVirtualMachine::execute()
 		return false;
 		break;
 	case EInstruction::Je:
-		// Not implemented
-		return false;
+		{
+			// Compare top 2 values from stack, x == y
+			CValue y;
+			CValue x;
+			if (!popValue(y) || !popValue(x))
+			{
+				// Not enough values on stack
+				return false;
+			}
+			if (x == y)
+			{
+				// Arg 0 is target instruction index for jump
+				uint32_t jumpIndex = *((uint32_t*) &instruction.args[0]);
+				m_currentInstructionIndex = jumpIndex;
+			}
+			else
+			{
+				++m_currentInstructionIndex;
+			}
+		}
 		break;
 	case EInstruction::Jne:
-		// Not implemented
-		return false;
+		{
+			// Compare top 2 values from stack, x != y
+			CValue y;
+			CValue x;
+			if (!popValue(y) || !popValue(x))
+			{
+				// Not enough values on stack
+				return false;
+			}
+			if (x != y)
+			{
+				// Arg 0 is target instruction index for jump
+				uint32_t jumpIndex = *((uint32_t*) &instruction.args[0]);
+				m_currentInstructionIndex = jumpIndex;
+			}
+			else
+			{
+				++m_currentInstructionIndex;
+			}
+		}
 		break;
 	case EInstruction::Jle:
 		{

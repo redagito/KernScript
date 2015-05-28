@@ -28,7 +28,11 @@ enum class EInstruction
 	// Function calling
 	Call, /**< Call script function. */
 	Calle, /**< Call extern function. */
-	Ret, /**< Return from script function. */
+	Ret, /**< Return from script function without return value. */
+	Retv, /**< Return from script function with variable as return value. */
+	Reti, /**< Return from script function with integer as return value. */
+	Retf, /**< Return from script function with float return value. */
+	Rets, /**< Return from script function with string return value. */
 
 	// Arithmetic operations
 	Add, /**< Add. */
@@ -68,10 +72,10 @@ const SInstructionLookup instructions[] = {
 	{ "break", 0 },
 	{ "exit", 0 },
 	
-	{ "movv", 1 },
-	{ "movi", 1 },
-	{ "movf", 1 },
-	{ "movs", 1 },
+	{ "movv", 2 },
+	{ "movi", 2 },
+	{ "movf", 2 },
+	{ "movs", 2 },
 	
 	{ "pushv", 1 },
 	{ "pushi", 1 },
@@ -84,6 +88,10 @@ const SInstructionLookup instructions[] = {
 	{ "call", 1 },
 	{ "calle", 1 },
 	{ "ret", 0 },
+	{ "retv", 1 },
+	{ "reti", 1 },
+	{ "retf", 1 },
+	{ "rets", 1 },
 
 	{ "add", 0 },
 	{ "sub", 0 },

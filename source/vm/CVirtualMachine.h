@@ -65,16 +65,17 @@ private:
 	struct SFunction
 	{
 		std::string name; /**< Function name. */
+		uint32_t stackSize; /**< Stack size needed for local variables. */
 		std::vector<SInstruction> instructions; /**< Assembled instructions. */
 	};
 
 	/**
 	* \brief Represents function and instruction index to return to, after instruction ret is executed.
 	*/
-	struct SReturnData
+	struct SFunctionFrame
 	{
-		SReturnData();
-		SReturnData(uint32_t funcIndex, uint32_t instrIndex);
+		SFunctionFrame();
+		SFunctionFrame(uint32_t funcIndex, uint32_t instrIndex, uint32_t stackBaseIndex);
 		uint32_t functionIndex = 0;
 		uint32_t instructionIndex = 0;
 		uint32_t runtimeStackBaseIndex = 0;
@@ -87,7 +88,9 @@ private:
 	std::unordered_map<std::string, std::unique_ptr<kern::IExternFunction>> m_externFunctionsMap; /**< Extern functions. */
 
 	std::vector<CValue> m_runtimeStack; /**< Active runtime stack. */
-	std::stack<SReturnData> m_callStack; /**< Function call stack for instruction ret. */
-	uint32_t m_currentFunctionIndex; /**< Index of active function. */
-	uint32_t m_currentInstructionIndex; /**< Index of active instruction. */
+	std::stack<SFunctionFrame> m_callStack; /**< Function call stack for instruction ret. */
+
+	uint32_t m_currentRuntimeStackBaseIndex = 0; /**< Runtime stack base index of current function. */
+	uint32_t m_currentFunctionIndex = 0; /**< Index of active function. */
+	uint32_t m_currentInstructionIndex = 0; /**< Index of active instruction. */
 };
