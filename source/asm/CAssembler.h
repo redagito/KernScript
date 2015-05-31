@@ -6,6 +6,8 @@
 
 #include "kern/IAssembler.h"
 #include "common/CLexer.h"
+
+#include "common/SScriptHeader.h"
 #include "common/SExternFunction.h"
 #include "common/SInstruction.h"
 
@@ -18,6 +20,7 @@ public:
 protected:
 	bool parseFunction(std::istream& stream);
 	bool parseExternFunction(std::istream& stream);
+	bool parseModule(std::istream& stream);
 	
 	bool isFunction(const std::string& name);
 	bool getFunctionId(const std::string& name, int32_t& id);
@@ -44,6 +47,7 @@ private:
 		std::list<SInstruction> instructions; /**< Assembled instructions. */
 	};
 	
+	SScriptHeader m_header; /**< Assembled script header data. */
 	std::list<SFunction> m_functions; /**< Assembled script functions. */
 	std::list<SExternFunction> m_externFunctions; /**< Extern function declarations. */
 	std::list<std::string> m_strings; /**< String constants. */

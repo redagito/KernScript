@@ -11,6 +11,8 @@ CAssembler::CAssembler()
 	// Assembler specific
 	m_lexer.addKeyword("func");
 	m_lexer.addKeyword("extern");
+	m_lexer.addKeyword("module");
+	m_lexer.addKeyword("param"); // Function parameter for implicit calling convention
 	m_lexer.addKeyword("var"); // Variable
 	m_lexer.addKeyword("vara"); // Variable array
 	m_lexer.addKeyword("label");
@@ -23,7 +25,9 @@ CAssembler::CAssembler()
 	m_lexer.addKeyword("pushv");
 	m_lexer.addKeyword("pushi");
 	m_lexer.addKeyword("pushf");
-	m_lexer.addKeyword("popv");	
+
+	m_lexer.addKeyword("pop");
+	m_lexer.addKeyword("popv");
 	
 	m_lexer.addKeyword("call");
 	m_lexer.addKeyword("calle");
@@ -71,6 +75,15 @@ bool CAssembler::assemble(std::istream& asmCode, std::ostream& byteCode)
 				if (!parseExternFunction(asmCode))
 				{
 					std::cout << "Parse extern function failed." << std::endl;
+					return false;
+				}
+			}
+			else if (m_lexer.getLexeme() == "module")
+			{
+				// Module declaration
+				if (!parseModule(asmCode))
+				{
+					std::cout << "Parse module definition failed." << std::endl;
 					return false;
 				}
 			}
@@ -460,6 +473,14 @@ bool CAssembler::parseFunction(std::istream& stream)
 				// Add assembled instruction
 				function.instructions.push_back(instruction);
 			}
+			else if (m_lexer.getLexeme() == "pop")
+			{
+				// Pop variable instruction
+				instruction.id = EInstruction::Pop;
+
+				// Add assembled instruction
+				function.instructions.push_back(instruction);
+			}
 			else if (m_lexer.getLexeme() == "popv")
 			{
 				// Pop variable instruction
@@ -640,6 +661,25 @@ bool CAssembler::parseExternFunction(std::istream& stream)
 	return true;
 }
 
+bool CAssembler::parseModule(std::istream& stream)
+{
+	// 'module' keyword already parsed, next is identifier
+	m_lexer.lex(stream);
+	if (m_lexer.getToken() != ELexerToken::Identifier)
+	{
+		return false;
+	}
+	
+	// Check for multiple module declares
+	if (!m_header.moduleName.empty())
+	{
+		std::cout << "Multiple 'module' declarations encountered. A script may have only one module declaration." << std::endl;
+		return false;
+	}
+	// Set module in header
+	m_header.moduleName = m_lexer.getLexeme();
+	return true;
+}
 
 bool CAssembler::isFunction(const std::string& name)
 {
