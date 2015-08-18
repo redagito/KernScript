@@ -1,0 +1,15 @@
+extern print 1
+
+// Test for add and sub for stack operation
+func main
+{
+	pushi 10
+	pushi 20
+	add // Should calculate 10 + 20 = 30, 30 on stack
+	calle print // Prints out result
+	pushi 10
+	pushi 20
+	sub // Should calculate 10 - 20 = -10
+	calle print // Prints out result
+	ret
+}

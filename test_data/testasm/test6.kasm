@@ -1,0 +1,20 @@
+extern print 1
+
+// Test for calling convention with return value
+
+func a
+{
+	param x // Parameter shoud, be 10
+	calle print // Print 10
+	ret 20 // Return value
+}
+
+func main
+{
+	// Push 10 on stack
+	pushi 10
+	call a // Expects single parameter
+	// Return value on stack
+	calle print // Should print 20
+	ret
+}

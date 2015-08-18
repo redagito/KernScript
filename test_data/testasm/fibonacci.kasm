@@ -1,0 +1,27 @@
+// Fibonacci function test
+extern print 1
+
+func fib
+{
+	push 1
+	jle a // jump if x <= 1
+
+	// x > 1, call fib recursive
+	pushi 10
+	calle print
+	pushi 10
+	ret
+
+	label a
+	pushi 1 // return 1
+	ret
+}
+
+func main
+{
+	// Call fibonacci with 10
+	pushi 10
+	call fib
+	// Result on stack
+	calle print
+}

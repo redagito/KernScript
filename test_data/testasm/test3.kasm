@@ -1,0 +1,41 @@
+extern print 1
+
+// Tests script function calling and extern function calling
+
+// Takes single parameter and forwards it to print
+func print
+{
+	param a // Parameter declare implicitely sets calling convention
+	pushv a // Push on stack for extern function call
+	calle print
+	ret // No return value
+}
+
+// Takes no parameter
+func b
+{
+	// Calls script function 'print'
+	pushi 100
+	call print
+	// Calls external function
+	pushi 200
+	calle print
+	ret // No return parameter
+}
+
+// Main starting point
+func main
+{
+	// Call extern function with parameter
+	pushi 1
+	calle print
+	// Call script function 'b' multiple times
+	call b
+	call b
+	call b
+	call b
+	// Call script function 'print'
+	pushi 200
+	call print
+	ret
+}

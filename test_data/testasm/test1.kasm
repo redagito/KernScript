@@ -1,0 +1,13 @@
+extern print 1
+
+// Tests calling convention for extern functions
+func main
+{
+	// Parameter(s) for extern functions are pushed on top of the stack
+	pushi 10
+	calle print
+	pushi 200
+	calle print
+	pushi 10000
+	calle print
+}

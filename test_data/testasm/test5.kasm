@@ -1,0 +1,21 @@
+extern print 1
+
+// Test for conditional jump to label
+func main
+{
+	pushi 5
+	calle print
+	
+	pushi 1
+	pushi 2
+	jle a // 1 <= 2
+
+	pushi 20
+	calle print
+
+	label a
+	
+	pushi 10
+	calle print
+	ret
+}
