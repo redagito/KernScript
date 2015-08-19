@@ -3,6 +3,9 @@
 #include <cstdint>
 #include <string>
 
+/**
+* \brief Stores a value of any of the supported types.
+*/
 class CValue
 {
 public:

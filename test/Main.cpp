@@ -5,8 +5,12 @@
 
 #include <kern/Kern.h>
 
+/**
+* \brief Assembles source file and stores bytecode in output file.
+*/
 bool assemble(kern::IAssembler& assembler, const std::string& asmSource, const std::string& byteCode)
 {
+	// Open streams
 	std::ifstream ifs(asmSource);
 	if (!ifs.is_open())
 	{
@@ -17,13 +21,22 @@ bool assemble(kern::IAssembler& assembler, const std::string& asmSource, const s
 	std::ofstream ofs(byteCode, std::ios::binary);
 	if (!ofs.is_open())
 	{
-		std::cout << "Failed to open the output file " << asmSource << std::endl;
+		std::cout << "Failed to open the output file " << byteCode << std::endl;
 		return false;
 	}
 
-	return assembler.assemble(ifs, ofs);
+	// Assemble input into output stream
+	if (!assembler.assemble(ifs, ofs))
+	{
+		std::cout << "Failed to assemble the input file " << asmSource << std::endl;
+		return false;
+	}
+	return true;
 }
 
+/**
+* \brief Executes main function of bytecode script.
+*/
 bool execute(kern::IVirtualMachine& vm, const std::string& byteCode)
 {
 	std::ifstream ifs(byteCode, std::ios::binary);
@@ -45,6 +58,9 @@ bool execute(kern::IVirtualMachine& vm, const std::string& byteCode)
 	return true;
 }
 
+/**
+* \brief Assembles and executes assembly script.
+*/
 bool testAsm(kern::IAssembler& assembler, kern::IVirtualMachine& vm, const std::string& asmCode, const std::string& byteCode)
 {
 	if (!assemble(assembler, asmCode, byteCode))
@@ -61,6 +77,9 @@ bool testAsm(kern::IAssembler& assembler, kern::IVirtualMachine& vm, const std::
 	return true;
 }
 
+/**
+* \brief Starts testcase by name.
+*/
 bool testAsmUtil(kern::IAssembler& assembler, kern::IVirtualMachine& vm, const std::string& testName)
 {
 	vm.clearScripts();
@@ -83,6 +102,9 @@ bool testAsmUtil(kern::IAssembler& assembler, kern::IVirtualMachine& vm, const s
 	return true;
 }
 
+/**
+* \brief Utility print function to be callable from script.
+*/
 void print(std::string text)
 {
 	std::cout << text << std::endl;
@@ -90,8 +112,8 @@ void print(std::string text)
 
 int main(int argc, char** argv)
 {
-	std::unique_ptr<kern::IAssembler> assembler(kern::createAssembler());
 	std::unique_ptr<kern::ICompiler> comp(kern::createCompiler());
+	std::unique_ptr<kern::IAssembler> assembler(kern::createAssembler());
 	std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
 
 	// Utility print function
