@@ -47,9 +47,9 @@ protected:
 	void lexComment(std::istream& stream);
 
 private:
-	std::unordered_set<std::string> m_keywords;
-	std::string m_currentLexeme;
-	ELexerToken m_currentToken = ELexerToken::Invalid;
+	std::unordered_set<std::string> m_keywords; /**< Registered keywords. */
+	std::string m_currentLexeme; /**< Currently parsed lexeme. */
+	ELexerToken m_currentToken = ELexerToken::Invalid; /**< Current token. */
 	bool m_ignoreNewLine = false;
 	bool m_ignoreLex = false;
 	unsigned int m_blankSkipped = 0;

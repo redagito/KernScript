@@ -1,5 +1,8 @@
 #include "SExternFunction.h"
 
+#include "Serialize.h"
+#include "Deserialize.h"
+
 bool serialize(const SExternFunction& externFunction, std::ostream& stream)
 {
 	// Sanity checks
@@ -20,27 +23,19 @@ bool serialize(const SExternFunction& externFunction, std::ostream& stream)
 	return stream.good();
 }
 
-bool deserialize(SExternFunction& externFunction, std::istream& stream)
+bool deserialize(std::istream& stream, SExternFunction& externFunction)
 {
-	// Read function name
-	uint32_t length = 0;
-	stream.read((char*) &length, 4);
-	if (length == 0)
-	{
-		return false;
-	}
-	// TODO Clear ok?
-	externFunction.name = ""; // Set to empty
-	externFunction.name.reserve(length);
-	// TODO Slow? Can be done better
-	for (uint32_t i = 0; i < length; ++i)
-	{
-		char c;
-		stream.read(&c, 1);
-		externFunction.name.push_back(c);
-	}
+	// Function name
+	std::string name;
+	if (!deserialize(stream, name)) { return false; }
+	
+	// Argument count
+	uint8_t argCount;
+	if (!deserialize(stream, argCount)) { return false; }
+	
+	// Write data to actual target
+	externFunction.name = std::move(name);
+	externFunction.argCount = argCount;
 
-	// Read function arguments
-	stream.read((char*) &externFunction.argCount, sizeof(externFunction.argCount));
-	return stream.good();
+	return true;
 }

@@ -22,4 +22,4 @@ bool serialize(const SExternFunction& externFunction, std::ostream& stream);
 /**
 * \brief Deserializes extern function from stream.
 */
-bool deserialize(SExternFunction& externFunction, std::istream& stream);
+bool deserialize(std::istream& stream, SExternFunction& externFunction);

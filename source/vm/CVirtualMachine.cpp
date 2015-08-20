@@ -3,6 +3,7 @@
 #include "CVirtualMachine.h"
 
 #include "common/Instructions.h"
+#include "common/Deserialize.h"
 
 
 CVirtualMachine::SFunctionFrame::SFunctionFrame()
@@ -57,15 +58,15 @@ void CVirtualMachine::clearScripts()
 
 bool CVirtualMachine::callFunction(const std::string& functionName)
 {
-	if (!getFunctionIndex(functionName, m_currentFunctionIndex))
-	{
-		return false;
-	}
+	// Retrieve function index if exists
+	if (!getFunctionIndex(functionName, m_currentFunctionIndex)) { return false; }
 	m_currentInstructionIndex = 0;
 
+	// Execute function
 	bool running = true;
 	while (running)
 	{
+		// Single step execution until finished
 		running = execute();
 	}
 	return true;
@@ -124,32 +125,17 @@ void CVirtualMachine::setReturnValue(const std::string& value)
 
 bool CVirtualMachine::deserializeStrings(std::istream& stream)
 {
+	// Get string table size and reserve space
 	uint32_t size = 0;
-	stream.read((char*) &size, sizeof(size));
+	if (!deserialize(stream, size)) { return false; }
 	m_strings.resize(size);	
 	
-	// Read strings
+	// Read strings into string table
 	for (auto& str : m_strings)
 	{
-		// Read length
-		uint32_t length = 0;
-		stream.read((char*) &length, sizeof(length));
-		if (length == 0)
-		{
-			return false;
-		}
-		// Reserve space		
-		str.reserve(length);
-		
-		for (uint32_t i = 0; i < length; ++i)
-		{
-			// TODO Slow?
-			char c;
-			stream.read(&c, 1);
-			str.push_back(c);
-		}
+		if (!deserialize(stream, str)) { return false; }
 	}
-	return stream.good();
+	return true;
 }
 
 bool CVirtualMachine::deserializeExternFunctions(std::istream& stream)
@@ -160,7 +146,7 @@ bool CVirtualMachine::deserializeExternFunctions(std::istream& stream)
 	m_externFunctions.resize(size);
 	for (auto& externFunction : m_externFunctions)
 	{
-		if (!deserialize(externFunction, stream))
+		if (!deserialize(stream, externFunction))
 		{
 			return false;
 		}
