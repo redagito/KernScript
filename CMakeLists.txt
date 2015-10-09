@@ -21,9 +21,10 @@ file(GLOB_RECURSE SRC_FILES
 set(SRC_FILES ${SRC_FILES} ${THIRD_PARTY_SOURCES})
 
 # Flags
-if (UNIX OR MINGW)
+if (${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU" OR ${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-endif (UNIX OR MINGW)
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
+endif (${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU" OR ${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
 
 # Add library
 add_library(kernscript ${SRC_FILES})
@@ -41,3 +42,6 @@ add_executable(kerntest ${TEST_SRC_FILES})
 target_link_libraries(kerntest
 	kernscript
 )
+
+# Copy test_data
+file(COPY test_data DESTINATION ${CMAKE_CURRENT_BINARY_DIR}) 
