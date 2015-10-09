@@ -6,4 +6,4 @@
 /**
 * \brief Serialize string.
 */
-bool serialize(const std::string& str, std::ostream& stream);
+bool serialize(const std::string &str, std::ostream &stream);

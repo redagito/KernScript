@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# Format all files with clang format
+for file in $(git diff --name-only --staged)
+do
+ if [ -f $file ];
+   then     
+   if [[ $file == *.cpp || $file == *.cxx  || $file == *.h || $file == *.hpp || $file == *.hxx ]]
+       then
+           echo "formatting $file"
+           clang-format -i $file
+           git add $file
+   fi
+ fi
+done

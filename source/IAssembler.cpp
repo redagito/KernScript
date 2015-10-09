@@ -1,6 +1,3 @@
 #include "kern/IAssembler.h"
 
-kern::IAssembler::~IAssembler()
-{
-	return;
-}
+kern::IAssembler::~IAssembler() { return; }

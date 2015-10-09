@@ -10,16 +10,16 @@
 */
 struct SExternFunction
 {
-	std::string name; /**< Extern function name. */
-	uint8_t argCount = 0; /**< Expected argument count. */
+  std::string name;     /**< Extern function name. */
+  uint8_t argCount = 0; /**< Expected argument count. */
 };
 
 /**
 * \brief Serializes extern function to stream.
 */
-bool serialize(const SExternFunction& externFunction, std::ostream& stream);
+bool serialize(const SExternFunction &externFunction, std::ostream &stream);
 
 /**
 * \brief Deserializes extern function from stream.
 */
-bool deserialize(std::istream& stream, SExternFunction& externFunction);
+bool deserialize(std::istream &stream, SExternFunction &externFunction);

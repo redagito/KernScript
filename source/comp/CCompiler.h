@@ -5,5 +5,5 @@
 class CCompiler : public kern::ICompiler
 {
 public:
-	bool compile(std::istream& sourceCode, std::ostream& asmCode);
+  bool compile(std::istream &sourceCode, std::ostream &asmCode);
 };

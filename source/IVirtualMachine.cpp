@@ -1,6 +1,3 @@
 #include "kern/IVirtualMachine.h"
 
-kern::IVirtualMachine::~IVirtualMachine()
-{
-	return;
-}
+kern::IVirtualMachine::~IVirtualMachine() { return; }

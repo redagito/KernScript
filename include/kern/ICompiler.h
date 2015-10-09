@@ -15,16 +15,15 @@ namespace kern
 class ICompiler
 {
 public:
-	/**
-	* \brief Virtual destructor for interface class.
-	*/
-	virtual ~ICompiler();
-	
-	/**
-	* \brief Compiles script source code into assembly source code.
-	* \return True on success and false on error.
-	*/
-	virtual bool compile(std::istream& sourceCode, std::ostream& asmCode) = 0;
-};
+  /**
+  * \brief Virtual destructor for interface class.
+  */
+  virtual ~ICompiler();
 
+  /**
+  * \brief Compiles script source code into assembly source code.
+  * \return True on success and false on error.
+  */
+  virtual bool compile(std::istream &sourceCode, std::ostream &asmCode) = 0;
+};
 }

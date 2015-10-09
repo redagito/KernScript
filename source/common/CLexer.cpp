@@ -6,8 +6,10 @@
 // TODO Debug only, remove later
 #include <iostream>
 
-unsigned int CLexer::lex(std::istream &stream) {
-  if (m_ignoreLex) {
+unsigned int CLexer::lex(std::istream &stream)
+{
+  if (m_ignoreLex)
+  {
     m_ignoreLex = false;
     return m_blankSkipped;
   }
@@ -23,10 +25,12 @@ unsigned int CLexer::lex(std::istream &stream) {
   m_blankSkipped = 0;
   // Skip blanks
   while (next == ' ' || next == '\t' || next == '\r' ||
-         (m_ignoreNewLine && next == '\n')) {
+         (m_ignoreNewLine && next == '\n'))
+  {
     // Skip blank
     stream.get();
-    if (next != '\n' && next != '\r') {
+    if (next != '\n' && next != '\r')
+    {
       ++m_blankSkipped;
     }
     // Peek next
@@ -34,14 +38,20 @@ unsigned int CLexer::lex(std::istream &stream) {
   }
 
   // Check for numeric values
-  if (std::isdigit(next)) {
+  if (std::isdigit(next))
+  {
     // The next lexeme is a numeric type, either int or float
     lexNumeric(stream);
-  } else if (std::isalpha(next)) {
+  }
+  else if (std::isalpha(next))
+  {
     // Either identifier or keyword
     lexIdentifierOrKeyword(stream);
-  } else {
-    switch (next) {
+  }
+  else
+  {
+    switch (next)
+    {
     case '.':
       lexSingleCharLexeme(stream, ELexerToken::Dot);
       break;
@@ -119,7 +129,8 @@ unsigned int CLexer::lex(std::istream &stream) {
       lexSingleOrDoubleCharLexeme(stream, ELexerToken::Slash, '=',
                                   ELexerToken::DivideAssign, '/',
                                   ELexerToken::Comment);
-      if (m_currentToken == ELexerToken::Comment) {
+      if (m_currentToken == ELexerToken::Comment)
+      {
         lexComment(stream);
       }
       break;
@@ -171,11 +182,13 @@ const std::string &CLexer::getLexeme() const { return m_currentLexeme; }
 
 ELexerToken CLexer::getToken() const { return m_currentToken; }
 
-void CLexer::addKeyword(const std::string &keyword) {
+void CLexer::addKeyword(const std::string &keyword)
+{
   m_keywords.insert(keyword);
 }
 
-void CLexer::removeKeyword(const std::string &keyword) {
+void CLexer::removeKeyword(const std::string &keyword)
+{
   m_keywords.erase(keyword);
 }
 
@@ -183,11 +196,13 @@ void CLexer::ignoreNextLex() { m_ignoreLex = true; }
 
 void CLexer::ignoreNewLine(bool state) { m_ignoreNewLine = state; }
 
-bool CLexer::isKeyword(const std::string &text) const {
+bool CLexer::isKeyword(const std::string &text) const
+{
   return m_keywords.find(text) != m_keywords.end();
 }
 
-void CLexer::lexSingleCharLexeme(std::istream &stream, ELexerToken tokenType) {
+void CLexer::lexSingleCharLexeme(std::istream &stream, ELexerToken tokenType)
+{
   // Retrieve next char
   char c;
   stream.get(c);
@@ -200,20 +215,24 @@ void CLexer::lexSingleCharLexeme(std::istream &stream, ELexerToken tokenType) {
 void CLexer::lexSingleOrDoubleCharLexeme(std::istream &stream,
                                          ELexerToken singleToken,
                                          char nextPossible,
-                                         ELexerToken doubleToken) {
+                                         ELexerToken doubleToken)
+{
   // Retrieve char and store
   char c;
   stream.get(c);
   m_currentLexeme.push_back(c);
 
   // Look ahead and check if lexeme is double char sequence
-  if (stream.peek() == nextPossible) {
+  if (stream.peek() == nextPossible)
+  {
     // Add next char to lexeme
     stream.get(c);
     m_currentLexeme.push_back(c);
     // Set token to double token type
     m_currentToken = doubleToken;
-  } else {
+  }
+  else
+  {
     // Set token to single token sequence
     m_currentToken = singleToken;
   }
@@ -221,44 +240,53 @@ void CLexer::lexSingleOrDoubleCharLexeme(std::istream &stream,
 
 void CLexer::lexSingleOrDoubleCharLexeme(
     std::istream &stream, ELexerToken singleToken, char nextPossible0,
-    ELexerToken doubleToken0, char nextPossible1, ELexerToken doubleToken1) {
+    ELexerToken doubleToken0, char nextPossible1, ELexerToken doubleToken1)
+{
   // Retrieve char and store
   char c;
   stream.get(c);
   m_currentLexeme.push_back(c);
 
   // Look ahead and check if lexeme is double char sequence
-  if (stream.peek() == nextPossible0) {
+  if (stream.peek() == nextPossible0)
+  {
     // Add next char to lexeme
     stream.get(c);
     m_currentLexeme.push_back(c);
     // Set token to double token type
     m_currentToken = doubleToken0;
-  } else if (stream.peek() == nextPossible1) {
+  }
+  else if (stream.peek() == nextPossible1)
+  {
     // Add next char to lexeme
     stream.get(c);
     m_currentLexeme.push_back(c);
     // Set token to double token type
     m_currentToken = doubleToken1;
-  } else {
+  }
+  else
+  {
     // Set token to single token sequence
     m_currentToken = singleToken;
   }
 }
 
-void CLexer::lexNumeric(std::istream &stream) {
+void CLexer::lexNumeric(std::istream &stream)
+{
   // Default is integer until proven otherwise
   m_currentToken = ELexerToken::Integer;
 
   // Loop through chars until non-digit is found
-  while (std::isdigit(stream.peek())) {
+  while (std::isdigit(stream.peek()))
+  {
     char c;
     stream.get(c);
     m_currentLexeme.push_back(c);
   }
 
   // Check for dot
-  if (stream.peek() != '.') {
+  if (stream.peek() != '.')
+  {
     // Next token not a dot means end of integer, otherwise its a float
     return;
   }
@@ -272,7 +300,8 @@ void CLexer::lexNumeric(std::istream &stream) {
   m_currentLexeme.push_back(c);
 
   // Read remaining digits
-  while (std::isdigit(stream.peek())) {
+  while (std::isdigit(stream.peek()))
+  {
     // Valid float found
     m_currentToken = ELexerToken::Float;
     char c;
@@ -281,10 +310,12 @@ void CLexer::lexNumeric(std::istream &stream) {
   }
 }
 
-void CLexer::lexIdentifierOrKeyword(std::istream &stream) {
+void CLexer::lexIdentifierOrKeyword(std::istream &stream)
+{
   // Already checked for leading alphabetic character
   // Valid characters in a, identifier are alphabetic, numeric and underscore
-  while (std::isalnum(stream.peek()) || stream.peek() == '_') {
+  while (std::isalnum(stream.peek()) || stream.peek() == '_')
+  {
     // Build lexeme
     char c;
     stream.get(c);
@@ -294,31 +325,39 @@ void CLexer::lexIdentifierOrKeyword(std::istream &stream) {
   // Default to identifier
   m_currentToken = ELexerToken::Identifier;
   // Check if lexeme is keyword
-  if (isKeyword(m_currentLexeme)) {
+  if (isKeyword(m_currentLexeme))
+  {
     m_currentToken = ELexerToken::Keyword;
   }
 }
 
-void CLexer::lexString(std::istream &stream) {
+void CLexer::lexString(std::istream &stream)
+{
   // Throw away first quote
   assert(stream.peek() == '"');
   char c;
   stream.get(c);
 
   bool escaped = false;
-  while (!(stream.peek() == '"' && !escaped)) {
+  while (!(stream.peek() == '"' && !escaped))
+  {
     stream.get(c);
-    if (!escaped) {
-      if (c == '\\') {
+    if (!escaped)
+    {
+      if (c == '\\')
+      {
         escaped = true;
       }
-    } else {
+    }
+    else
+    {
       escaped = false;
     }
 
     // Check for line break (which is invalid in strings) or unexpected EOF
     // stream signal
-    if (stream.peek() == '\n' || stream.peek() == EOF) {
+    if (stream.peek() == '\n' || stream.peek() == EOF)
+    {
       m_currentToken = ELexerToken::Invalid;
       return;
     }
@@ -330,11 +369,13 @@ void CLexer::lexString(std::istream &stream) {
   m_currentToken = ELexerToken::String;
 }
 
-void CLexer::lexComment(std::istream &stream) {
+void CLexer::lexComment(std::istream &stream)
+{
   // The '//' part has already been written, add remaining line
   // without newline character to lexeme
   // Check for newline or end of stream
-  while (!(stream.peek() == '\n' || stream.peek() == EOF)) {
+  while (!(stream.peek() == '\n' || stream.peek() == EOF))
+  {
     char c;
     stream.get(c);
     m_currentLexeme.push_back(c);

@@ -13,17 +13,16 @@ class IVirtualMachine;
 class IExternFunction
 {
 public:
-	virtual ~IExternFunction();
-	
-	/**
-	* \brief Returns number of expected function arguments.
-	*/
-	virtual unsigned int getArgumentCount() const = 0;
-	
-	/**
-	* \brief Call function from script.
-	*/
-	virtual bool call(IVirtualMachine& vm) = 0;
-};
+  virtual ~IExternFunction();
 
+  /**
+  * \brief Returns number of expected function arguments.
+  */
+  virtual unsigned int getArgumentCount() const = 0;
+
+  /**
+  * \brief Call function from script.
+  */
+  virtual bool call(IVirtualMachine &vm) = 0;
+};
 }

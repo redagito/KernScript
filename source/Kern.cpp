@@ -4,17 +4,11 @@
 #include "comp/CCompiler.h"
 #include "vm/CVirtualMachine.h"
 
-kern::IAssembler* kern::createAssembler()
-{
-	return new CAssembler;
-}
+kern::IAssembler *kern::createAssembler() { return new CAssembler; }
 
-kern::ICompiler* kern::createCompiler()
-{
-	return new CCompiler;
-}
+kern::ICompiler *kern::createCompiler() { return new CCompiler; }
 
-kern::IVirtualMachine* kern::createVirtualMachine()
+kern::IVirtualMachine *kern::createVirtualMachine()
 {
-	return new CVirtualMachine;
+  return new CVirtualMachine;
 }

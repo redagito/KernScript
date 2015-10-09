@@ -10,8 +10,7 @@
 namespace kern
 {
 
-IAssembler* createAssembler();
-ICompiler* createCompiler();
-IVirtualMachine* createVirtualMachine();
-
+IAssembler *createAssembler();
+ICompiler *createCompiler();
+IVirtualMachine *createVirtualMachine();
 }

@@ -4,7 +4,8 @@
 #include <sstream>
 #include <cassert>
 
-CValue::CValue() {
+CValue::CValue()
+{
   // Empty
 }
 
@@ -12,36 +13,44 @@ CValue::CValue(const CValue &value) { (*this) = value; }
 
 CValue::CValue(CValue &&value) { (*this) = value; }
 
-CValue::CValue(int32_t value) {
+CValue::CValue(int32_t value)
+{
   m_type = EType::Integer;
   m_integer = value;
 }
 
-CValue::CValue(uint32_t value) {
+CValue::CValue(uint32_t value)
+{
   m_type = EType::UnsignedInteger;
   m_unsignedInteger = value;
 }
 
-CValue::CValue(float value) {
+CValue::CValue(float value)
+{
   m_type = EType::Float;
   m_float = value;
 }
 
-CValue::CValue(const std::string &value) {
+CValue::CValue(const std::string &value)
+{
   m_type = EType::String;
   m_string = new char[value.length() + 1];
   memcpy(m_string, value.data(), value.length());
   m_string[value.length()] = '\0';
 }
 
-CValue::~CValue() {
-  if (m_type == EType::String && m_string != nullptr) {
+CValue::~CValue()
+{
+  if (m_type == EType::String && m_string != nullptr)
+  {
     delete[] m_string;
   }
 }
 
-bool CValue::convert(int32_t &value) const {
-  switch (m_type) {
+bool CValue::convert(int32_t &value) const
+{
+  switch (m_type)
+  {
   case EType::Integer:
     value = m_integer;
     return true;
@@ -60,8 +69,10 @@ bool CValue::convert(int32_t &value) const {
   }
 }
 
-bool CValue::convert(uint32_t &value) const {
-  switch (m_type) {
+bool CValue::convert(uint32_t &value) const
+{
+  switch (m_type)
+  {
   case EType::Integer:
     value = (uint32_t)m_integer;
     return true;
@@ -80,8 +91,10 @@ bool CValue::convert(uint32_t &value) const {
   }
 }
 
-bool CValue::convert(float &value) const {
-  switch (m_type) {
+bool CValue::convert(float &value) const
+{
+  switch (m_type)
+  {
   case EType::Integer:
     value = (float)m_integer;
     return true;
@@ -100,10 +113,12 @@ bool CValue::convert(float &value) const {
   }
 }
 
-bool CValue::convert(std::string &value) const {
+bool CValue::convert(std::string &value) const
+{
   // TODO Slow!!
   std::stringstream ss;
-  switch (m_type) {
+  switch (m_type)
+  {
   case EType::Integer:
     ss << m_integer;
     value = ss.str();
@@ -125,18 +140,22 @@ bool CValue::convert(std::string &value) const {
   }
 }
 
-CValue &CValue::operator=(const CValue &rhs) {
-  if (this == &rhs) {
+CValue &CValue::operator=(const CValue &rhs)
+{
+  if (this == &rhs)
+  {
     return *this;
   }
 
-  if (m_type == EType::String) {
+  if (m_type == EType::String)
+  {
     delete[] m_string;
     m_string = nullptr;
   }
 
   m_type = rhs.m_type;
-  switch (m_type) {
+  switch (m_type)
+  {
   case EType::Integer:
     m_integer = rhs.m_integer;
     break;
@@ -146,11 +165,13 @@ CValue &CValue::operator=(const CValue &rhs) {
   case EType::Float:
     m_float = rhs.m_float;
     break;
-  case EType::String: {
+  case EType::String:
+  {
     size_t length = strlen(rhs.m_string) + 1;
     m_string = new char[length];
     memcpy(m_string, rhs.m_string, length);
-  } break;
+  }
+  break;
   default:
     // Invalid
     break;
@@ -158,19 +179,23 @@ CValue &CValue::operator=(const CValue &rhs) {
   return *this;
 }
 
-CValue &CValue::operator=(CValue &&rhs) {
-  if (this == &rhs) {
+CValue &CValue::operator=(CValue &&rhs)
+{
+  if (this == &rhs)
+  {
     // Same object, return
     return *this;
   }
 
-  if (m_type == EType::String) {
+  if (m_type == EType::String)
+  {
     delete[] m_string;
     m_string = nullptr;
   }
 
   m_type = rhs.m_type;
-  switch (m_type) {
+  switch (m_type)
+  {
   case EType::Integer:
     m_integer = rhs.m_integer;
     rhs.m_integer = 0;
@@ -183,10 +208,12 @@ CValue &CValue::operator=(CValue &&rhs) {
     m_float = rhs.m_float;
     rhs.m_float = 0.f;
     break;
-  case EType::String: {
+  case EType::String:
+  {
     m_string = rhs.m_string;
     rhs.m_string = nullptr;
-  } break;
+  }
+  break;
   default:
     // Invalid
     break;
@@ -196,11 +223,14 @@ CValue &CValue::operator=(CValue &&rhs) {
   return *this;
 }
 
-CValue &CValue::operator+=(const CValue &rhs) {
+CValue &CValue::operator+=(const CValue &rhs)
+{
   // Arithmetic add
-  switch (m_type) {
+  switch (m_type)
+  {
   case EType::Integer:
-    switch (rhs.m_type) {
+    switch (rhs.m_type)
+    {
     case EType::Integer:
       // Integer with integer
       m_integer += rhs.m_integer;
@@ -212,11 +242,14 @@ CValue &CValue::operator+=(const CValue &rhs) {
   return *this;
 }
 
-CValue &CValue::operator-=(const CValue &rhs) {
+CValue &CValue::operator-=(const CValue &rhs)
+{
   // Arithmetic subtract
-  switch (m_type) {
+  switch (m_type)
+  {
   case EType::Integer:
-    switch (rhs.m_type) {
+    switch (rhs.m_type)
+    {
     case EType::Integer:
       // Integer with integer
       m_integer -= rhs.m_integer;
@@ -228,11 +261,14 @@ CValue &CValue::operator-=(const CValue &rhs) {
   return *this;
 }
 
-bool CValue::operator==(const CValue &rhs) const {
+bool CValue::operator==(const CValue &rhs) const
+{
   // Compare
-  switch (m_type) {
+  switch (m_type)
+  {
   case EType::Integer:
-    switch (rhs.m_type) {
+    switch (rhs.m_type)
+    {
     case EType::Integer:
       // Integer with integer
       return m_integer == rhs.m_integer;
@@ -246,11 +282,14 @@ bool CValue::operator==(const CValue &rhs) const {
 
 bool CValue::operator!=(const CValue &rhs) const { return !((*this) == rhs); }
 
-bool CValue::operator<=(const CValue &rhs) const {
+bool CValue::operator<=(const CValue &rhs) const
+{
   // Arithmetic subtract
-  switch (m_type) {
+  switch (m_type)
+  {
   case EType::Integer:
-    switch (rhs.m_type) {
+    switch (rhs.m_type)
+    {
     case EType::Integer:
       // Integer with integer
       return m_integer <= rhs.m_integer;

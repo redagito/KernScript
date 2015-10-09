@@ -13,9 +13,9 @@ typedef int32_t ArgumentType;
 */
 struct SInstruction
 {
-	EInstruction id = EInstruction::Nop; /**< Instruction id. */
-	ArgumentType args[4]; /**< Max 4 arguments supported per instruction. */
+  EInstruction id = EInstruction::Nop; /**< Instruction id. */
+  ArgumentType args[4]; /**< Max 4 arguments supported per instruction. */
 };
 
-bool serialize(const SInstruction& instruction, std::ostream& stream);
-bool deserialize(SInstruction& instruction, std::istream& stream);
+bool serialize(const SInstruction &instruction, std::ostream &stream);
+bool deserialize(SInstruction &instruction, std::istream &stream);

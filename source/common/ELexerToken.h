@@ -2,62 +2,62 @@
 
 enum class ELexerToken
 {
-	// Value types
-	Integer,
-	Float,
-	String,
-	Identifier,
-	Keyword, /**< Keyword. */
+  // Value types
+  Integer,
+  Float,
+  String,
+  Identifier,
+  Keyword, /**< Keyword. */
 
-	Dot, /**< '.'. */
-	Colon, /**< ':'. */
-	Semicolon, /**< ';'. */
-	Comma,
-	Pound, /**< '#'. */
-	At, /**< '@'. */
+  Dot,       /**< '.'. */
+  Colon,     /**< ':'. */
+  Semicolon, /**< ';'. */
+  Comma,
+  Pound, /**< '#'. */
+  At,    /**< '@'. */
 
-	OpenParenthesis, /**< '('. */
-	CloseParenthesis,
-	OpenBrace, /**< '{'. */
-	CloseBrace,
-	OpenBracket, /**< '['. */
-	CloseBracket,
+  OpenParenthesis, /**< '('. */
+  CloseParenthesis,
+  OpenBrace, /**< '{'. */
+  CloseBrace,
+  OpenBracket, /**< '['. */
+  CloseBracket,
 
-	ExclamationMark,
-	QuestionMark,
-	Ampersand, /**< '&'. */
-	Pipe, /**< '|'. */
-	LessThan, /**< '<'. */
-	GreaterThan, /**< '>'. */
+  ExclamationMark,
+  QuestionMark,
+  Ampersand,   /**< '&'. */
+  Pipe,        /**< '|'. */
+  LessThan,    /**< '<'. */
+  GreaterThan, /**< '>'. */
 
-	Percent, /**< '%'. */
-	Slash, /**< '/'. */
-	BackSlash, /**< '\'. */
-	Assign, /**< '='. */
-	Asterisk, /**< '*'. */
-	Plus,
-	Dash, /**< '-'. */
+  Percent,   /**< '%'. */
+  Slash,     /**< '/'. */
+  BackSlash, /**< '\'. */
+  Assign,    /**< '='. */
+  Asterisk,  /**< '*'. */
+  Plus,
+  Dash, /**< '-'. */
 
-	// Compound instructions
-	DoubleColon, /**< '::'. */
-	DoublePipe, /**< '||'. */
-	DoubleAmpersand, /**< '&&'. */
+  // Compound instructions
+  DoubleColon,     /**< '::'. */
+  DoublePipe,      /**< '||'. */
+  DoubleAmpersand, /**< '&&'. */
 
-	Increment, /**< '++'. */
-	Decrement, /**< '--' */
-	AddAssign, /**< '+=' */
-	SubtractAssign, /**< '-=' */
-	MultiplyAssign, /**< '*=' */
-	DivideAssign, /**< '/=' */
-	ModuloAssign, /**< '%=' */
+  Increment,      /**< '++'. */
+  Decrement,      /**< '--' */
+  AddAssign,      /**< '+=' */
+  SubtractAssign, /**< '-=' */
+  MultiplyAssign, /**< '*=' */
+  DivideAssign,   /**< '/=' */
+  ModuloAssign,   /**< '%=' */
 
-	Equal, /**< '=='. */
-	NotEqual, /**< '!='. */
-	LessOrEqual, /**< '<='. */
-	GreaterOrEqual, /**< '>='. */
+  Equal,          /**< '=='. */
+  NotEqual,       /**< '!='. */
+  LessOrEqual,    /**< '<='. */
+  GreaterOrEqual, /**< '>='. */
 
-	Comment,
-	NewLine,
-	End,
-	Invalid
+  Comment,
+  NewLine,
+  End,
+  Invalid
 };
