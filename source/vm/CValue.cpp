@@ -234,6 +234,10 @@ CValue &CValue::operator+=(const CValue &rhs)
     case EType::Integer:
       // Integer with integer
       m_integer += rhs.m_integer;
+      break;
+    case EType::Invalid:
+      assert(false);
+      break;
     default:
       // Not implemented
       assert(false);
@@ -253,6 +257,7 @@ CValue &CValue::operator-=(const CValue &rhs)
     case EType::Integer:
       // Integer with integer
       m_integer -= rhs.m_integer;
+      break;
     default:
       // Not implemented
       assert(false);

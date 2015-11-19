@@ -1,12 +1,12 @@
-extern print 1
+extern println 1
 
 // Second test for calling external functions
 func main
 {
 	pushf 10.2
-	calle print
+	calle println
 	pushf 100.0
-	calle print
+	calle println
 	pushf 0.0001
-	calle print
+	calle println
 }

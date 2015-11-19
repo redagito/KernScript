@@ -1,4 +1,4 @@
-extern print 1
+extern println 1
 
 // Tests script function calling and extern function calling
 
@@ -7,7 +7,7 @@ func print
 {
 	param a // Parameter declare implicitely sets calling convention
 	pushv a // Push on stack for extern function call
-	calle print
+	calle println
 	ret // No return value
 }
 
@@ -19,7 +19,7 @@ func b
 	call print
 	// Calls external function
 	pushi 200
-	calle print
+	calle println
 	ret // No return parameter
 }
 
@@ -28,7 +28,7 @@ func main
 {
 	// Call extern function with parameter
 	pushi 1
-	calle print
+	calle println
 	// Call script function 'b' multiple times
 	call b
 	call b

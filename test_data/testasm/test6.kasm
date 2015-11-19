@@ -1,11 +1,11 @@
-extern print 1
+extern println 1
 
 // Test for calling convention with return value
 
 func a
 {
 	param x // Parameter shoud, be 10
-	calle print // Print 10
+	calle println // Print 10
 	ret 20 // Return value
 }
 
@@ -15,6 +15,6 @@ func main
 	pushi 10
 	call a // Expects single parameter
 	// Return value on stack
-	calle print // Should print 20
+	calle println // Should print 20
 	ret
 }

@@ -110,7 +110,14 @@ bool testAsmUtil(kern::IAssembler &assembler, kern::IVirtualMachine &vm,
 /**
 * \brief Utility print function to be callable from script.
 */
-void print(std::string text) { std::cout << text << std::endl; }
+void print(std::string text) { std::cout << text; }
+
+void println(std::string text) { std::cout << text << std::endl; }
+
+void log(std::string severity, std::string message)
+{
+  std::cout << "[" << severity << "]: " << message << std::endl;
+}
 
 int main(int argc, char **argv)
 {
@@ -120,6 +127,8 @@ int main(int argc, char **argv)
 
   // Utility print function
   vm->addFunction("print", kern::createExternFunction(print));
+  vm->addFunction("println", kern::createExternFunction(println));
+  vm->addFunction("log", kern::createExternFunction(log));
 
   testAsmUtil(*assembler, *vm, "test1");
   testAsmUtil(*assembler, *vm, "test2");

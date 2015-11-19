@@ -1,13 +1,23 @@
 extern print 1
+extern println 1
+extern log 2
 
 // Tests calling convention for extern functions
 func main
 {
 	// Parameter(s) for extern functions are pushed on top of the stack
 	pushi 10
-	calle print
+	calle println
 	pushi 200
-	calle print
+	calle println
 	pushi 10000
+	calle println
+	
+	pushi 10
 	calle print
+	pushi 123
+	calle println
+	pushi 1
+	pushi 2
+	calle log
 }
