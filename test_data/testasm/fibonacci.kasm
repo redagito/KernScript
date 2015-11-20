@@ -5,7 +5,6 @@ func fib
 {
 	// Parameter x
 	param x
-	var temp;
 	
 	// jump if x <= 1
 	pushv x
@@ -21,7 +20,7 @@ func fib
 	sub
 	
 	// fib(x - 2)
-	calle fib
+	call fib
 	
 	// (x - 1)
 	pushv x
@@ -29,14 +28,13 @@ func fib
 	sub
 	
 	// fib(x - 1)
-	calle fib
+	call fib
 	
 	// fib(x - 1) + fib(x - 2)
 	add
 	
 	// return fib (x - 1) + fib (x - 2)
-	popv temp
-	retv temp
+	popv x
 	
 	// x <= 1, return x
 	label end

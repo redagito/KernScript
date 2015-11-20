@@ -1,4 +1,5 @@
 #include <iostream>
+#include <cassert>
 
 #include "CVirtualMachine.h"
 
@@ -105,21 +106,15 @@ bool CVirtualMachine::popParameter(::std::string &value)
   return ret;
 }
 
-void CVirtualMachine::setReturnValue() { m_runtimeStack.push_back(CValue(0)); }
+void CVirtualMachine::setReturnValue() { return; }
 
-void CVirtualMachine::setReturnValue(int value)
-{
-  m_runtimeStack.push_back(CValue(value));
-}
+void CVirtualMachine::setReturnValue(int value) { pushValue(CValue(value)); }
 
-void CVirtualMachine::setReturnValue(float value)
-{
-  m_runtimeStack.push_back(CValue(value));
-}
+void CVirtualMachine::setReturnValue(float value) { pushValue(CValue(value)); }
 
 void CVirtualMachine::setReturnValue(const std::string &value)
 {
-  m_runtimeStack.push_back(CValue(value));
+  pushValue(CValue(value));
 }
 
 bool CVirtualMachine::deserializeStrings(std::istream &stream)
@@ -183,6 +178,9 @@ bool CVirtualMachine::deserializeFunctions(std::istream &stream)
 
     // Read stack size
     stream.read((char *)&function.stackSize, sizeof(function.stackSize));
+    // Read parameter size
+    stream.read((char *)&function.parameterSize,
+                sizeof(function.parameterSize));
 
     // Read instructions
     // Instructions size
@@ -238,10 +236,12 @@ bool CVirtualMachine::execute()
   case EInstruction::Nop:
     ++m_currentInstructionIndex;
     break;
+
   case EInstruction::Break:
-    // Not impelmented
+    // Not implemented
     ++m_currentInstructionIndex;
     break;
+
   case EInstruction::Exit:
     // Return false to signal end of script
     return false;
@@ -256,6 +256,7 @@ bool CVirtualMachine::execute()
         m_runtimeStack.at(m_currentRuntimeStackBaseIndex +
                           *((uint32_t *)&instruction.args[1]));
     break;
+
   case EInstruction::Movi:
     // Move integer to variable
     // Arg 0 is variable index of destination
@@ -263,6 +264,7 @@ bool CVirtualMachine::execute()
     m_runtimeStack[m_currentRuntimeStackBaseIndex +
                    *((uint32_t *)&instruction.args[0])] = instruction.args[1];
     break;
+
   case EInstruction::Movf:
     // Move float to variable
     // Arg 0 is variable index of destination
@@ -273,24 +275,43 @@ bool CVirtualMachine::execute()
     break;
 
   case EInstruction::Pushi:
+    // Push signed 32 bit integer value to
     // Arg 0 is integer value
-    m_runtimeStack.push_back(CValue(instruction.args[0]));
+    pushValue(CValue(instruction.args[0]));
     ++m_currentInstructionIndex;
     break;
+
   case EInstruction::Pushf:
     // Arg 0 is float value
-    m_runtimeStack.push_back(CValue(*((float *)&instruction.args[0])));
+    pushValue(CValue(*((float *)&instruction.args[0])));
     ++m_currentInstructionIndex;
     break;
+
+  case EInstruction::Pushv:
+    // Arg 0 is variable index
+    pushValue(m_runtimeStack.at(m_currentRuntimeStackBaseIndex +
+                                *((uint32_t *)&instruction.args[0])));
+    ++m_currentInstructionIndex;
+    break;
+
   case EInstruction::Pop:
     // Remove top element from runtime stack
     m_runtimeStack.pop_back();
     ++m_currentInstructionIndex;
     break;
 
+  case EInstruction::Popv:
+    // Remove top of the stack and store it in variable
+    // Arg 0 is variable index
+    m_runtimeStack[m_currentRuntimeStackBaseIndex +
+                   *((uint32_t *)&instruction.args[0])] = *m_runtimeStack.end();
+    m_runtimeStack.pop_back();
+    ++m_currentInstructionIndex;
+    break;
+
   case EInstruction::Call:
     // Push next instruction and current function index and base stack index for
-    // return call
+    // return call.
     m_callStack.push(SFunctionFrame(m_currentFunctionIndex,
                                     m_currentInstructionIndex + 1,
                                     m_currentRuntimeStackBaseIndex));
@@ -300,10 +321,14 @@ bool CVirtualMachine::execute()
     m_currentInstructionIndex = 0;
     // Set new runtime stack base index for the called function
     m_currentRuntimeStackBaseIndex = m_runtimeStack.size();
+    // Modify by function parameter size
+    m_currentRuntimeStackBaseIndex -=
+        m_functions.at(m_currentFunctionIndex).parameterSize;
     // Resize runtime stack with local stack size of called function
     m_runtimeStack.resize(m_runtimeStack.size() +
                           m_functions.at(m_currentFunctionIndex).stackSize);
     break;
+
   case EInstruction::Calle:
   {
     // Call external, arg 0 is extern function index
@@ -332,9 +357,37 @@ bool CVirtualMachine::execute()
       // Empty stack indicates either error state or end of script
       return false;
     }
-    // Resize runtime stack to remove local function variables but one.
-    // The variable and local stack index 0 holds the return value and is not
-    // cleared.
+    // Resize runtime stack to remove local function variables.
+    m_runtimeStack.resize(m_currentRuntimeStackBaseIndex);
+
+    // Retrieve function index of previous function
+    m_currentFunctionIndex = m_callStack.top().functionIndex;
+    // Restore active function index
+    m_currentInstructionIndex = m_callStack.top().instructionIndex;
+    // Restore runtime stack base index for the active function
+    m_currentRuntimeStackBaseIndex = m_callStack.top().runtimeStackBaseIndex;
+    m_callStack.pop();
+    break;
+
+  case EInstruction::Retv:
+  {
+    // Returns variable from script function
+    if (m_callStack.empty())
+    {
+      // Empty stack indicates either error state or end of script
+      return false;
+    }
+    // Arg 0 is local variable index
+    // Store return value at local stack position 0
+    uint32_t varIndex = *((uint32_t *)&instruction.args[0]);
+    if (varIndex != 0)
+    {
+      m_runtimeStack[m_currentRuntimeStackBaseIndex + 1] =
+          m_runtimeStack.at(m_currentRuntimeStackBaseIndex + varIndex);
+    }
+
+    // Resize runtime stack to remove local function variables but the one
+    // holding the return value.
     m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
 
     // Retrieve function index of previous function
@@ -345,6 +398,35 @@ bool CVirtualMachine::execute()
     m_currentRuntimeStackBaseIndex = m_callStack.top().runtimeStackBaseIndex;
     m_callStack.pop();
     break;
+  }
+
+  case EInstruction::Reti:
+  {
+    // Returns variable from script function
+    if (m_callStack.empty())
+    {
+      // Empty stack indicates either error state or end of script
+      return false;
+    }
+    // Arg 0 is integer constant
+    // Store return value at local stack position 0
+    m_runtimeStack[m_currentRuntimeStackBaseIndex + 1] =
+        *((int32_t *)&instruction.args[0]);
+
+    // Resize runtime stack to remove local function variables but the one
+    // holding the return value.
+    m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
+
+    // Retrieve function index of previous function
+    m_currentFunctionIndex = m_callStack.top().functionIndex;
+    // Restore active function index
+    m_currentInstructionIndex = m_callStack.top().instructionIndex;
+    // Restore runtime stack base index for the active function
+    m_currentRuntimeStackBaseIndex = m_callStack.top().runtimeStackBaseIndex;
+    m_callStack.pop();
+    break;
+  }
+
   case EInstruction::Add:
   {
     CValue x;
@@ -357,6 +439,7 @@ bool CVirtualMachine::execute()
     ++m_currentInstructionIndex;
   }
   break;
+
   case EInstruction::Sub:
   {
     CValue x;
@@ -369,10 +452,12 @@ bool CVirtualMachine::execute()
     ++m_currentInstructionIndex;
   }
   break;
+
   case EInstruction::Mul:
     // Not implemented
     return false;
     break;
+
   case EInstruction::Div:
     // Not implemented
     return false;
@@ -480,6 +565,7 @@ bool CVirtualMachine::execute()
 
 void CVirtualMachine::pushValue(const CValue &val)
 {
+  assert(val.getType() != CValue::EType::Invalid);
   m_runtimeStack.push_back(val);
 }
 
@@ -490,6 +576,7 @@ bool CVirtualMachine::popValue(CValue &val)
     return false;
   }
   val = std::move(m_runtimeStack.back());
+  assert(val.getType() != CValue::EType::Invalid);
   m_runtimeStack.pop_back();
   return true;
 }

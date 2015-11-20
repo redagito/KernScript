@@ -34,6 +34,8 @@ public:
   bool convert(float &value) const;
   bool convert(std::string &value) const;
 
+  EType getType() const;
+
   CValue &operator=(const CValue &rhs);
   CValue &operator=(CValue &&rhs);
 

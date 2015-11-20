@@ -53,6 +53,13 @@ bool CParser::parse(std::istream &stream)
           return false;
         }
       }
+      else
+      {
+        std::cout << "Invalid lexeme encountered: " << m_lexer.getLexeme()
+                  << std::endl;
+        return false;
+      }
+      break;
     case ELexerToken::Invalid:
       return false;
     default:

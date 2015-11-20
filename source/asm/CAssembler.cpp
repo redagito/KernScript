@@ -11,7 +11,7 @@ CAssembler::CAssembler()
   // Assembler specific
   m_lexer.addKeyword("func");
   m_lexer.addKeyword("extern");
-  m_lexer.addKeyword("module");
+  // m_lexer.addKeyword("module");
   m_lexer.addKeyword(
       "param"); // Function parameter for implicit calling convention
   m_lexer.addKeyword("var");  // Variable
@@ -32,7 +32,10 @@ CAssembler::CAssembler()
 
   m_lexer.addKeyword("call");
   m_lexer.addKeyword("calle");
+
   m_lexer.addKeyword("ret");
+  m_lexer.addKeyword("retv");
+  m_lexer.addKeyword("reti");
 
   m_lexer.addKeyword("add");
   m_lexer.addKeyword("sub");
@@ -140,12 +143,18 @@ bool CAssembler::parseFunction(std::istream &stream)
   std::unordered_map<std::string, uint32_t> variables;
   // Required stack size for variables
   uint32_t stackSize = 0;
+  // Required stack size for passed parameters
+  uint32_t parameterSize = 0;
   // Stores jump instructions to be resolved after end of pass
   std::list<std::tuple<SInstruction *, std::string>> unresolvedJumps;
 
   // Store function name
-  SFunction function;
-  function.name = m_lexer.getLexeme();
+  SFunction tempFunction;
+  tempFunction.name = m_lexer.getLexeme();
+
+  // Store function to resolve recursive calls
+  m_functions.push_back(tempFunction);
+  SFunction &function = m_functions.back();
 
   // Next is '{'
   m_lexer.lex(stream);
@@ -161,7 +170,28 @@ bool CAssembler::parseFunction(std::istream &stream)
     switch (m_lexer.getToken())
     {
     case ELexerToken::Keyword:
-      if (m_lexer.getLexeme() == "label")
+      if (m_lexer.getLexeme() == "param")
+      {
+        // Parameter for function
+        // Expects identifier
+        m_lexer.lex(stream);
+        if (m_lexer.getToken() != ELexerToken::Identifier)
+        {
+          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          return false;
+        }
+        // Parameter name
+        std::string paramName = m_lexer.getLexeme();
+
+        // Set parameter offset to current stack size
+        variables[paramName] = stackSize;
+
+        // Increment parameter stack size by one for single parameter declare
+        parameterSize += 1;
+        // Increment required function stack size
+        stackSize += 1;
+      }
+      else if (m_lexer.getLexeme() == "label")
       {
         // Instruction index alias for jumps
         // Expects identifier for label name
@@ -571,6 +601,53 @@ bool CAssembler::parseFunction(std::istream &stream)
         // Add assembled instruction
         function.instructions.push_back(instruction);
       }
+      else if (m_lexer.getLexeme() == "retv")
+      {
+        // Return variable from function
+        instruction.id = EInstruction::Retv;
+
+        // Expects one identifier as argument
+        m_lexer.lex(stream);
+        if (m_lexer.getToken() != ELexerToken::Identifier)
+        {
+          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          return false;
+        }
+
+        // Identifier must be valid variable name
+        auto entry = variables.find(m_lexer.getLexeme());
+        if (entry == variables.end())
+        {
+          std::cout << "Unknown variable name: " << m_lexer.getLexeme()
+                    << std::endl;
+          return false;
+        }
+
+        // Set arg 0 to relative variable stack index
+        instruction.args[0] = *((int32_t *)&entry->second);
+
+        // Add assembled instruction
+        function.instructions.push_back(instruction);
+      }
+      else if (m_lexer.getLexeme() == "reti")
+      {
+        // Return integer from function
+        instruction.id = EInstruction::Reti;
+        // Expects one integer constant as argument
+        m_lexer.lex(stream);
+        if (m_lexer.getToken() != ELexerToken::Integer)
+        {
+          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          return false;
+        }
+        // TODO Slow!!!
+        std::stringstream ss;
+        ss << m_lexer.getLexeme();
+        ss >> instruction.args[0];
+
+        // Add assembled instruction
+        function.instructions.push_back(instruction);
+      }
       else if (m_lexer.getLexeme() == "add")
       {
         // Add top 2 parameters from stack and push result to stack
@@ -624,6 +701,7 @@ bool CAssembler::parseFunction(std::istream &stream)
 
   // Set stack size needed for local variables
   function.stackSize = stackSize;
+  function.parameterSize = parameterSize;
 
   // Resolve jumps
   for (auto &entry : unresolvedJumps)
@@ -640,8 +718,6 @@ bool CAssembler::parseFunction(std::istream &stream)
     std::get<0>(entry)->args[0] = label->second;
   }
 
-  // Add assembled function
-  m_functions.push_back(function);
   return true;
 }
 
@@ -796,6 +872,9 @@ bool CAssembler::serializeFunctions(std::ostream &stream) const
 
     // Write stack size
     stream.write((char *)&function.stackSize, sizeof(function.stackSize));
+    // Write parameter size
+    stream.write((char *)&function.parameterSize,
+                 sizeof(function.parameterSize));
 
     // Write instructions
     // Write instruction size

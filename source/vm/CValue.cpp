@@ -140,6 +140,8 @@ bool CValue::convert(std::string &value) const
   }
 }
 
+CValue::EType CValue::getType() const { return m_type; }
+
 CValue &CValue::operator=(const CValue &rhs)
 {
   if (this == &rhs)

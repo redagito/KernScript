@@ -4,9 +4,9 @@ extern println 1
 
 func a
 {
-	param x // Parameter shoud, be 10
+	param x // Parameter should, be 10
 	calle println // Print 10
-	ret 20 // Return value
+	reti 20 // Return value
 }
 
 func main

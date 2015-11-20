@@ -41,8 +41,11 @@ private:
   */
   struct SFunction
   {
-    std::string name;       /**< Function name. */
-    uint32_t stackSize = 0; /**< Stack size needed for local variables. */
+    std::string name; /**< Function name. */
+    uint32_t stackSize =
+        0; /**< Stack size needed for local variables (includes passed
+              parameters). */
+    uint32_t parameterSize = 0; /**< Stack size needed for passed parameters. */
     std::list<SInstruction> instructions; /**< Assembled instructions. */
   };
 
