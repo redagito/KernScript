@@ -28,3 +28,8 @@ bool deserialize(SInstruction &instruction, std::istream &stream)
   }
   return stream.good();
 }
+
+std::string toString(const SInstruction &instruction)
+{
+  return instructions[(int)instruction.id].mnemonic;
+}

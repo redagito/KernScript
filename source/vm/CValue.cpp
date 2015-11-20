@@ -142,6 +142,37 @@ bool CValue::convert(std::string &value) const
 
 CValue::EType CValue::getType() const { return m_type; }
 
+std::string CValue::toString() const
+{
+  std::stringstream ss;
+  switch (m_type)
+  {
+  case CValue::EType::Float:
+    ss << "Float";
+    break;
+
+  case CValue::EType::Integer:
+    ss << "Integer";
+    break;
+
+  case CValue::EType::Invalid:
+    return "Invalid";
+    break;
+
+  case CValue::EType::String:
+    ss << "String";
+    break;
+
+  case CValue::EType::UnsignedInteger:
+    ss << "UnsignedInteger";
+    break;
+  }
+  std::string val;
+  assert(convert(val));
+  ss << " : " << val;
+  return ss.str();
+}
+
 CValue &CValue::operator=(const CValue &rhs)
 {
   if (this == &rhs)

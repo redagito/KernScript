@@ -59,6 +59,8 @@ protected:
   */
   bool popValue(CValue &val);
 
+  void printRuntimeStack() const;
+
 private:
   /**
   * \brief Assembled function.

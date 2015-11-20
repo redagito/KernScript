@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <istream>
 #include <ostream>
+#include <string>
 
 #include "Instructions.h"
 
@@ -19,3 +20,5 @@ struct SInstruction
 
 bool serialize(const SInstruction &instruction, std::ostream &stream);
 bool deserialize(SInstruction &instruction, std::istream &stream);
+
+std::string toString(const SInstruction &instruction);

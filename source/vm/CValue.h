@@ -36,6 +36,8 @@ public:
 
   EType getType() const;
 
+  std::string toString() const;
+
   CValue &operator=(const CValue &rhs);
   CValue &operator=(CValue &&rhs);
 

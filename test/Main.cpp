@@ -119,6 +119,8 @@ void log(std::string severity, std::string message)
   std::cout << "[" << severity << "]: " << message << std::endl;
 }
 
+int get_value() { return 3; }
+
 int main(int argc, char **argv)
 {
   std::unique_ptr<kern::ICompiler> comp(kern::createCompiler());
@@ -129,13 +131,14 @@ int main(int argc, char **argv)
   vm->addFunction("print", kern::createExternFunction(print));
   vm->addFunction("println", kern::createExternFunction(println));
   vm->addFunction("log", kern::createExternFunction(log));
+  vm->addFunction("get_value", kern::createExternFunction(get_value));
 
-  testAsmUtil(*assembler, *vm, "test1");
+  /*testAsmUtil(*assembler, *vm, "test1");
   testAsmUtil(*assembler, *vm, "test2");
   testAsmUtil(*assembler, *vm, "test3");
   testAsmUtil(*assembler, *vm, "test4");
   testAsmUtil(*assembler, *vm, "test5");
-  testAsmUtil(*assembler, *vm, "test6");
+  testAsmUtil(*assembler, *vm, "test6");*/
   testAsmUtil(*assembler, *vm, "fibonacci");
 
   return 0;

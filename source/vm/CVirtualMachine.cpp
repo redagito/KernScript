@@ -63,6 +63,7 @@ bool CVirtualMachine::callFunction(const std::string &functionName)
     return false;
   }
   m_currentInstructionIndex = 0;
+  m_runtimeStack.resize(m_functions.at(m_currentFunctionIndex).stackSize);
 
   // Execute function
   bool running = true;
@@ -231,6 +232,10 @@ bool CVirtualMachine::execute()
                       .instructions.at(m_currentInstructionIndex);
   }
 
+  // Debug, remove later
+  printRuntimeStack();
+  std::cout << "Executing instruction " << toString(instruction) << std::endl;
+
   switch (instruction.id)
   {
   case EInstruction::Nop:
@@ -301,13 +306,15 @@ bool CVirtualMachine::execute()
     break;
 
   case EInstruction::Popv:
+  {
     // Remove top of the stack and store it in variable
     // Arg 0 is variable index
     m_runtimeStack[m_currentRuntimeStackBaseIndex +
-                   *((uint32_t *)&instruction.args[0])] = *m_runtimeStack.end();
+                   *((uint32_t *)&instruction.args[0])] = m_runtimeStack.back();
     m_runtimeStack.pop_back();
     ++m_currentInstructionIndex;
-    break;
+  }
+  break;
 
   case EInstruction::Call:
     // Push next instruction and current function index and base stack index for
@@ -558,6 +565,10 @@ bool CVirtualMachine::execute()
     }
   }
   break;
+
+  default:
+    assert(false);
+    return false;
   }
 
   return true;
@@ -579,4 +590,15 @@ bool CVirtualMachine::popValue(CValue &val)
   assert(val.getType() != CValue::EType::Invalid);
   m_runtimeStack.pop_back();
   return true;
+}
+
+void CVirtualMachine::printRuntimeStack() const
+{
+  unsigned int index = 0;
+  for (const auto &value : m_runtimeStack)
+  {
+    std::cout << "Index: " << index << ", Value: " << value.toString()
+              << std::endl;
+    ++index;
+  }
 }

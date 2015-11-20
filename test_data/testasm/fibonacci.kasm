@@ -1,10 +1,14 @@
 // Fibonacci function test
 extern println 1
+extern get_value 0
 
 func fib
 {
 	// Parameter x
 	param x
+	
+	pushv x
+	calle println
 	
 	// jump if x <= 1
 	pushv x
@@ -43,8 +47,14 @@ func fib
 
 func main
 {
-	// Call fibonacci with 10
-	pushi 10
+	var x
+	// Retrieve value from host
+	calle get_value
+	popv x
+	pushv x
+	calle println
+	
+	pushv x
 	call fib
 	// Result on stack
 	calle println
