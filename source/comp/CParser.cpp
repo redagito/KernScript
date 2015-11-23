@@ -104,7 +104,7 @@ bool CParser::parseFunction(std::istream &stream)
     }
     else
     {
-      std::cout << "Invalid function name identifer '" << m_lexer.getLexeme()
+      std::cout << "Invalid function name identifier '" << m_lexer.getLexeme()
                 << "'." << std::endl;
     }
     return false;
@@ -124,7 +124,7 @@ bool CParser::parseFunction(std::istream &stream)
 
   // Next token should be ')'
   m_currentLineIndex += m_lexer.lex(stream);
-  if (m_lexer.getToken() != ELexerToken::OpenParenthesis)
+  if (m_lexer.getToken() != ELexerToken::CloseParenthesis)
   {
     return false;
   }
