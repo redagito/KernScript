@@ -1,14 +1,12 @@
 // Fibonacci function test
 extern println 1
 extern get_value 0
+extern fast_fib 1
 
 func fib
 {
 	// Parameter x
 	param x
-	
-	pushv x
-	calle println
 	
 	// jump if x <= 1
 	pushv x
@@ -55,7 +53,13 @@ func main
 	calle println
 	
 	pushv x
+	calle fast_fib
+	calle println
+	
+	pushv x
 	call fib
 	// Result on stack
+	popv x
+	pushv x
 	calle println
 }

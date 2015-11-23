@@ -119,7 +119,14 @@ void log(std::string severity, std::string message)
   std::cout << "[" << severity << "]: " << message << std::endl;
 }
 
-int get_value() { return 3; }
+int get_value() { return 35; }
+
+int fast_fib(int v)
+{
+  if (v < 2)
+    return v;
+  return fast_fib(v - 1) + fast_fib(v - 2);
+}
 
 int main(int argc, char **argv)
 {
@@ -132,6 +139,7 @@ int main(int argc, char **argv)
   vm->addFunction("println", kern::createExternFunction(println));
   vm->addFunction("log", kern::createExternFunction(log));
   vm->addFunction("get_value", kern::createExternFunction(get_value));
+  vm->addFunction("fast_fib", kern::createExternFunction(fast_fib));
 
   /*testAsmUtil(*assembler, *vm, "test1");
   testAsmUtil(*assembler, *vm, "test2");

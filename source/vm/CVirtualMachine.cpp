@@ -217,24 +217,24 @@ bool CVirtualMachine::getFunctionIndex(const std::string &functionName,
 
 bool CVirtualMachine::execute()
 {
+  // Cache current function
+  const SFunction &currentFunction = m_functions.at(m_currentFunctionIndex);
+
+  // Default current instruction to implicit return
   SInstruction instruction;
+  instruction.id = EInstruction::Ret;
+
   // Check for out of bounds instruction index
-  if (m_functions.at(m_currentFunctionIndex).instructions.size() <=
-      m_currentInstructionIndex)
-  {
-    // Implicit return
-    instruction.id = EInstruction::Ret;
-  }
-  else
+  if (currentFunction.instructions.size() > m_currentInstructionIndex)
   {
     // Retrieve current instruction
-    instruction = m_functions.at(m_currentFunctionIndex)
-                      .instructions.at(m_currentInstructionIndex);
+    instruction = currentFunction.instructions.at(m_currentInstructionIndex);
   }
 
-  // Debug, remove later
-  printRuntimeStack();
-  std::cout << "Executing instruction " << toString(instruction) << std::endl;
+  // Debug
+  // printRuntimeStack();
+  // std::cout << "Executing instruction " << toString(instruction) <<
+  // std::endl;
 
   switch (instruction.id)
   {
@@ -317,24 +317,28 @@ bool CVirtualMachine::execute()
   break;
 
   case EInstruction::Call:
-    // Push next instruction and current function index and base stack index for
+  {
+    // Push current function index, next instruction index and base stack index
+    // for
     // return call.
     m_callStack.push(SFunctionFrame(m_currentFunctionIndex,
                                     m_currentInstructionIndex + 1,
                                     m_currentRuntimeStackBaseIndex));
-    // Arg 0 is function index
+    // Arg 0 is function index of the called function
     m_currentFunctionIndex = *((uint32_t *)&instruction.args[0]);
     // Reset instruction index
     m_currentInstructionIndex = 0;
     // Set new runtime stack base index for the called function
     m_currentRuntimeStackBaseIndex = m_runtimeStack.size();
     // Modify by function parameter size
-    m_currentRuntimeStackBaseIndex -=
-        m_functions.at(m_currentFunctionIndex).parameterSize;
+    const SFunction &newCurrentFunction =
+        m_functions.at(m_currentFunctionIndex);
+    m_currentRuntimeStackBaseIndex -= newCurrentFunction.parameterSize;
     // Resize runtime stack with local stack size of called function
-    m_runtimeStack.resize(m_runtimeStack.size() +
-                          m_functions.at(m_currentFunctionIndex).stackSize);
+    m_runtimeStack.resize(m_runtimeStack.size() + newCurrentFunction.stackSize -
+                          newCurrentFunction.parameterSize);
     break;
+  }
 
   case EInstruction::Calle:
   {
