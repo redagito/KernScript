@@ -175,11 +175,13 @@ std::string CValue::toString() const
 
 CValue &CValue::operator=(const CValue &rhs)
 {
+  // Same object?
   if (this == &rhs)
   {
     return *this;
   }
 
+  // Clean up internal string memory
   if (m_type == EType::String)
   {
     delete[] m_string;

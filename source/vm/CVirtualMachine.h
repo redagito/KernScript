@@ -45,7 +45,7 @@ protected:
   bool deserializeExternFunctions(std::istream &stream);
   bool deserializeFunctions(std::istream &stream);
 
-  bool getFunctionIndex(const std::string &functionName, uint32_t &index);
+  bool getFunctionIndexByName(const std::string &functionName, uint32_t &index);
 
   bool execute();
 
@@ -72,7 +72,14 @@ private:
         0; /**< Stack size needed for local variables and passed parameters. */
     uint32_t parameterSize = 0; /**< Stack size needed for parameters. */
     std::vector<SInstruction> instructions; /**< Assembled instructions. */
+    uint32_t instructionSize = 0;           /**< Cached instruction size. */
   };
+
+  /**
+   * Gets function by name.
+   */
+  bool getFunctionByName(const std::string &functionName,
+                         const SFunction *function) const;
 
   /**
   * \brief Represents function and instruction index to return to, after
