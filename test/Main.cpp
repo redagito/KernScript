@@ -141,12 +141,13 @@ int main(int argc, char **argv)
   vm->addFunction("get_value", kern::createExternFunction(get_value));
   vm->addFunction("fast_fib", kern::createExternFunction(fast_fib));
 
-  /*testAsmUtil(*assembler, *vm, "test1");
+  testAsmUtil(*assembler, *vm, "test1");
   testAsmUtil(*assembler, *vm, "test2");
   testAsmUtil(*assembler, *vm, "test3");
   testAsmUtil(*assembler, *vm, "test4");
   testAsmUtil(*assembler, *vm, "test5");
-  testAsmUtil(*assembler, *vm, "test6");*/
+  testAsmUtil(*assembler, *vm, "test6");
+  testAsmUtil(*assembler, *vm, "test7");
   testAsmUtil(*assembler, *vm, "fibonacci");
 
   return 0;

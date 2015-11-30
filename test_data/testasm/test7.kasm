@@ -1,0 +1,14 @@
+extern print 1
+extern println 1
+
+func main
+{
+	var x
+	movs x, "hello"
+	pushv x
+	calle print
+	
+	movs x, " world!"
+	pushv x
+	calle println
+}

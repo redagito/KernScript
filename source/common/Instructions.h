@@ -81,11 +81,13 @@ const SInstructionLookup instructions[] = {{"nop", 0},
                                            {"pushu", 1},
                                            {"pushf", 1},
                                            {"pushs", 1},
+
                                            {"pop", 0},
                                            {"popv", 1},
 
                                            {"call", 1},
                                            {"calle", 1},
+
                                            {"ret", 0},
                                            {"retv", 1},
                                            {"reti", 1},

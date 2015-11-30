@@ -13,4 +13,10 @@ namespace kern
 IAssembler *createAssembler();
 ICompiler *createCompiler();
 IVirtualMachine *createVirtualMachine();
+
+/**
+ * Provides version information.
+ */
+unsigned int getMajorVersion();
+unsigned int getMinorVersion();
 }

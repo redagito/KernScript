@@ -36,6 +36,8 @@ protected:
   bool serializeFunctions(std::ostream &stream) const;
 
 private:
+  uint32_t addString(const std::string &str);
+
   /**
   * \brief Represents an assembled script function.
   */

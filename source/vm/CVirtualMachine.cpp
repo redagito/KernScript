@@ -295,6 +295,16 @@ bool CVirtualMachine::execute()
         *((float *)&instruction.args[1]);
     break;
 
+  case EInstruction::Movs:
+    // Move string to variable
+    // Arg 0 is variable index of destination
+    // Arg 1 is source index of string
+    m_runtimeStack[m_currentRuntimeStackBaseIndex +
+                   *((uint32_t *)&instruction.args[0])] =
+        m_strings.at(*((uint32_t *)&instruction.args[1]));
+    ++m_currentInstructionIndex;
+    break;
+
   case EInstruction::Pushi:
     // Push signed 32 bit integer value to
     // Arg 0 is integer value
@@ -312,6 +322,12 @@ bool CVirtualMachine::execute()
     // Arg 0 is variable index
     pushValue(m_runtimeStack.at(m_currentRuntimeStackBaseIndex +
                                 *((uint32_t *)&instruction.args[0])));
+    ++m_currentInstructionIndex;
+    break;
+
+  case EInstruction::Pushs:
+    // Arg 0 is string index
+    pushValue(m_strings.at(*((uint32_t *)&instruction.args[0])));
     ++m_currentInstructionIndex;
     break;
 

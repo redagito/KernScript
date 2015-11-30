@@ -11,6 +11,7 @@ CAssembler::CAssembler()
   // Assembler specific
   m_lexer.addKeyword("func");
   m_lexer.addKeyword("extern");
+  // TODO Not supported for now
   // m_lexer.addKeyword("module");
   m_lexer.addKeyword(
       "param"); // Function parameter for implicit calling convention
@@ -19,9 +20,12 @@ CAssembler::CAssembler()
   m_lexer.addKeyword("label");
 
   // Instructions
+  m_lexer.addKeyword("nop");
+
   m_lexer.addKeyword("movv");
   m_lexer.addKeyword("movi");
   m_lexer.addKeyword("movf");
+  m_lexer.addKeyword("movs");
 
   m_lexer.addKeyword("pushv");
   m_lexer.addKeyword("pushi");
@@ -266,6 +270,22 @@ bool CAssembler::parseFunction(std::istream &stream)
         // Increment stack size by array size
         stackSize += size;
       }
+      else if (m_lexer.getLexeme() == "nop")
+      {
+        // No operation
+        instruction.id = EInstruction::Nop;
+
+        // Add assembled instruction
+        function.instructions.push_back(instruction);
+      }
+      else if (m_lexer.getLexeme() == "exit")
+      {
+        // Exit script immediately
+        instruction.id = EInstruction::Exit;
+
+        // Add assembled instruction
+        function.instructions.push_back(instruction);
+      }
       else if (m_lexer.getLexeme() == "movv")
       {
         // Move variable to variable instruction
@@ -424,6 +444,57 @@ bool CAssembler::parseFunction(std::istream &stream)
         instruction.args[0] = *((int32_t *)&entry1->second);
         // Set arg 1 to float value
         instruction.args[1] = *((int32_t *)&value);
+
+        // Add assembled instruction
+        function.instructions.push_back(instruction);
+      }
+      else if (m_lexer.getLexeme() == "movs")
+      {
+        // Move string to variable instruction
+        instruction.id = EInstruction::Movs;
+
+        // Expects identifier and string value as arguments, separated by ','
+        // token
+        // Expect identifier
+        m_lexer.lex(stream);
+        if (m_lexer.getToken() != ELexerToken::Identifier)
+        {
+          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          return false;
+        }
+
+        // Identifier must be valid variable name
+        auto entry1 = variables.find(m_lexer.getLexeme());
+        if (entry1 == variables.end())
+        {
+          std::cout << "Unknown variable name: " << m_lexer.getLexeme()
+                    << std::endl;
+          return false;
+        }
+
+        // Expect ',' separator
+        m_lexer.lex(stream);
+        if (m_lexer.getToken() != ELexerToken::Comma)
+        {
+          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          return false;
+        }
+
+        // Expect string
+        m_lexer.lex(stream);
+        if (m_lexer.getToken() != ELexerToken::String)
+        {
+          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          return false;
+        }
+
+        // Add string to string table
+        uint32_t strIndex = addString(m_lexer.getLexeme());
+
+        // Set arg 0 to relative variable stack index of var1
+        instruction.args[0] = *((int32_t *)&entry1->second);
+        // Set arg 1 to string index
+        instruction.args[1] = *((int32_t *)&strIndex);
 
         // Add assembled instruction
         function.instructions.push_back(instruction);
@@ -890,4 +961,21 @@ bool CAssembler::serializeFunctions(std::ostream &stream) const
     }
   }
   return stream.good();
+}
+
+uint32_t CAssembler::addString(const std::string &str)
+{
+  // Add string to table if it does not exist
+  uint32_t index = 0;
+  for (const auto &str : m_strings)
+  {
+    if (str == m_lexer.getLexeme())
+    {
+      return index;
+    }
+    ++index;
+  }
+  // Not found
+  m_strings.push_back(str);
+  return m_strings.size() - 1;
 }
