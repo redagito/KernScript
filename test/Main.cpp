@@ -148,6 +148,7 @@ int main(int argc, char **argv)
   testAsmUtil(*assembler, *vm, "test5");
   testAsmUtil(*assembler, *vm, "test6");
   testAsmUtil(*assembler, *vm, "test7");
+  testAsmUtil(*assembler, *vm, "test8");
   testAsmUtil(*assembler, *vm, "fibonacci");
 
   return 0;
