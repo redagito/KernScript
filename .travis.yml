@@ -8,7 +8,7 @@ compiler:
 script:
   - mkdir build
   - cd build
-  - make .. && make
+  - cmake .. && make
 
 matrix:
   include:
