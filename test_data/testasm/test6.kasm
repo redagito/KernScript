@@ -5,6 +5,7 @@ extern println 1
 func a
 {
 	param x // Parameter should, be 10
+	pushv x
 	calle println // Print 10
 	reti 20 // Return value
 }
