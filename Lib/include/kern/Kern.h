@@ -1,11 +1,11 @@
 #pragma once
 
-#include "IAssembler.h"
-#include "ICompiler.h"
-#include "IVirtualMachine.h"
+#include "kern/IAssembler.h"
+#include "kern/ICompiler.h"
+#include "kern/IVirtualMachine.h"
 
-#include "IExternFunction.h"
-#include "FunctionBinding.h"
+#include "kern/IExternFunction.h"
+#include "kern/FunctionBinding.h"
 
 namespace kern
 {

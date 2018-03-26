@@ -213,7 +213,7 @@ bool CAssembler::parseFunction(std::istream &stream)
           return false;
         }
         // Point to next instruction -> set to current size
-        labels[m_lexer.getLexeme()] = function.instructions.size();
+        labels[m_lexer.getLexeme()] = static_cast<uint32_t>(function.instructions.size());
       }
       else if (m_lexer.getLexeme() == "var")
       {
@@ -892,15 +892,15 @@ bool CAssembler::getExternFunctionId(const std::string &name, int32_t &id)
 bool CAssembler::serializeStrings(std::ostream &stream) const
 {
   // Write string count
-  uint32_t size = m_strings.size();
-  stream.write((char *)&size, 4);
+  uint32_t size = static_cast<uint32_t>(m_strings.size());
+  stream.write((char *)&size, sizeof(size));
 
   // Serialize strings
   for (const auto &str : m_strings)
   {
     // Write size
-    uint32_t length = str.length();
-    stream.write((char *)&length, 4);
+	uint32_t length = static_cast<uint32_t>(str.length());
+    stream.write((char *)&length, sizeof(length));
     // Write data
     stream.write(str.data(), length);
   }
@@ -910,8 +910,8 @@ bool CAssembler::serializeStrings(std::ostream &stream) const
 bool CAssembler::serializeExternFunctions(std::ostream &stream) const
 {
   // Write extern function count
-  uint32_t size = m_externFunctions.size();
-  stream.write((char *)&size, 4);
+  uint32_t size = static_cast<uint32_t>(m_externFunctions.size());
+  stream.write((char *)&size, sizeof(size));
 
   // Serialize extern functions
   for (const auto &externFunction : m_externFunctions)
@@ -928,7 +928,7 @@ bool CAssembler::serializeExternFunctions(std::ostream &stream) const
 bool CAssembler::serializeFunctions(std::ostream &stream) const
 {
   // Write function count
-  uint32_t size = m_functions.size();
+  uint32_t size = static_cast<uint32_t>(m_functions.size());
   stream.write((char *)&size, sizeof(size));
 
   // Serialize functions
@@ -936,7 +936,7 @@ bool CAssembler::serializeFunctions(std::ostream &stream) const
   {
     // Write name
     // Write size
-    uint32_t length = function.name.length();
+	uint32_t length = static_cast<uint32_t>(function.name.length());
     stream.write((char *)&length, sizeof(length));
     // Write data
     stream.write(function.name.data(), length);
@@ -949,7 +949,7 @@ bool CAssembler::serializeFunctions(std::ostream &stream) const
 
     // Write instructions
     // Write instruction size
-    size = function.instructions.size();
+    size = static_cast<uint32_t>(function.instructions.size());
     stream.write((char *)&size, sizeof(size));
 
     for (const auto &instruction : function.instructions)
@@ -977,5 +977,5 @@ uint32_t CAssembler::addString(const std::string &str)
   }
   // Not found
   m_strings.push_back(str);
-  return m_strings.size() - 1;
+  return static_cast<uint32_t>(m_strings.size() - 1);
 }

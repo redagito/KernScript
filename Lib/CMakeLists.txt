@@ -1,0 +1,21 @@
+file (GLOB_RECURSE SOURCE_FILES
+	${CMAKE_CURRENT_SOURCE_DIR}/source/*.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/source/*.cxx
+	${CMAKE_CURRENT_SOURCE_DIR}/source/*.h
+	${CMAKE_CURRENT_SOURCE_DIR}/source/*.hpp
+	${CMAKE_CURRENT_SOURCE_DIR}/source/*.hxx
+	${CMAKE_CURRENT_SOURCE_DIR}/include/*.h
+	${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp
+	${CMAKE_CURRENT_SOURCE_DIR}/include/*.hxx
+)
+
+add_library (${KERNSCRIPT_LIB_NAME} ${SOURCE_FILES})
+
+set_target_properties (${KERNSCRIPT_LIB_NAME} PROPERTIES 
+	CXX_STANDARD 11
+)
+
+target_include_directories (${KERNSCRIPT_LIB_NAME} 
+	PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/source
+	PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+)

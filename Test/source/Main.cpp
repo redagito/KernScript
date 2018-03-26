@@ -90,8 +90,8 @@ bool testAsmUtil(kern::IAssembler &assembler, kern::IVirtualMachine &vm,
             << "--- Starting test case: " << testName << std::endl;
 
   bool ok = true;
-  if (!testAsm(assembler, vm, "test_data/testasm/" + testName + ".kasm",
-               "test_data/testasm_out/" + testName + ".kbyte"))
+  if (!testAsm(assembler, vm, "data/asm/" + testName + ".kasm",
+               "asm_out/" + testName + ".kbyte"))
   {
     ok = false;
   }

@@ -1,0 +1,28 @@
+file (GLOB_RECURSE SOURCE_FILES
+	${CMAKE_CURRENT_SOURCE_DIR}/source/*.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/source/*.cxx
+	${CMAKE_CURRENT_SOURCE_DIR}/source/*.h
+	${CMAKE_CURRENT_SOURCE_DIR}/source/*.hpp
+	${CMAKE_CURRENT_SOURCE_DIR}/source/*.hxx
+)
+
+add_executable (${KERNSCRIPT_TEST_NAME} ${SOURCE_FILES})
+
+set_target_properties (${KERNSCRIPT_TEST_NAME} PROPERTIES 
+	CXX_STANDARD 11
+)
+
+target_include_directories (${KERNSCRIPT_TEST_NAME} 
+	PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/source
+)
+
+target_link_libraries (${KERNSCRIPT_TEST_NAME}
+	LINK_PRIVATE ${KERNSCRIPT_LIB_NAME}
+)
+
+add_test (${KERNSCRIPT_TEST_NAME} ${KERNSCRIPT_TEST_NAME})
+
+# Copy test data
+file (COPY ${CMAKE_CURRENT_SOURCE_DIR}/data DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+# Temp test data
+file (MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/asm_out)

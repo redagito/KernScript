@@ -1,47 +1,11 @@
-# Minimum cmake version
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required (VERSION 3.1)
+project (KernScript)
 
-# Project name
-project(KernScript)
+set (CXX_STANDARD_REQUIRED ON)
 
-# Include
-include_directories(
-	${CMAKE_CURRENT_SOURCE_DIR}/source/
-	${CMAKE_CURRENT_SOURCE_DIR}/include/
-)
+set (KERNSCRIPT_LIB_NAME ${PROJECT_NAME}Lib)
+add_subdirectory (Lib)
 
-# Sources
-file(GLOB_RECURSE SRC_FILES
-	${CMAKE_CURRENT_SOURCE_DIR}/source/*.cpp
-	${CMAKE_CURRENT_SOURCE_DIR}/source/*.h
-	${CMAKE_CURRENT_SOURCE_DIR}/include/*.h
-)
-
-# Add third party sources
-set(SRC_FILES ${SRC_FILES} ${THIRD_PARTY_SOURCES})
-
-# Flags
-if (${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU" OR ${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
-endif (${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU" OR ${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
-
-# Add library
-add_library(kernscript ${SRC_FILES})
-
-
-# Test sources
-file(GLOB_RECURSE TEST_SRC_FILES
-	${CMAKE_SOURCE_DIR}/test/*.cpp
-)
-
-# Test exectuable
-add_executable(kerntest ${TEST_SRC_FILES})
-
-# Link script library
-target_link_libraries(kerntest
-	kernscript
-)
-
-# Copy test_data
-file(COPY test_data DESTINATION ${CMAKE_CURRENT_BINARY_DIR}) 
+enable_testing ()
+set (KERNSCRIPT_TEST_NAME ${PROJECT_NAME}Test)
+add_subdirectory (Test)

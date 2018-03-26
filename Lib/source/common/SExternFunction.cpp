@@ -12,7 +12,7 @@ bool serialize(const SExternFunction &externFunction, std::ostream &stream)
   }
 
   // Write name
-  uint32_t length = externFunction.name.length();
+  uint32_t length = static_cast<uint32_t>(externFunction.name.length());
   stream.write((char *)&length, sizeof(length));
   stream.write((char *)externFunction.name.data(), length);
 

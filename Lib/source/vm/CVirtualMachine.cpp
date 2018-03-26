@@ -249,8 +249,7 @@ bool CVirtualMachine::execute()
 
   // Debug
   // printRuntimeStack();
-  // std::cout << "Executing instruction " << toString(instruction) <<
-  // std::endl;
+  std::cout << "Executing instruction " << toString(instruction) << std::endl;
 
   switch (instruction.id)
   {
@@ -361,7 +360,7 @@ bool CVirtualMachine::execute()
     // Reset instruction index
     m_currentInstructionIndex = 0;
     // Set new runtime stack base index for the called function
-    auto runtimeStackSize = m_runtimeStack.size();
+    uint32_t runtimeStackSize = static_cast<uint32_t>(m_runtimeStack.size());
     m_currentRuntimeStackBaseIndex = runtimeStackSize;
     // Modify by function parameter size
     const SFunction &newCurrentFunction =

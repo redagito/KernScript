@@ -33,7 +33,12 @@ bool deserialize(std::istream &stream, int32_t &value)
 
 bool deserialize(std::istream &stream, uint32_t &value)
 {
-  return deserializeBasic(stream, value);
+	return deserializeBasic(stream, value);
+}
+
+bool deserialize(std::istream &stream, uint64_t &value)
+{
+	return deserializeBasic(stream, value);
 }
 
 bool deserialize(std::istream &stream, float &value)
@@ -61,11 +66,11 @@ bool deserialize(std::istream &stream, std::string &str)
   temp.reserve(length);
 
   // Read string content
+  // TODO Slow
   for (uint32_t i = 0; i < length; ++i)
   {
-    // TODO Slow?
     char c;
-    stream.read(&c, 1);
+    stream.read(&c, sizeof(c));
     temp.push_back(c);
   }
 

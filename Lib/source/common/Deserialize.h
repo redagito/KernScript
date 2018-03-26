@@ -35,6 +35,11 @@ bool deserialize(std::istream &stream, int32_t &value);
 bool deserialize(std::istream &stream, uint32_t &value);
 
 /**
+* \brief Deserialize 64 bit unsigned integer value.
+*/
+bool deserialize(std::istream &stream, uint64_t &value);
+
+/**
 * \brief Deserialize 32 bit floating value.
 */
 bool deserialize(std::istream &stream, float &value);
