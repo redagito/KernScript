@@ -7,4 +7,4 @@ KernScript consists of
 * an assembler which produces bytecode files with a custom format
 * a virtual machine which can execute the bytecode files
 
-KernScript is an educational project and (currently) not fit for productive use.
+KernScript is an educational project and not fit for productive use.
