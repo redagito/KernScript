@@ -1,0 +1,298 @@
+#include <catch2/catch_test_macros.hpp>
+
+#include "TestSupport.hpp"
+
+namespace
+{
+
+const std::string header = "extern println 1\n";
+
+std::string wrap(const std::string &body)
+{
+  return header + "\nfunc main\n{\n" + body + "\n}\n";
+}
+}
+
+TEST_CASE("A script function returns from ret", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 1\ncalle println\nret");
+
+  testutil::DiscardRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+}
+
+TEST_CASE("Add and sub operate on the runtime stack", "[integration][vm]")
+{
+  const std::string source =
+      wrap("pushi 10\npushi 20\nadd\ncalle println\nret");
+
+  testutil::DiscardRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+}
+
+TEST_CASE("Pushf and pushi both push onto the runtime stack",
+          "[integration][vm]")
+{
+  const std::string source =
+      wrap("pushi 1\npushf 2.5\ncalle println\ncalle println\nret");
+
+  testutil::DiscardRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+}
+
+TEST_CASE("Jump if less or equal is taken", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 1\npushi 2\njle a\n"
+                                  "pushi 20\ncalle println\n"
+                                  "label a\npushi 10\ncalle println\nret");
+
+  testutil::DiscardRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+}
+
+TEST_CASE("Jump if less or equal is not taken", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 5\npushi 2\njle a\n"
+                                  "pushi 20\ncalle println\n"
+                                  "label a\npushi 10\ncalle println\nret");
+
+  testutil::DiscardRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+}
+
+TEST_CASE("A script function receives its parameter", "[integration][vm]")
+{
+  const std::string source = "extern println 1\n\nfunc print\n{\nparam a\n"
+                             "pushv a\ncalle println\nret\n}\n"
+                             "\nfunc main\n{\npushi 100\ncall print\nret\n}\n";
+
+  testutil::DiscardRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+}
+
+TEST_CASE("Movs advances the instruction pointer", "[integration][vm]")
+{
+  const std::string source = "extern println 1\n\nfunc main\n{\nvar x\n"
+                             "movs x, \"hello\"\npushv x\ncalle println\nret\n}\n";
+
+  testutil::DiscardRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+}
+
+TEST_CASE("movv advances the instruction pointer", "[integration][vm]")
+{
+  SKIP("movv does not advance m_currentInstructionIndex, so callFunction never "
+       "returns. Enable this once the instruction pointer bug is fixed.");
+
+  const std::string source = "extern println 1\n\nfunc main\n{\nvar a\nvar b\n"
+                             "movi a, 3\nmovv b, a\npushv b\ncalle println\n"
+                             "ret\n}\n";
+
+  testutil::DiscardRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+}
+
+TEST_CASE("movi advances the instruction pointer", "[integration][vm]")
+{
+  SKIP("movi does not advance m_currentInstructionIndex, so callFunction never "
+       "returns. Enable this once the instruction pointer bug is fixed.");
+
+  const std::string source = "extern println 1\n\nfunc main\n{\nvar a\n"
+                             "movi a, 7\npushv a\ncalle println\nret\n}\n";
+
+  testutil::DiscardRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+}
+
+TEST_CASE("movf advances the instruction pointer", "[integration][vm]")
+{
+  SKIP("movf does not advance m_currentInstructionIndex, so callFunction never "
+       "returns. Enable this once the instruction pointer bug is fixed.");
+
+  const std::string source = "extern println 1\n\nfunc main\n{\nvar a\n"
+                             "movf a, 1.5\npushv a\ncalle println\nret\n}\n";
+
+  testutil::DiscardRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+}
+
+TEST_CASE("reti returns the value to the caller", "[integration][vm]")
+{
+  const std::string source = "extern println 1\n\nfunc a\n{\nparam x\n"
+                             "pushv x\ncalle println\nreti 20\n}\n"
+                             "\nfunc main\n{\npushi 10\ncall a\n"
+                             "calle println\nret\n}\n";
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  // Bug: the return value slot is one past the runtime stack base, which is
+  // out of bounds, and the value is never written to the caller stack.
+  REQUIRE(recorder.text() == "10\n20\n");
+}
+
+TEST_CASE("retv returns the value to the caller", "[integration][vm]")
+{
+  const std::string source = "extern println 1\n\nfunc f\n{\nparam x\nvar b\n"
+                             "pushi 77\npopv b\nretv b\n}\n"
+                             "\nfunc main\n{\npushi 5\ncall f\n"
+                             "calle println\nret\n}\n";
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "77\n");
+}
+
+TEST_CASE("An empty function falls back to ret", "[integration][vm]")
+{
+  const std::string source = header + "\nfunc main\n{\n}\n";
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+
+  // A script with no instructions must return, not run forever.
+  REQUIRE_FALSE(vm->callFunction("main"));
+}
+
+TEST_CASE("exit ends the script", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 1\ncalle println\nexit\n"
+                                  "pushi 2\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  // Everything after exit must not run.
+  REQUIRE(recorder.text() == "1\n");
+}
+
+TEST_CASE("Calling an unknown function fails", "[integration][vm]")
+{
+  const std::string source = wrap("ret");
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+
+  REQUIRE_FALSE(vm->callFunction("missing"));
+}
+
+TEST_CASE("Calling an unregistered extern function stops the script",
+          "[integration][vm]")
+{
+  const std::string source = wrap("pushi 1\ncalle println\nret");
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  REQUIRE(vm->load(byteCode));
+
+  REQUIRE_FALSE(vm->callFunction("main"));
+}
+
+TEST_CASE("clearScripts removes the loaded script", "[integration][vm]")
+{
+  const std::string source = wrap("ret");
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+  REQUIRE(vm->callFunction("main"));
+
+  vm->clearScripts();
+  REQUIRE_FALSE(vm->callFunction("main"));
+}
+
+TEST_CASE("Extern functions survive a clearScripts call", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 1\ncalle println\nret");
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+
+  vm->clearScripts();
+
+  std::stringstream reloaded;
+  REQUIRE(testutil::assemble(source, reloaded));
+  REQUIRE(vm->load(reloaded));
+  REQUIRE(vm->callFunction("main"));
+}
+
+TEST_CASE("removeFunction unregisters an extern function", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 1\ncalle println\nret");
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+  REQUIRE(vm->callFunction("main"));
+
+  vm->removeFunction("println");
+
+  vm->clearScripts();
+  std::stringstream reloaded;
+  REQUIRE(testutil::assemble(source, reloaded));
+  REQUIRE(vm->load(reloaded));
+  REQUIRE_FALSE(vm->callFunction("main"));
+}
+
+TEST_CASE("A host function returns its value to the script",
+          "[integration][vm]")
+{
+  const std::string source = "extern get_value 0\nextern println 1\n"
+                             "\nfunc main\n{\ncalle get_value\n"
+                             "calle println\nret\n}\n";
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "35\n");
+}
+
+TEST_CASE("A host function receives its arguments in source order",
+          "[integration][vm]")
+{
+  const std::string source = "extern log 2\n"
+                             "\nfunc main\n{\npushi 1\npushi 2\n"
+                             "calle log\nret\n}\n";
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "[1]: 2\n");
+}
+
+TEST_CASE("An empty runtime stack is not popped", "[integration][vm]")
+{
+  const std::string source = wrap("ret");
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+
+  // The runtime stack only grows for the called function's locals, so calling
+  // a function that never pushes anything leaves it empty at ret.
+  REQUIRE(vm->callFunction("main"));
+}

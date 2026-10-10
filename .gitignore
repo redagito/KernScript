@@ -1,3 +1,10 @@
+# Conan build directory and generated presets (Conan 2)
+/build/
+/CMakeUserPresets.json
+
+# Test byte code output
+asm_out/
+
 # Compiled Object files
 *.slo
 *.lo
