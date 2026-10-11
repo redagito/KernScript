@@ -114,6 +114,29 @@ bool VirtualMachine::load(std::istream &byteCode)
   {
     throwRuntimeError(m_logger, "load is not reentrant.");
   }
+  // Atomicity: discard any previously loaded script first, and wipe the
+  // tables again on any failure below, so a failed load leaves empty tables
+  // behind instead of a mix of old and partial new data. A failure either
+  // returns false or throws kern::RuntimeError; both leave no script loaded.
+  clearScripts();
+  try
+  {
+    if (!loadTables(byteCode))
+    {
+      clearScripts();
+      return false;
+    }
+  }
+  catch (...)
+  {
+    clearScripts();
+    throw;
+  }
+  return true;
+}
+
+bool VirtualMachine::loadTables(std::istream &byteCode)
+{
   // The header leads the bytecode. Anything else is not runnable here.
   ScriptHeader header;
   if (!deserialize(header, byteCode, m_maxStringBytes))

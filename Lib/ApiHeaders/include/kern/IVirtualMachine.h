@@ -25,6 +25,10 @@ public:
 
   /**
   * \brief Loads byte code from input stream.
+  *
+  * Replaces any previously loaded script. If loading fails, either by
+  * returning false or by throwing kern::RuntimeError, no script remains
+  * loaded; load again before calling a function.
   */
   virtual bool load(std::istream &byteCode) = 0;
 

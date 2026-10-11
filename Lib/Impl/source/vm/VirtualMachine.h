@@ -59,7 +59,12 @@ public:
 protected:
   /**
   * \brief Byte code deserialization.
+  *
+  * Reads the header and all tables into the member vectors. Reports
+  * truncations with false and limit violations by throwing; either way the
+  * caller (load) wipes the tables, so a failure never leaves partial data.
   */
+  bool loadTables(std::istream &byteCode);
   bool deserializeStrings(std::istream &stream);
   bool deserializeExternFunctions(std::istream &stream);
   bool deserializeFunctions(std::istream &stream);

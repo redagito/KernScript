@@ -1543,6 +1543,73 @@ TEST_CASE("A failed lookup leaves later calls working", "[integration][vm]")
   REQUIRE(recorder.text() == "1\n");
 }
 
+TEST_CASE("A failed load leaves no script behind", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 1\ncalle println\nret");
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr);
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+  REQUIRE(vm.callFunction("main"));
+  REQUIRE(recorder.text() == "1\n");
+
+  // A truncated stream fails the load; neither the old script nor a partial
+  // new one may remain.
+  std::stringstream truncated;
+  writeHeader(truncated);
+  writeRaw<uint32_t>(truncated, 1);
+  writeString(truncated, "hi");
+  writeRaw<uint32_t>(truncated, 0);
+  writeRaw<uint32_t>(truncated, 1);
+  writeString(truncated, "main");
+  writeRaw<uint32_t>(truncated, 0);
+  writeRaw<uint32_t>(truncated, 0);
+  writeRaw<uint32_t>(truncated, 1);
+  truncated.write("\x00", 1);
+
+  REQUIRE_FALSE(vm.load(truncated));
+  REQUIRE_FALSE(vm.callFunction("main"));
+
+  // The VM stays usable: a valid script loads cleanly afterwards.
+  byteCode.clear();
+  byteCode.seekg(0);
+  REQUIRE(vm.load(byteCode));
+  REQUIRE(vm.callFunction("main"));
+  REQUIRE(recorder.text() == "1\n1\n");
+}
+
+TEST_CASE("A throwing load leaves no script behind", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 1\ncalle println\nret");
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr);
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+  REQUIRE(vm.callFunction("main"));
+  REQUIRE(recorder.text() == "1\n");
+
+  // A huge count throws instead of returning false; the old script must be
+  // gone all the same.
+  std::stringstream corrupt;
+  writeHeader(corrupt);
+  writeRaw<uint32_t>(corrupt, 0xFFFFFFFF);
+
+  REQUIRE_THROWS_AS(vm.load(corrupt), kern::RuntimeError);
+  REQUIRE_FALSE(vm.callFunction("main"));
+
+  byteCode.clear();
+  byteCode.seekg(0);
+  REQUIRE(vm.load(byteCode));
+  REQUIRE(vm.callFunction("main"));
+  REQUIRE(recorder.text() == "1\n1\n");
+}
+
 TEST_CASE("Calling an unregistered extern function stops the script",
           "[integration][vm]")
 {
