@@ -1104,6 +1104,138 @@ TEST_CASE("A host function receives its arguments in source order",
   REQUIRE(recorder.text() == "[1]: 2\n");
 }
 
+TEST_CASE("VMConfig defaults to 1MB stack and 1024 depth",
+          "[integration][vm][limits]")
+{
+  const kern::VMConfig config{};
+  REQUIRE(config.maxStackBytes == 1024 * 1024);
+  REQUIRE(config.maxCallDepth == 1024);
+}
+
+TEST_CASE("Stack limit allows pushes within budget",
+          "[integration][vm][limits]")
+{
+  const size_t slots = 4;
+  const kern::VMConfig config{slots * sizeof(CValue), 1024};
+  const std::string source = wrap("pushi 1\npushi 2\npushi 3\npushi 4\n"
+                                  "calle println\ncalle println\n"
+                                  "calle println\ncalle println\nret");
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  CVirtualMachine vm(nullptr, config);
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+  REQUIRE(vm.callFunction("main"));
+
+  REQUIRE(recorder.text() == "4\n3\n2\n1\n");
+}
+
+TEST_CASE("Stack limit throws past budget", "[integration][vm][limits]")
+{
+  const size_t slots = 4;
+  const kern::VMConfig config{slots * sizeof(CValue), 1024};
+  const std::string source = wrap("pushi 1\npushi 2\npushi 3\npushi 4\n"
+                                  "pushi 5\npushi 6\nret");
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  CVirtualMachine vm(nullptr, config);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
+}
+
+TEST_CASE("Call depth limit stops infinite recursion",
+          "[integration][vm][limits]")
+{
+  const std::string source = "extern println 1\n\nfunc f\n{\ncall f\nret\n}\n"
+                             "\nfunc main\n{\ncall f\nret\n}\n";
+  const kern::VMConfig config{1024 * 1024, 4};
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  CVirtualMachine vm(nullptr, config);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
+}
+
+TEST_CASE("Corrupt stack size is rejected, not bad_alloc",
+          "[integration][vm][limits]")
+{
+  FakeFunction main;
+  main.instructions = {makeInstruction(EInstruction::Call, 1)};
+  FakeFunction callee;
+  callee.name = "callee";
+  callee.stackSize = 0xFFFFFFFF;
+  callee.parameterSize = 0;
+
+  std::stringstream byteCode = buildByteCode({}, {main, callee});
+  CVirtualMachine vm(nullptr, kern::VMConfig{});
+  REQUIRE(vm.load(byteCode));
+
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
+}
+
+TEST_CASE("Factory overloads accept a config", "[integration][vm][limits]")
+{
+  const std::string source = wrap("pushi 1\npushi 2\npushi 3\npushi 4\n"
+                                  "pushi 5\npushi 6\nret");
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  const kern::VMConfig tiny{4 * sizeof(CValue), 1024};
+  std::unique_ptr<kern::IVirtualMachine> vm(
+      kern::createVirtualMachine(nullptr, tiny));
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+
+  REQUIRE_THROWS_AS(vm->callFunction("main"), kern::RuntimeError);
+
+  std::unique_ptr<kern::IVirtualMachine> defaulted(
+      kern::createVirtualMachine(kern::VMConfig{}));
+  testutil::StringRecorder output;
+  testutil::registerHostFunctions(*defaulted, output);
+  byteCode.clear();
+  byteCode.seekg(0);
+  REQUIRE(defaulted->load(byteCode));
+
+  // A bug in the test itself would surface here as an unexpected throw.
+  REQUIRE(defaulted->callFunction("main"));
+}
+
+TEST_CASE("Return past a full stack throws", "[integration][vm][limits]")
+{
+  const size_t slots = 2;
+  const kern::VMConfig config{slots * sizeof(CValue), 1024};
+  const std::string source = "extern println 1\n\nfunc f\n{\nreti 5\n}\n"
+                             "\nfunc main\n{\npushi 1\npushi 2\ncall f\n"
+                             "calle println\nret\n}\n";
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  CVirtualMachine vm(nullptr, config);
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  // Two pushes fill the budget and the call fits, but the valueless frame
+  // leaves no slot for the return value.
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
+}
+
 TEST_CASE("An empty runtime stack is not popped", "[integration][vm]")
 {
   const std::string source = wrap("ret");

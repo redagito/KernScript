@@ -8,6 +8,7 @@
 #include "kern/ILogger.h"
 #include "kern/FunctionBinding.h"
 #include "kern/RuntimeError.h"
+#include "kern/VMConfig.h"
 
 namespace kern
 {
@@ -47,6 +48,21 @@ IVirtualMachine *createVirtualMachine();
 *        discards them.
 */
 IVirtualMachine *createVirtualMachine(ILogger *logger);
+
+/**
+* \brief Creates a virtual machine with explicit limits.
+* \param logger Receives diagnostics, owned by the caller. A null pointer
+*        discards them.
+* \param config Bounds the runtime stack and the call depth.
+*/
+IVirtualMachine *createVirtualMachine(ILogger *logger, VMConfig config);
+
+/**
+* \brief Creates a virtual machine with explicit limits that logs to the
+* spdlog default logger.
+* \param config Bounds the runtime stack and the call depth.
+*/
+IVirtualMachine *createVirtualMachine(VMConfig config);
 
 /**
 * \brief Provides version information.

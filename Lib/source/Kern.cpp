@@ -52,6 +52,17 @@ kern::IVirtualMachine *kern::createVirtualMachine(kern::ILogger *logger)
   return new CVirtualMachine(logger);
 }
 
+kern::IVirtualMachine *kern::createVirtualMachine(kern::ILogger *logger,
+                                                  kern::VMConfig config)
+{
+  return new CVirtualMachine(logger, config);
+}
+
+kern::IVirtualMachine *kern::createVirtualMachine(kern::VMConfig config)
+{
+  return createVirtualMachine(&defaultLogger(), config);
+}
+
 unsigned int kern::getMajorVersion() { return majorVersion; }
 
 unsigned int kern::getMinorVersion() { return minorVersion; }

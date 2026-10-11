@@ -9,6 +9,7 @@
 #include "kern/IVirtualMachine.h"
 #include "kern/IExternFunction.h"
 #include "kern/ILogger.h"
+#include "kern/VMConfig.h"
 
 #include "CValue.h"
 #include "common/SInstruction.h"
@@ -18,10 +19,17 @@ class CVirtualMachine : public kern::IVirtualMachine
 {
 public:
   /**
-  * \brief Constructs a virtual machine.
+  * \brief Constructs a virtual machine with default limits.
   * \param logger Receives diagnostics. A null pointer discards them.
   */
   explicit CVirtualMachine(kern::ILogger *logger);
+
+  /**
+  * \brief Constructs a virtual machine with explicit limits.
+  * \param logger Receives diagnostics. A null pointer discards them.
+  * \param config Bounds the runtime stack and the call depth.
+  */
+  CVirtualMachine(kern::ILogger *logger, kern::VMConfig config);
 
   bool load(std::istream &byteCode);
 
@@ -114,4 +122,6 @@ private:
   uint32_t m_currentFunctionIndex = 0;    /**< Index of active function. */
   uint32_t m_currentInstructionIndex = 0; /**< Index of active instruction. */
   kern::ILogger *m_logger = nullptr;      /**< Receives diagnostics. */
+  size_t m_maxStackSize = 0;              /**< Runtime stack budget in slots. */
+  uint32_t m_maxCallDepth = 0;            /**< Nested call budget in frames. */
 };

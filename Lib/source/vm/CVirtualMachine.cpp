@@ -55,11 +55,17 @@ CVirtualMachine::SFunctionFrame::SFunctionFrame(uint32_t funcIndex,
 }
 
 CVirtualMachine::CVirtualMachine(kern::ILogger *logger)
-    : m_logger(logger != nullptr ? logger : nullLogger())
+    : CVirtualMachine(logger, kern::VMConfig{})
 {
-  // Reserve runtime stack size.
-  // TODO Remove hardcoded value
-  m_runtimeStack.reserve(1024 * 256);
+}
+
+CVirtualMachine::CVirtualMachine(kern::ILogger *logger, kern::VMConfig config)
+    : m_logger(logger != nullptr ? logger : nullLogger()),
+      m_maxStackSize(config.maxStackBytes / sizeof(CValue)),
+      m_maxCallDepth(config.maxCallDepth)
+{
+  // Preallocate the whole budget, so steady state never reallocates.
+  m_runtimeStack.reserve(m_maxStackSize);
 }
 
 bool CVirtualMachine::load(std::istream &byteCode)
@@ -101,7 +107,13 @@ bool CVirtualMachine::callFunction(const std::string &functionName)
     return false;
   }
   m_currentInstructionIndex = 0;
-  m_runtimeStack.resize(m_functions.at(m_currentFunctionIndex).stackSize);
+  const uint32_t stackSize =
+      m_functions.at(m_currentFunctionIndex).stackSize;
+  if (stackSize > m_maxStackSize)
+  {
+    throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
+  }
+  m_runtimeStack.resize(stackSize);
 
   // Execute function
   bool running = true;
@@ -473,6 +485,20 @@ bool CVirtualMachine::execute()
                         "Call needs {} parameters on the runtime stack.",
                         newCurrentFunction.parameterSize);
     }
+    if (m_callStack.size() >= m_maxCallDepth)
+    {
+      throwRuntimeError(m_logger, "Maximum call depth exceeded.");
+    }
+    // All arithmetic below runs in 64 bit: 32 bit stack sizes from corrupt
+    // input wrap around and would otherwise resize the stack small.
+    const uint64_t newSize =
+        static_cast<uint64_t>(runtimeStackSize) +
+        static_cast<uint64_t>(newCurrentFunction.stackSize) -
+        static_cast<uint64_t>(newCurrentFunction.parameterSize);
+    if (newSize > m_maxStackSize)
+    {
+      throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
+    }
     // Push current function index, next instruction index and base stack index
     // for
     // return call.
@@ -487,8 +513,7 @@ bool CVirtualMachine::execute()
     m_currentRuntimeStackBaseIndex =
         runtimeStackSize - newCurrentFunction.parameterSize;
     // Resize runtime stack with local stack size of called function
-    m_runtimeStack.resize(runtimeStackSize + newCurrentFunction.stackSize -
-                          newCurrentFunction.parameterSize);
+    m_runtimeStack.resize(static_cast<size_t>(newSize));
     break;
   }
 
@@ -567,7 +592,13 @@ bool CVirtualMachine::execute()
     }
 
     // Resize runtime stack to remove local function variables but the one
-    // holding the return value.
+    // holding the return value. The resize can only grow here when the frame
+    // is empty, so it stays within budget by the same argument as below.
+    if (static_cast<uint64_t>(m_currentRuntimeStackBaseIndex) + 1 >
+        m_maxStackSize)
+    {
+      throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
+    }
     m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
 
     // Retrieve function index of previous function
@@ -593,6 +624,11 @@ bool CVirtualMachine::execute()
     // is the slot the caller reads the return value from. A function without
     // parameters or locals leaves the frame empty, so the slot is grown
     // first rather than assumed to exist.
+    if (static_cast<uint64_t>(m_currentRuntimeStackBaseIndex) + 1 >
+        m_maxStackSize)
+    {
+      throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
+    }
     m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
     m_runtimeStack[m_currentRuntimeStackBaseIndex] =
         *((int32_t *)&instruction.args[0]);
@@ -620,6 +656,11 @@ bool CVirtualMachine::execute()
     // is the slot the caller reads the return value from. A function without
     // parameters or locals leaves the frame empty, so the slot is grown
     // first rather than assumed to exist.
+    if (static_cast<uint64_t>(m_currentRuntimeStackBaseIndex) + 1 >
+        m_maxStackSize)
+    {
+      throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
+    }
     m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
     m_runtimeStack[m_currentRuntimeStackBaseIndex] =
         *((float *)&instruction.args[0]);
@@ -651,6 +692,11 @@ bool CVirtualMachine::execute()
     if (!indexInRange(0, instruction.args[0], m_strings.size()))
     {
       throwRuntimeError(m_logger, "Rets string index out of range.");
+    }
+    if (static_cast<uint64_t>(m_currentRuntimeStackBaseIndex) + 1 >
+        m_maxStackSize)
+    {
+      throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
     }
     m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
     m_runtimeStack[m_currentRuntimeStackBaseIndex] =
@@ -981,6 +1027,10 @@ bool CVirtualMachine::execute()
 void CVirtualMachine::pushValue(const CValue &val)
 {
   assert(val.getType() != CValue::EType::Invalid);
+  if (m_runtimeStack.size() >= m_maxStackSize)
+  {
+    throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
+  }
   m_runtimeStack.push_back(val);
 }
 
