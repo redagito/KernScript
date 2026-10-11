@@ -4,7 +4,6 @@
 
 #include "common/Deserialize.h"
 #include "common/Instructions.h"
-#include "common/Serialize.h"
 #include "common/SExternFunction.h"
 #include "common/SInstruction.h"
 #include "common/SScriptHeader.h"

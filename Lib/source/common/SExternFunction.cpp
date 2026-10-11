@@ -1,6 +1,5 @@
 #include "SExternFunction.h"
 
-#include "Serialize.h"
 #include "Deserialize.h"
 
 bool serialize(const SExternFunction &externFunction, std::ostream &stream)
