@@ -153,6 +153,27 @@ TEST_CASE("Assembler rejects a variable shadowing a parameter",
   REQUIRE_FALSE(testutil::assemble(source, byteCode));
 }
 
+TEST_CASE("Assembler rejects a variable array overflowing the frame",
+          "[integration][assembler][m7]")
+{
+  const std::string source =
+      wrap("vara a 4000000000\nvara b 400000000\nret");
+  std::stringstream byteCode;
+
+  REQUIRE_FALSE(testutil::assemble(source, byteCode));
+}
+
+TEST_CASE("Assembler rejects a variable after a huge array",
+          "[integration][assembler][m7]")
+{
+  // The array alone fills the frame; one more slot would wrap the frame size
+  // back to zero.
+  const std::string source = wrap("vara a 4294967295\nvar b\nret");
+  std::stringstream byteCode;
+
+  REQUIRE_FALSE(testutil::assemble(source, byteCode));
+}
+
 TEST_CASE("Assembler rejects an unresolved jump target",
           "[integration][assembler]")
 {

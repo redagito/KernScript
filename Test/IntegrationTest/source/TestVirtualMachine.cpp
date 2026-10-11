@@ -1292,6 +1292,23 @@ TEST_CASE("Pushi accepts the minimum integer", "[integration][vm][m6]")
   REQUIRE(recorder.text() == "-2147483648\n");
 }
 
+TEST_CASE("Calling a function with a huge frame is refused",
+          "[integration][vm][m7]")
+{
+  // The array fits the frame arithmetic, so assembly succeeds, but the frame
+  // exceeds the runtime budget and the call stops instead of allocating it.
+  const std::string source = wrap("vara a 4294967295\nret");
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
+}
+
 TEST_CASE("Movs advances the instruction pointer", "[integration][vm]")
 {
   const std::string source = "extern println 1\n\nfunc main\n{\nvar x\n"

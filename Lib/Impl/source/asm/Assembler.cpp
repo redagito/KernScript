@@ -285,6 +285,12 @@ bool Assembler::parseFunction(std::istream &stream)
           return false;
         }
 
+        if (stackSize == UINT32_MAX || parameterSize == UINT32_MAX)
+        {
+          m_logger->error("Function frame size overflow.");
+          return false;
+        }
+
         // Set parameter offset to current stack size
         variables[paramName] = stackSize;
 
@@ -331,6 +337,12 @@ bool Assembler::parseFunction(std::istream &stream)
           return false;
         }
 
+        if (stackSize == UINT32_MAX)
+        {
+          m_logger->error("Function frame size overflow.");
+          return false;
+        }
+
         // Set variable offset to current stack size
         variables[varName] = stackSize;
 
@@ -369,6 +381,14 @@ bool Assembler::parseFunction(std::istream &stream)
         if (!parseInteger(m_lexer.getLexeme(), size) || size == 0)
         {
           m_logger->error("Invalid array size: {}", m_lexer.getLexeme());
+          return false;
+        }
+
+        // The addition below must not wrap, or the frame would come out
+        // smaller than the declared variables.
+        if (size > UINT32_MAX - stackSize)
+        {
+          m_logger->error("Function frame size overflow.");
           return false;
         }
 
