@@ -1,0 +1,30 @@
+// Iterative factorial: fact(5) = 120. Exercises mul in a loop with
+// variables, a backward jump and an early exit condition.
+extern println 1
+
+func main
+{
+  var n
+  var acc
+  pushi 1
+  popv acc
+  pushi 5
+  popv n
+  label loop
+  pushv n
+  pushi 1
+  jle done
+  pushv acc
+  pushv n
+  mul
+  popv acc
+  pushv n
+  pushi 1
+  sub
+  popv n
+  jmp loop
+  label done
+  pushv acc
+  calle println
+  ret
+}

@@ -61,6 +61,13 @@ TEST_CASE("returns cover every return form", "[e2e][fixture]")
   REQUIRE(recorder.text() == "42\n3.5\nhello\n\n7\n8\n9\n10\n");
 }
 
+TEST_CASE("factorial computes fact(5) iteratively", "[e2e][fixture]")
+{
+  const testutil::StringRecorder recorder = runFixture("factorial");
+
+  REQUIRE(recorder.text() == "120\n");
+}
+
 TEST_CASE("test1 prints its values and calls a two argument extern function",
           "[e2e][fixture]")
 {
