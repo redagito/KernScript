@@ -81,8 +81,7 @@ void checkPopAllowed(kern::ILogger *logger, bool running, const std::vector<Valu
   if (stack.empty()) {
     throwRuntimeError(logger, "popParameter needs a value on the runtime stack.");
   }
-  if (static_cast<uint64_t>(stack.size()) <=
-      static_cast<uint64_t>(base) + static_cast<uint64_t>(frameSize)) {
+  if (static_cast<uint64_t>(stack.size()) <= static_cast<uint64_t>(base) + static_cast<uint64_t>(frameSize)) {
     throwRuntimeError(logger, "popParameter would go below the frame.");
   }
 }

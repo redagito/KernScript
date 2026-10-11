@@ -1229,7 +1229,8 @@ TEST_CASE("A call beyond an enlarged budget is refused typed", "[integration][vm
   REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
 }
 
-TEST_CASE("A huge table count with a huge limit throws typed", "[integration][vm][limits]") {  // The limit check passes, so the resize itself must fail as a typed error
+TEST_CASE("A huge table count with a huge limit throws typed",
+          "[integration][vm][limits]") { // The limit check passes, so the resize itself must fail as a typed error
   // instead of bad_alloc.
   kern::VMConfig config;
   config.maxTableEntries = 0xFFFFFFFF;
