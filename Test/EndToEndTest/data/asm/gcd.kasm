@@ -1,0 +1,35 @@
+// Greatest common divisor by repeated subtraction: gcd(48, 18) = 6.
+// Exercises nested conditional branches inside a loop.
+extern println 1
+
+func main
+{
+  var a
+  var b
+  pushi 48
+  popv a
+  pushi 18
+  popv b
+  label loop
+  pushv a
+  pushv b
+  je done
+  pushv a
+  pushv b
+  jg a_greater
+  pushv b
+  pushv a
+  sub
+  popv b
+  jmp loop
+  label a_greater
+  pushv a
+  pushv b
+  sub
+  popv a
+  jmp loop
+  label done
+  pushv a
+  calle println
+  ret
+}

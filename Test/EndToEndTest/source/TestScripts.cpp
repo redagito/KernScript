@@ -68,6 +68,13 @@ TEST_CASE("factorial computes fact(5) iteratively", "[e2e][fixture]")
   REQUIRE(recorder.text() == "120\n");
 }
 
+TEST_CASE("gcd computes gcd(48, 18) by subtraction", "[e2e][fixture]")
+{
+  const testutil::StringRecorder recorder = runFixture("gcd");
+
+  REQUIRE(recorder.text() == "6\n");
+}
+
 TEST_CASE("test1 prints its values and calls a two argument extern function",
           "[e2e][fixture]")
 {
