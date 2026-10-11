@@ -1,0 +1,31 @@
+KernScript Assembly Language
+===========================
+
+String literals
+---------------
+
+A string literal is delimited by double quotes ('"'). The quotes are
+not part of the lexeme. Implemented in Lexer::lexString
+(Lib/Impl/source/common/Lexer.cpp).
+
+Backslash escapes are kept verbatim: the lexer stores the backslash
+and the character after it exactly as written, without translating
+them. For example the source text "a\"b" lexes to the 4-character
+value a\"b (a, backslash, quote, b). A \n sequence stays two
+characters (backslash, n); it is NOT converted to a newline.
+
+The backslash only controls termination: a quote preceded by an odd
+run of escapes does not close the string, so an escaped quote stays
+inside the value instead of ending it.
+
+A string must close on the same line. A newline or end of stream
+before the closing quote yields an Invalid token, and the value is
+discarded. An unterminated string at end of stream is Invalid as well.
+
+Verbatim values flow unchanged through the assembler string table
+(movs, pushs, rets) into the bytecode and into Value at runtime: what
+the lexer kept is what the script compares and prints.
+
+See TestCLexer.cpp "Lexer keeps backslash escapes inside string
+literals", which asserts this retention. Do not change the lexer to
+translate escapes without updating this document and that test.
