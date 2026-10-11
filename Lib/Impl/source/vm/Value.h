@@ -33,6 +33,8 @@ public:
   bool convert(uint32_t &value) const;
   bool convert(float &value) const;
   bool convert(std::string &value) const;
+  bool convert(double &value) const;
+  bool convert(bool &value) const;
 
   Type getType() const;
 

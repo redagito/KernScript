@@ -44,6 +44,9 @@ public:
   bool popParameter(int &value);
   bool popParameter(float &value);
   bool popParameter(std::string &value);
+  bool popParameter(double &value);
+  bool popParameter(unsigned int &value);
+  bool popParameter(bool &value);
 
   void setReturnValue();
   void setReturnValue(int value);

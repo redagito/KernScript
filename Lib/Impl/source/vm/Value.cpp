@@ -231,6 +231,51 @@ bool Value::convert(std::string &value) const
   }
 }
 
+bool Value::convert(double &value) const
+{
+  // Every int32 and uint32 boundary is exactly representable in double, so
+  // no range check is needed; float widens exactly as well.
+  switch (m_type)
+  {
+  case Type::Integer:
+    value = static_cast<double>(m_integer);
+    return true;
+  case Type::UnsignedInteger:
+    value = static_cast<double>(m_unsignedInteger);
+    return true;
+  case Type::Float:
+    value = static_cast<double>(m_float);
+    return true;
+  case Type::String:
+    throw kern::RuntimeError("Cannot convert string to double.");
+  default:
+    // Unknown or invalid conversion
+    return false;
+  }
+}
+
+bool Value::convert(bool &value) const
+{
+  // Zero is the only false value, matching the logical operators.
+  switch (m_type)
+  {
+  case Type::Integer:
+    value = (m_integer != 0);
+    return true;
+  case Type::UnsignedInteger:
+    value = (m_unsignedInteger != 0);
+    return true;
+  case Type::Float:
+    value = (m_float != 0.f);
+    return true;
+  case Type::String:
+    throw kern::RuntimeError("Cannot convert string to boolean.");
+  default:
+    // Unknown or invalid conversion
+    return false;
+  }
+}
+
 Value::Type Value::getType() const { return m_type; }
 
 std::string Value::toString() const

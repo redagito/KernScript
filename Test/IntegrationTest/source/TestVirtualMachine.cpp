@@ -2122,3 +2122,113 @@ TEST_CASE("Popping a stale extern return clears the next call",
   REQUIRE(testutil::runScript(source, "main", recorder));
   REQUIRE(recorder.text() == "1\n");
 }
+
+TEST_CASE("popParameter takes a double", "[integration][vm][pop]")
+{
+  class DoubleTaker : public kern::IExternFunction
+  {
+  public:
+    bool call(kern::IVirtualMachine &vm) override
+    {
+      double value = 0.0;
+      if (!vm.popParameter(value))
+      {
+        return false;
+      }
+      seen = value;
+      return true;
+    }
+
+    unsigned int getArgumentCount() const override { return 1; }
+
+    double seen = 0.0;
+  };
+
+  const std::string source =
+      "extern take 1\n\nfunc main\n{\npushi 3\ncalle take\nret\n}\n";
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  auto *taker = new DoubleTaker();
+  vm.addFunction("take", taker);
+  REQUIRE(vm.load(byteCode));
+  REQUIRE(vm.callFunction("main"));
+  REQUIRE(taker->seen == 3.0);
+}
+
+TEST_CASE("popParameter takes an unsigned integer", "[integration][vm][pop]")
+{
+  class UnsignedTaker : public kern::IExternFunction
+  {
+  public:
+    bool call(kern::IVirtualMachine &vm) override
+    {
+      unsigned int value = 0;
+      if (!vm.popParameter(value))
+      {
+        return false;
+      }
+      seen = value;
+      return true;
+    }
+
+    unsigned int getArgumentCount() const override { return 1; }
+
+    unsigned int seen = 0;
+  };
+
+  const std::string source =
+      "extern take 1\n\nfunc main\n{\npushu 3000000000\ncalle take\nret\n}\n";
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  auto *taker = new UnsignedTaker();
+  vm.addFunction("take", taker);
+  REQUIRE(vm.load(byteCode));
+  REQUIRE(vm.callFunction("main"));
+  REQUIRE(taker->seen == 3000000000u);
+}
+
+TEST_CASE("popParameter takes a bool", "[integration][vm][pop]")
+{
+  class BoolTaker : public kern::IExternFunction
+  {
+  public:
+    bool call(kern::IVirtualMachine &vm) override
+    {
+      bool value = false;
+      if (!vm.popParameter(value))
+      {
+        return false;
+      }
+      seen.push_back(value);
+      return true;
+    }
+
+    unsigned int getArgumentCount() const override { return 1; }
+
+    std::vector<bool> seen;
+  };
+
+  const std::string source = "extern take 1\n\nfunc main\n{\npushi 5\n"
+                             "calle take\npushi 0\ncalle take\nret\n}\n";
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  auto *taker = new BoolTaker();
+  vm.addFunction("take", taker);
+  REQUIRE(vm.load(byteCode));
+  REQUIRE(vm.callFunction("main"));
+  REQUIRE(taker->seen.size() == 2);
+  REQUIRE(taker->seen[0]);
+  REQUIRE_FALSE(taker->seen[1]);
+}

@@ -76,6 +76,19 @@ public:
   virtual bool popParameter(int &value) = 0;
   virtual bool popParameter(float &value) = 0;
   virtual bool popParameter(::std::string &value) = 0;
+  /**
+  * \brief Pops a double value, widened from any numeric type.
+  */
+  virtual bool popParameter(double &value) = 0;
+  /**
+  * \brief Pops an unsigned integer value, throwing when a signed value is
+  * negative.
+  */
+  virtual bool popParameter(unsigned int &value) = 0;
+  /**
+  * \brief Pops a boolean value; zero is the only false value.
+  */
+  virtual bool popParameter(bool &value) = 0;
 
   /**
   * \brief Sets empty return value for functions without return type.

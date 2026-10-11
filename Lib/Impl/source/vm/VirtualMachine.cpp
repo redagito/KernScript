@@ -276,6 +276,44 @@ bool VirtualMachine::popParameter(::std::string &value)
   return ret;
 }
 
+bool VirtualMachine::popParameter(double &value)
+{
+  if (m_runtimeStack.empty())
+  {
+    throwRuntimeError(m_logger,
+                      "popParameter needs a value on the runtime stack.");
+  }
+  bool ret = m_runtimeStack.back().convert(value);
+  m_runtimeStack.pop_back();
+  return ret;
+}
+
+bool VirtualMachine::popParameter(unsigned int &value)
+{
+  if (m_runtimeStack.empty())
+  {
+    throwRuntimeError(m_logger,
+                      "popParameter needs a value on the runtime stack.");
+  }
+  uint32_t raw = 0;
+  bool ret = m_runtimeStack.back().convert(raw);
+  value = static_cast<unsigned int>(raw);
+  m_runtimeStack.pop_back();
+  return ret;
+}
+
+bool VirtualMachine::popParameter(bool &value)
+{
+  if (m_runtimeStack.empty())
+  {
+    throwRuntimeError(m_logger,
+                      "popParameter needs a value on the runtime stack.");
+  }
+  bool ret = m_runtimeStack.back().convert(value);
+  m_runtimeStack.pop_back();
+  return ret;
+}
+
 void VirtualMachine::setReturnValue() { return; }
 
 void VirtualMachine::setReturnValue(int value) { pushValue(Value(value)); }

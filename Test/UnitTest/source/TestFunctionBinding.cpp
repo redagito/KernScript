@@ -70,6 +70,24 @@ public:
     return true;
   }
 
+  bool popParameter(double &value) override
+  {
+    value = 0.0;
+    return true;
+  }
+
+  bool popParameter(unsigned int &value) override
+  {
+    value = 0;
+    return true;
+  }
+
+  bool popParameter(bool &value) override
+  {
+    value = false;
+    return true;
+  }
+
   void setReturnValue() override {}
   void setReturnValue(int value) override
   {
