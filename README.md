@@ -5,36 +5,28 @@ educational project. It is not fit for productive use.
 
 ## Overview
 
-A script travels through four stages, each implemented in `Lib/`:
+Scripts travel through four stages, each implemented in `Lib/`:
 
-| Stage | Component | Status |
-| --- | --- | --- |
-| Script source | `CCompiler` / `CParser` | Stub, `compile()` returns `false` |
-| Assembly source | `CAssembler` | Works |
-| Byte code file | `CAssembler` | Works |
-| Execution | `CVirtualMachine` | Works |
+* Compiler — produces assembly-like code from script source.
+* Assembler — produces byte code files in a custom format.
+* Virtual machine — executes byte code files and calls into host functions.
 
-The compiler does not exist yet. Scripts are currently written by hand in the
-assembly dialect under `Test/EndToEndTest/data/asm/`, which is the only way to
-reach the virtual machine today.
+The compiler is still a stub, so working scripts are currently written by hand
+in the assembly dialect kept in `Test/EndToEndTest/data/asm/`.
 
 ## Goals
 
-* A high level scripting language that compiles down to assembly-like
-  intermediate code.
-* An assembler and a custom byte code file format.
-* A virtual machine that executes byte code and binds to host functions.
+* A high level scripting language that compiles to assembly-like intermediate
+  code.
+* An assembler with a custom byte code file format.
+* A virtual machine that runs byte code and binds to host functions.
+* A test suite covering each stage in isolation and as a whole.
 
 ## Current status
 
-Roughly two thirds of the instruction set is implemented and covered by tests.
-The gaps, all visible in `Instructions.h`, are the multiplication, division,
-increment, decrement, logical and unconditional-jump families, plus the float
-and string return instructions.
-
-`CValue` also only implements integer arithmetic and comparison, and asserts on
-anything else. Diagnostics in the assembler and lexer still write to `std::cout`
-rather than a real logging channel.
+The assembler and virtual machine work, and the test suite is green. The
+compiler is unwritten, and parts of the instruction set are still missing. The
+remaining gaps are listed in `Instructions.h`.
 
 ## Building
 
@@ -47,13 +39,17 @@ cmake --build build --config Debug
 ctest --test-dir build -C Debug
 ```
 
-The build type passed to Conan must match the configuration passed to CMake.
-Conan generates the Catch2 CMake configuration for a single build type at a
-time, and the targets it exports guard their include and link paths by
-configuration, so a Debug build against a Release install fails to find headers.
+The build type given to Conan must match the configuration given to CMake.
+Conan writes the Catch2 configuration for one build type at a time, so a Debug
+build against a Release install fails to find the headers.
 
-Substitute `Release` for `Debug` in all four commands to build the release
-configuration.
+`--config` is required because the Visual Studio generator used here is
+multi-configuration: the configuration is chosen when building, not when
+configuring. On a single-configuration generator such as Ninja, the
+configuration is set with `-DCMAKE_BUILD_TYPE=Debug` at configure time and the
+flag is dropped.
+
+Substitute `Release` for `Debug` throughout to build the release configuration.
 
 ## Layout
 
