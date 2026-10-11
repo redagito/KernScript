@@ -61,9 +61,11 @@ public:
   /**
   * \brief Interface for extern functions.
   *
-  * Each overload pops one value from the runtime stack. Returns false when
-  * the value cannot be converted. Throws kern::RuntimeError when the stack
-  * is empty.
+  * Each overload pops one value from the runtime stack. Throws
+  * kern::RuntimeError when the stack is empty and when a string value is
+  * converted to a numeric type; a throw leaves the value on the stack.
+  * Returns false only when conversion is inapplicable (an invalid value);
+  * out-of-range numeric conversions throw instead of returning false.
   */
   virtual bool popParameter(int &value) = 0;
   virtual bool popParameter(float &value) = 0;
