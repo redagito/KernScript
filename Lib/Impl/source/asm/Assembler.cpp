@@ -1335,6 +1335,7 @@ bool Assembler::parseExternFunction(std::istream &stream)
   m_lexer.lex(stream);
   if (m_lexer.getToken() != LexerToken::Integer)
   {
+    m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
     return false;
   }
   // String to int convert, rejecting literals that do not fit.

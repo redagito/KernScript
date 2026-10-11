@@ -110,6 +110,26 @@ TEST_CASE("Assembler forwards its logger to its internal lexer",
   delete assembler;
 }
 
+TEST_CASE("Assembler logs a non-integer extern count", "[unit][logger]")
+{
+  testutil::RecordingLogger logger;
+
+  kern::IAssembler *assembler = kern::createAssembler(&logger);
+  REQUIRE(assembler != nullptr);
+
+  // The count slot holds an identifier, not an integer.
+  std::stringstream source("extern foo bar\n\nfunc main\n{\nret\n}\n");
+  std::stringstream byteCode;
+
+  REQUIRE_FALSE(assembler->assemble(source, byteCode));
+
+  // Both the parse error and the assembler's failure notice have to arrive.
+  // The count, not the wording, is asserted.
+  REQUIRE(logger.messages().size() >= 2);
+
+  delete assembler;
+}
+
 TEST_CASE("A null logger discards messages", "[unit][logger]")
 {
   kern::NullLogger logger;
