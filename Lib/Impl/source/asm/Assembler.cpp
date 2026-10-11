@@ -7,6 +7,26 @@
 
 #include "logging/Logger.h"
 
+namespace
+{
+
+/**
+* \brief Parses an assembler integer literal with full validation.
+*
+* The lexer only produces digit runs for Integer tokens, but a run can exceed
+* the target type. An unchecked stringstream extraction leaves the target
+* untouched on failure, so the caller would silently keep a default or
+* indeterminate value. Checking the stream state rejects such literals.
+*/
+template <typename T> bool parseInteger(const std::string &text, T &value)
+{
+  std::stringstream stream(text);
+  stream >> value;
+  return !stream.fail() && stream.eof();
+}
+
+}
+
 Assembler::Assembler(kern::ILogger *logger)
     : m_lexer(logger), m_logger(logger != nullptr ? logger : nullLogger())
 {
@@ -276,12 +296,10 @@ bool Assembler::parseFunction(std::istream &stream)
         }
 
         // Convert to array size
-        uint32_t size = 1;
-        std::stringstream ss(m_lexer.getLexeme());
-        ss >> size;
-        if (size == 0)
+        uint32_t size = 0;
+        if (!parseInteger(m_lexer.getLexeme(), size) || size == 0)
         {
-          m_logger->error("Invalid array size.");
+          m_logger->error("Invalid array size: {}", m_lexer.getLexeme());
           return false;
         }
 
@@ -410,9 +428,12 @@ bool Assembler::parseFunction(std::istream &stream)
           return false;
         }
 
-        int32_t value;
-        std::stringstream ss(m_lexer.getLexeme());
-        ss >> value;
+        int32_t value = 0;
+        if (!parseInteger(m_lexer.getLexeme(), value))
+        {
+          m_logger->error("Invalid integer literal: {}", m_lexer.getLexeme());
+          return false;
+        }
 
         // Set arg 0 to relative variable stack index of var1
         memcpy(&instruction.args[0], &entry1->second,
@@ -567,10 +588,13 @@ bool Assembler::parseFunction(std::istream &stream)
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
-        // TODO Slow!!!
-        std::stringstream ss;
-        ss << m_lexer.getLexeme();
-        ss >> instruction.args[0];
+        int32_t pushValue = 0;
+        if (!parseInteger(m_lexer.getLexeme(), pushValue))
+        {
+          m_logger->error("Invalid integer literal: {}", m_lexer.getLexeme());
+          return false;
+        }
+        instruction.args[0] = pushValue;
 
         // Add assembled instruction
         function.instructions.push_back(instruction);
@@ -587,10 +611,12 @@ bool Assembler::parseFunction(std::istream &stream)
           return false;
         }
         // Read as unsigned so that values beyond the signed range are kept.
-        std::stringstream ss;
-        ss << m_lexer.getLexeme();
         uint32_t temp = 0;
-        ss >> temp;
+        if (!parseInteger(m_lexer.getLexeme(), temp))
+        {
+          m_logger->error("Invalid integer literal: {}", m_lexer.getLexeme());
+          return false;
+        }
         memcpy((void *)&instruction.args[0], (void *)&temp,
                sizeof(uint32_t));
 
@@ -764,10 +790,13 @@ bool Assembler::parseFunction(std::istream &stream)
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
-        // TODO Slow!!!
-        std::stringstream ss;
-        ss << m_lexer.getLexeme();
-        ss >> instruction.args[0];
+        int32_t retValue = 0;
+        if (!parseInteger(m_lexer.getLexeme(), retValue))
+        {
+          m_logger->error("Invalid integer literal: {}", m_lexer.getLexeme());
+          return false;
+        }
+        instruction.args[0] = retValue;
 
         // Add assembled instruction
         function.instructions.push_back(instruction);
@@ -1102,12 +1131,14 @@ bool Assembler::parseExternFunction(std::istream &stream)
   {
     return false;
   }
-  // String to int convert
-  // TODO SLOW!!
-  std::stringstream ss;
-  ss << m_lexer.getLexeme();
-  int temp;
-  ss >> temp;
+  // String to int convert, rejecting literals that do not fit.
+  int temp = 0;
+  if (!parseInteger(m_lexer.getLexeme(), temp))
+  {
+    m_logger->error("Invalid extern argument count: {}",
+                    m_lexer.getLexeme());
+    return false;
+  }
   externFunction.argCount = temp;
 
   // Add extern function

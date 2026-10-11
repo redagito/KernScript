@@ -13,6 +13,62 @@ std::string wrap(const std::string &body)
 }
 }
 
+TEST_CASE("Assembler rejects an overflowing pushi literal",
+          "[integration][assembler][c4]")
+{
+  const std::string source = wrap("pushi 9999999999\nret");
+  std::stringstream byteCode;
+
+  REQUIRE_FALSE(testutil::assemble(source, byteCode));
+}
+
+TEST_CASE("Assembler rejects an overflowing pushu literal",
+          "[integration][assembler][c4]")
+{
+  const std::string source = wrap("pushu 99999999999\nret");
+  std::stringstream byteCode;
+
+  REQUIRE_FALSE(testutil::assemble(source, byteCode));
+}
+
+TEST_CASE("Assembler rejects an overflowing movi literal",
+          "[integration][assembler][c4]")
+{
+  const std::string source = "extern println 1\n\nfunc main\n{\nvar a\n"
+                             "movi a, 9999999999\nret\n}\n";
+  std::stringstream byteCode;
+
+  REQUIRE_FALSE(testutil::assemble(source, byteCode));
+}
+
+TEST_CASE("Assembler rejects an overflowing reti literal",
+          "[integration][assembler][c4]")
+{
+  const std::string source = "extern println 1\n\nfunc f\n{\n"
+                             "reti 9999999999\n}\n\nfunc main\n{\nret\n}\n";
+  std::stringstream byteCode;
+
+  REQUIRE_FALSE(testutil::assemble(source, byteCode));
+}
+
+TEST_CASE("Assembler rejects an overflowing vara size",
+          "[integration][assembler][c4]")
+{
+  const std::string source = wrap("vara a 99999999999999999999\nret");
+  std::stringstream byteCode;
+
+  REQUIRE_FALSE(testutil::assemble(source, byteCode));
+}
+
+TEST_CASE("Assembler rejects an overflowing extern argument count",
+          "[integration][assembler][c4]")
+{
+  const std::string source = "extern foo 99999999999\n\nfunc main\n{\nret\n}\n";
+  std::stringstream byteCode;
+
+  REQUIRE_FALSE(testutil::assemble(source, byteCode));
+}
+
 TEST_CASE("Assembler rejects an unresolved jump target",
           "[integration][assembler]")
 {
