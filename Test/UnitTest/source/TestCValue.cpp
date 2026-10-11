@@ -3,6 +3,9 @@
 #include "kern/RuntimeError.h"
 #include "vm/Value.h"
 
+#include <cmath>
+#include <limits>
+
 TEST_CASE("Value carries the type it was constructed with", "[unit][Value]") {
   Value integer(static_cast<int32_t>(-7));
   REQUIRE(integer.getType() == Value::Type::Integer);
@@ -636,4 +639,44 @@ TEST_CASE("Value assignment replaces the previous string", "[unit][Value]") {
   std::string text;
   REQUIRE(value.convert(text));
   REQUIRE(text == "second");
+}
+
+TEST_CASE("Value NaN comparisons are unordered", "[unit][Value][nan]") {
+  // NaN is reachable with same-type float ops only: overflow to inf, then
+  // inf minus inf. Same-type float arithmetic never throws.
+  Value big(std::numeric_limits<float>::max());
+  Value infA = big;
+  infA *= big;
+  Value infB = big;
+  infB *= big;
+  float infRaw = 0.f;
+  REQUIRE(infA.convert(infRaw));
+  REQUIRE(std::isinf(infRaw));
+  Value nan = infA;
+  nan -= infB;
+  float raw = 0.f;
+  REQUIRE(nan.convert(raw));
+  REQUIRE(std::isnan(raw));
+
+  // Equality sees NaN as different from everything, including itself.
+  REQUIRE_FALSE(nan == nan);
+  REQUIRE(nan != nan);
+
+  // Ordered comparisons involving NaN are false, matching ==.
+  REQUIRE_FALSE(nan < nan);
+  REQUIRE_FALSE(nan <= nan);
+  REQUIRE_FALSE(nan > nan);
+  REQUIRE_FALSE(nan >= nan);
+
+  Value one(1.f);
+  REQUIRE_FALSE(nan == one);
+  REQUIRE(nan != one);
+  REQUIRE_FALSE(nan < one);
+  REQUIRE_FALSE(nan <= one);
+  REQUIRE_FALSE(nan > one);
+  REQUIRE_FALSE(nan >= one);
+  REQUIRE_FALSE(one < nan);
+  REQUIRE_FALSE(one <= nan);
+  REQUIRE_FALSE(one > nan);
+  REQUIRE_FALSE(one >= nan);
 }

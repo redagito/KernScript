@@ -651,11 +651,20 @@ bool Value::operator<=(const Value &rhs) const {
   if (!isNumeric() || !rhs.isNumeric()) {
     return false;
   }
+  // NaN is unordered: every ordered comparison involving it is false, so
+  // only != (via ==) observes NaN as different. Without this, compare
+  // returns 0 for NaN pairs and <=/>= wrongly report true.
+  if (std::isnan(asDouble(*this)) || std::isnan(asDouble(rhs))) {
+    return false;
+  }
   return compare(*this, rhs) <= 0;
 }
 
 bool Value::operator<(const Value &rhs) const {
   if (!isNumeric() || !rhs.isNumeric()) {
+    return false;
+  }
+  if (std::isnan(asDouble(*this)) || std::isnan(asDouble(rhs))) {
     return false;
   }
   return compare(*this, rhs) < 0;
@@ -665,11 +674,17 @@ bool Value::operator>=(const Value &rhs) const {
   if (!isNumeric() || !rhs.isNumeric()) {
     return false;
   }
+  if (std::isnan(asDouble(*this)) || std::isnan(asDouble(rhs))) {
+    return false;
+  }
   return compare(*this, rhs) >= 0;
 }
 
 bool Value::operator>(const Value &rhs) const {
   if (!isNumeric() || !rhs.isNumeric()) {
+    return false;
+  }
+  if (std::isnan(asDouble(*this)) || std::isnan(asDouble(rhs))) {
     return false;
   }
   return compare(*this, rhs) > 0;
