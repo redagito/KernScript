@@ -1,9 +1,12 @@
 #include <cassert>
-#include <iostream>
 
 #include "CParser.h"
 
-CParser::CParser()
+#include "logging/CLogger.h"
+
+CParser::CParser(kern::ILogger *logger)
+    : m_lexer(logger),
+      m_logger(logger != nullptr ? logger : nullLogger())
 {
   // Language specific keywords
   m_lexer.addKeyword("var");    // Variable declaration
@@ -55,8 +58,7 @@ bool CParser::parse(std::istream &stream)
       }
       else
       {
-        std::cout << "Invalid lexeme encountered: " << m_lexer.getLexeme()
-                  << std::endl;
+        m_logger->error("Invalid lexeme encountered: {}", m_lexer.getLexeme());
         return false;
       }
       break;
@@ -99,13 +101,12 @@ bool CParser::parseFunction(std::istream &stream)
   {
     if (m_lexer.getToken() == ELexerToken::End)
     {
-      std::cout << "Unexpected end of stream encountered while expecting a "
-                   "function name identifier." << std::endl;
+      m_logger->error("Unexpected end of stream encountered while expecting a "
+                   "function name identifier.");
     }
     else
     {
-      std::cout << "Invalid function name identifier '" << m_lexer.getLexeme()
-                << "'." << std::endl;
+      m_logger->error("Invalid function name identifier '{}'.", m_lexer.getLexeme());
     }
     return false;
   }

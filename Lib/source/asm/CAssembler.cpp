@@ -1,12 +1,14 @@
 #include "CAssembler.h"
 
 #include <sstream>
-#include <iostream>
 #include <unordered_map>
 #include <tuple>
 #include <cstring>
 
-CAssembler::CAssembler()
+#include "logging/CLogger.h"
+
+CAssembler::CAssembler(kern::ILogger *logger)
+    : m_lexer(logger), m_logger(logger != nullptr ? logger : nullLogger())
 {
   // Assembler specific
   m_lexer.addKeyword("func");
@@ -76,7 +78,7 @@ bool CAssembler::assemble(std::istream &asmCode, std::ostream &byteCode)
         // Script function
         if (!parseFunction(asmCode))
         {
-          std::cout << "Parse function failed." << std::endl;
+          m_logger->error("Parse function failed.");
           return false;
         }
       }
@@ -85,7 +87,7 @@ bool CAssembler::assemble(std::istream &asmCode, std::ostream &byteCode)
         // Extern function
         if (!parseExternFunction(asmCode))
         {
-          std::cout << "Parse extern function failed." << std::endl;
+          m_logger->error("Parse extern function failed.");
           return false;
         }
       }
@@ -94,7 +96,7 @@ bool CAssembler::assemble(std::istream &asmCode, std::ostream &byteCode)
         // Module declaration
         if (!parseModule(asmCode))
         {
-          std::cout << "Parse module definition failed." << std::endl;
+          m_logger->error("Parse module definition failed.");
           return false;
         }
       }
@@ -106,27 +108,25 @@ bool CAssembler::assemble(std::istream &asmCode, std::ostream &byteCode)
       break;
     default:
       // Invalid token
-      std::cout << "Invalid token: " << m_lexer.getLexeme() << ", "
-                << (int)m_lexer.getToken() << std::endl;
+      m_logger->error("Invalid token: {}, {}", m_lexer.getLexeme(), (int)m_lexer.getToken());
       return false;
     }
   } while (m_lexer.getToken() != ELexerToken::End);
 
-  std::cout << "Serializing" << std::endl;
   // Serialize to byte code
   if (!serializeStrings(byteCode))
   {
-    std::cout << "Serialize strings failed" << std::endl;
+    m_logger->error("Serialize strings failed");
     return false;
   }
   if (!serializeExternFunctions(byteCode))
   {
-    std::cout << "Serialize extern functions failed" << std::endl;
+    m_logger->error("Serialize extern functions failed");
     return false;
   }
   if (!serializeFunctions(byteCode))
   {
-    std::cout << "Serialize functions failed" << std::endl;
+    m_logger->error("Serialize functions failed");
     return false;
   }
 
@@ -182,7 +182,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::Identifier)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
         // Parameter name
@@ -203,14 +203,13 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::Identifier)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
         // Check if label already exists
         if (labels.find(m_lexer.getLexeme()) != labels.end())
         {
-          std::cout << "The label '" << m_lexer.getLexeme()
-                    << "' already exists." << std::endl;
+          m_logger->error("The label '{}' already exists.", m_lexer.getLexeme());
           return false;
         }
         // Point to next instruction -> set to current size
@@ -223,7 +222,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::Identifier)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
         // Variable name
@@ -242,7 +241,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::Identifier)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
         // Variable name
@@ -252,7 +251,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::Integer)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
 
@@ -262,7 +261,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         ss >> size;
         if (size == 0)
         {
-          std::cout << "Invalid array size." << std::endl;
+          m_logger->error("Invalid array size.");
           return false;
         }
 
@@ -297,7 +296,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::Identifier)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
 
@@ -305,8 +304,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         auto entry1 = variables.find(m_lexer.getLexeme());
         if (entry1 == variables.end())
         {
-          std::cout << "Unknown variable name: " << m_lexer.getLexeme()
-                    << std::endl;
+          m_logger->error("Unknown variable name: {}", m_lexer.getLexeme());
           return false;
         }
 
@@ -314,7 +312,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::Comma)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
 
@@ -322,7 +320,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::Identifier)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
 
@@ -330,8 +328,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         auto entry2 = variables.find(m_lexer.getLexeme());
         if (entry2 == variables.end())
         {
-          std::cout << "Unknown variable name: " << m_lexer.getLexeme()
-                    << std::endl;
+          m_logger->error("Unknown variable name: {}", m_lexer.getLexeme());
           return false;
         }
 
@@ -354,7 +351,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::Identifier)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
 
@@ -362,8 +359,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         auto entry1 = variables.find(m_lexer.getLexeme());
         if (entry1 == variables.end())
         {
-          std::cout << "Unknown variable name: " << m_lexer.getLexeme()
-                    << std::endl;
+          m_logger->error("Unknown variable name: {}", m_lexer.getLexeme());
           return false;
         }
 
@@ -371,7 +367,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::Comma)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
 
@@ -379,7 +375,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::Integer)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
 
@@ -406,7 +402,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::Identifier)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
 
@@ -414,8 +410,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         auto entry1 = variables.find(m_lexer.getLexeme());
         if (entry1 == variables.end())
         {
-          std::cout << "Unknown variable name: " << m_lexer.getLexeme()
-                    << std::endl;
+          m_logger->error("Unknown variable name: {}", m_lexer.getLexeme());
           return false;
         }
 
@@ -423,7 +418,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::Comma)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
 
@@ -431,7 +426,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::Float)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
 
@@ -460,7 +455,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::Identifier)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
 
@@ -468,8 +463,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         auto entry1 = variables.find(m_lexer.getLexeme());
         if (entry1 == variables.end())
         {
-          std::cout << "Unknown variable name: " << m_lexer.getLexeme()
-                    << std::endl;
+          m_logger->error("Unknown variable name: {}", m_lexer.getLexeme());
           return false;
         }
 
@@ -477,7 +471,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::Comma)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
 
@@ -485,7 +479,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::String)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
 
@@ -508,7 +502,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::Identifier)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
 
@@ -516,8 +510,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         auto entry = variables.find(m_lexer.getLexeme());
         if (entry == variables.end())
         {
-          std::cout << "Unknown variable name: " << m_lexer.getLexeme()
-                    << std::endl;
+          m_logger->error("Unknown variable name: {}", m_lexer.getLexeme());
           return false;
         }
 
@@ -535,7 +528,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::Integer)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
         // TODO Slow!!!
@@ -554,7 +547,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::Float)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
         // TODO Slow!!!
@@ -576,7 +569,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::String)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
         // TODO Add string to strings list and write id
@@ -601,7 +594,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::Identifier)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
 
@@ -609,8 +602,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         auto entry = variables.find(m_lexer.getLexeme());
         if (entry == variables.end())
         {
-          std::cout << "Unknown variable name: " << m_lexer.getLexeme()
-                    << std::endl;
+          m_logger->error("Unknown variable name: {}", m_lexer.getLexeme());
           return false;
         }
 
@@ -628,15 +620,14 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::Identifier)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
         // Identifier must be script function
         // Set function index
         if (!getFunctionId(m_lexer.getLexeme(), instruction.args[0]))
         {
-          std::cout << "The identifier is not a function: "
-                    << m_lexer.getLexeme() << std::endl;
+          m_logger->error("The identifier is not a function: {}", m_lexer.getLexeme());
           return false;
         }
         // Add assembled instruction
@@ -650,15 +641,14 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::Identifier)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
         // Identifier must be extern function
         // Set function index
         if (!getExternFunctionId(m_lexer.getLexeme(), instruction.args[0]))
         {
-          std::cout << "The identifier is not an extern function: "
-                    << m_lexer.getLexeme() << std::endl;
+          m_logger->error("The identifier is not an extern function: {}", m_lexer.getLexeme());
           return false;
         }
         // Add assembled instruction
@@ -682,7 +672,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::Identifier)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
 
@@ -690,8 +680,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         auto entry = variables.find(m_lexer.getLexeme());
         if (entry == variables.end())
         {
-          std::cout << "Unknown variable name: " << m_lexer.getLexeme()
-                    << std::endl;
+          m_logger->error("Unknown variable name: {}", m_lexer.getLexeme());
           return false;
         }
 
@@ -709,7 +698,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::Integer)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
         // TODO Slow!!!
@@ -747,7 +736,7 @@ bool CAssembler::parseFunction(std::istream &stream)
         m_lexer.lex(stream);
         if (m_lexer.getToken() != ELexerToken::Identifier)
         {
-          std::cout << "Unexpected token: " << m_lexer.getLexeme() << std::endl;
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
 
@@ -765,8 +754,7 @@ bool CAssembler::parseFunction(std::istream &stream)
       // Ignore
       break;
     default:
-      std::cout << "Invalid token: '" << m_lexer.getLexeme() << "', "
-                << (int)m_lexer.getToken() << std::endl;
+      m_logger->error("Invalid token: '{}', {}", m_lexer.getLexeme(), (int)m_lexer.getToken());
       return false;
     }
   } while (m_lexer.getToken() != ELexerToken::CloseBrace);
@@ -781,8 +769,7 @@ bool CAssembler::parseFunction(std::istream &stream)
     auto label = labels.find(std::get<1>(entry));
     if (label == labels.end())
     {
-      std::cout << "Unresolved jump instruction: Label '" << std::get<1>(entry)
-                << "' does not exist." << std::endl;
+      m_logger->error("Unresolved jump instruction: Label '{}' does not exist.", std::get<1>(entry));
       return false;
     }
     // Set instruction arg 0 to target instruction index
@@ -837,8 +824,8 @@ bool CAssembler::parseModule(std::istream &stream)
   // Check for multiple module declares
   if (!m_header.moduleName.empty())
   {
-    std::cout << "Multiple 'module' declarations encountered. A script may "
-                 "have only one module declaration." << std::endl;
+    m_logger->error("Multiple 'module' declarations encountered. A script may "
+                 "have only one module declaration.");
     return false;
   }
   // Set module in header

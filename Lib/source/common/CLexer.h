@@ -4,6 +4,8 @@
 #include <string>
 #include <unordered_set>
 
+#include <kern/ILogger.h>
+
 #include "ELexerToken.h"
 
 /**
@@ -12,6 +14,11 @@
 class CLexer
 {
 public:
+  /**
+  * \brief Constructs a lexer.
+  * \param logger Receives diagnostics. A null pointer discards them.
+  */
+  explicit CLexer(kern::ILogger *logger);
   /**
   * \brief Extracts next token/lexeme from stream.
   * \return Number of whitespaces skipped.
@@ -58,4 +65,5 @@ private:
   bool m_ignoreNewLine = false;
   bool m_ignoreLex = false;
   unsigned int m_blankSkipped = 0;
+  kern::ILogger *m_logger = nullptr; /**< Receives diagnostics. */
 };

@@ -2,12 +2,18 @@
 
 #include <istream>
 
+#include <kern/ILogger.h>
+
 #include "common/CLexer.h"
 
 class CParser
 {
 public:
-  CParser();
+  /**
+  * \brief Constructs a parser.
+  * \param logger Receives diagnostics. A null pointer discards them.
+  */
+  explicit CParser(kern::ILogger *logger);
 
   bool parse(std::istream &sourceCode);
 
@@ -27,4 +33,5 @@ private:
   unsigned int m_currentLineNumber = 1;
   unsigned int m_currentLineIndex = 0;
   CLexer m_lexer;
+  kern::ILogger *m_logger;
 };

@@ -2,11 +2,37 @@
 
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include <kern/Kern.h>
+#include <kern/ILogger.h>
 
 namespace testutil
 {
+
+/**
+* \brief Logger that records every message it receives.
+*
+* Tests assert on the diagnostics the library emits, which cannot be observed
+* through the standard streams once the library logs through ILogger.
+*/
+class RecordingLogger : public kern::ILogger
+{
+public:
+  const std::vector<std::string> &messages() const;
+
+  bool empty() const;
+
+  std::string text() const;
+
+  void clear();
+
+protected:
+  void log(const std::string &message) override;
+
+private:
+  std::vector<std::string> m_messages;
+};
 
 /**
 * \brief Sink for everything a script writes through host functions.

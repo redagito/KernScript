@@ -1,23 +1,24 @@
-#include <iostream>
 #include <cassert>
 
 #include "CVirtualMachine.h"
 
 #include "common/Instructions.h"
 #include "common/Deserialize.h"
+#include "logging/CLogger.h"
 
 CVirtualMachine::SFunctionFrame::SFunctionFrame() {}
 
 CVirtualMachine::SFunctionFrame::SFunctionFrame(uint32_t funcIndex,
-                                                uint32_t instrIndex,
-                                                uint32_t stackBaseIndex)
+                                                 uint32_t instrIndex,
+                                                 uint32_t stackBaseIndex)
 {
   functionIndex = funcIndex;
   instructionIndex = instrIndex;
   runtimeStackBaseIndex = stackBaseIndex;
 }
 
-CVirtualMachine::CVirtualMachine()
+CVirtualMachine::CVirtualMachine(kern::ILogger *logger)
+    : m_logger(logger != nullptr ? logger : nullLogger())
 {
   // Reserve runtime stack size.
   // TODO Remove hardcoded value
@@ -247,10 +248,6 @@ bool CVirtualMachine::execute()
     instruction = currentFunction.instructions.at(m_currentInstructionIndex);
   }
 
-  // Debug
-  // printRuntimeStack();
-  std::cout << "Executing instruction " << toString(instruction) << std::endl;
-
   switch (instruction.id)
   {
   case EInstruction::Nop:
@@ -387,8 +384,7 @@ bool CVirtualMachine::execute()
     if (entry == m_externFunctionsMap.end())
     {
       // Function does not exist
-      std::cout << "The extern function '" << externFunction.name
-                << "' does not exist." << std::endl;
+      m_logger->error("The extern function '{}' does not exist.", externFunction.name);
       return false;
     }
     // Call if found
@@ -633,15 +629,4 @@ bool CVirtualMachine::popValue(CValue &val)
   assert(val.getType() != CValue::EType::Invalid);
   m_runtimeStack.pop_back();
   return true;
-}
-
-void CVirtualMachine::printRuntimeStack() const
-{
-  unsigned int index = 0;
-  for (const auto &value : m_runtimeStack)
-  {
-    std::cout << "Index: " << index << ", Value: " << value.toString()
-              << std::endl;
-    ++index;
-  }
 }

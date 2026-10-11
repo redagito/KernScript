@@ -8,6 +8,7 @@
 
 #include "kern/IVirtualMachine.h"
 #include "kern/IExternFunction.h"
+#include "kern/ILogger.h"
 
 #include "CValue.h"
 #include "common/SInstruction.h"
@@ -16,7 +17,11 @@
 class CVirtualMachine : public kern::IVirtualMachine
 {
 public:
-  CVirtualMachine();
+  /**
+  * \brief Constructs a virtual machine.
+  * \param logger Receives diagnostics. A null pointer discards them.
+  */
+  explicit CVirtualMachine(kern::ILogger *logger);
 
   bool load(std::istream &byteCode);
 
@@ -58,8 +63,6 @@ protected:
   * \brief Pops value from runtime stack into supplied variable.
   */
   bool popValue(CValue &val);
-
-  void printRuntimeStack() const;
 
 private:
   /**
@@ -110,4 +113,5 @@ private:
       0; /**< Runtime stack base index of current function. */
   uint32_t m_currentFunctionIndex = 0;    /**< Index of active function. */
   uint32_t m_currentInstructionIndex = 0; /**< Index of active instruction. */
+  kern::ILogger *m_logger = nullptr;      /**< Receives diagnostics. */
 };

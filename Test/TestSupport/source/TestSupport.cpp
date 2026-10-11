@@ -65,6 +65,31 @@ int fast_fib(int v)
 
 testutil::OutputRecorder::~OutputRecorder() {}
 
+const std::vector<std::string> &testutil::RecordingLogger::messages() const
+{
+  return m_messages;
+}
+
+bool testutil::RecordingLogger::empty() const { return m_messages.empty(); }
+
+std::string testutil::RecordingLogger::text() const
+{
+  std::stringstream stream;
+  for (const auto &message : m_messages)
+  {
+    stream << message << '\n';
+  }
+  return stream.str();
+}
+
+void testutil::RecordingLogger::clear() { m_messages.clear(); }
+
+void testutil::RecordingLogger::log(const std::string &message)
+{
+  m_messages.push_back(message);
+}
+
+
 void testutil::StringRecorder::print(const std::string &text)
 {
   m_text += text;

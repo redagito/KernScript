@@ -3,8 +3,14 @@
 #include <cctype>
 #include <cstdio>
 #include <cassert>
-// TODO Debug only, remove later
-#include <iostream>
+
+#include "logging/CLogger.h"
+
+CLexer::CLexer(kern::ILogger *logger)
+    : m_logger(logger != nullptr ? logger : nullLogger())
+{
+  // Empty
+}
 
 unsigned int CLexer::lex(std::istream &stream)
 {
@@ -170,8 +176,7 @@ unsigned int CLexer::lex(std::istream &stream)
       break;
     default:
       // Error
-      std::cout << "Lexer error: Invalid character '" << next
-                << "' encountered." << std::endl;
+      m_logger->error("Lexer error: Invalid character '{}' encountered.", next);
       break;
     }
   }
