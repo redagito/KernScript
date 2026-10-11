@@ -223,6 +223,17 @@ TEST_CASE("Deserialize accepts a string at exactly the limit",
   REQUIRE(result == "1234567890123456");
 }
 
+TEST_CASE("Deserialize clears the target on an empty string",
+          "[unit][serialize][m1]")
+{
+  std::stringstream stream;
+  writeRaw<uint32_t>(stream, 0);
+
+  std::string result = "stale";
+  REQUIRE(deserialize(stream, result, 1024));
+  REQUIRE(result.empty());
+}
+
 TEST_CASE("Serialize refuses an unknown instruction id", "[unit][serialize]")
 {
   Instruction instruction;

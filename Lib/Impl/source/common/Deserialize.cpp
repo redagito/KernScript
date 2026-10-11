@@ -67,6 +67,7 @@ bool deserialize(std::istream &stream, std::string &str, size_t maxLength)
   // TODO Empty string invalid?
   if (length == 0)
   {
+    str.clear();
     return true;
   }
 
