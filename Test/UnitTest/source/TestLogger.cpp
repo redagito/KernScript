@@ -90,6 +90,43 @@ TEST_CASE("CLexer takes a null logger without crashing", "[unit][logger]")
   REQUIRE(lexer.getLexeme() == "42");
 }
 
+TEST_CASE("Assembler forwards its logger to its internal lexer",
+          "[unit][logger]")
+{
+  testutil::RecordingLogger logger;
+
+  kern::IAssembler *assembler = kern::createAssembler(&logger);
+  REQUIRE(assembler != nullptr);
+
+  // The lexer is a member of the assembler, so a character error raised while
+  // lexing can only reach this logger if the assembler forwarded the one it
+  // was given rather than leaving its member with the null logger.
+  std::stringstream source("~");
+  std::stringstream byteCode;
+
+  REQUIRE_FALSE(assembler->assemble(source, byteCode));
+  REQUIRE_FALSE(logger.empty());
+
+  bool sawLexerError = false;
+  bool sawAssemblerError = false;
+  for (const auto &message : logger.messages())
+  {
+    if (message.find("Invalid character") != std::string::npos)
+    {
+      sawLexerError = true;
+    }
+    if (message.find("Invalid token") != std::string::npos)
+    {
+      sawAssemblerError = true;
+    }
+  }
+
+  REQUIRE(sawLexerError);
+  REQUIRE(sawAssemblerError);
+
+  delete assembler;
+}
+
 TEST_CASE("A null logger discards messages", "[unit][logger]")
 {
   kern::NullLogger logger;
