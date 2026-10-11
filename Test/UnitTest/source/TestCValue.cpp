@@ -31,20 +31,39 @@ TEST_CASE("Value arithmetic widens to the wider type", "[unit][Value]")
   REQUIRE(result == 3.5f);
 }
 
-TEST_CASE("Value arithmetic keeps integers exact", "[unit][Value]")
+TEST_CASE("Value addition overflow throws", "[unit][Value][c2]")
+{
+  Value value(static_cast<int32_t>(2147483647));
+  Value operand(static_cast<int32_t>(1));
+
+  REQUIRE_THROWS_AS(value += operand, kern::RuntimeError);
+}
+
+TEST_CASE("Value division of INT_MIN by minus one throws", "[unit][Value][c2]")
+{
+  Value value(static_cast<int32_t>(-2147483647 - 1));
+  Value operand(static_cast<int32_t>(-1));
+
+  REQUIRE_THROWS_AS(value /= operand, kern::RuntimeError);
+}
+
+TEST_CASE("Value huge float to int conversion throws", "[unit][Value][c2]")
+{
+  Value value(1e30f);
+
+  int32_t asInteger = 0;
+  REQUIRE_THROWS_AS(value.convert(asInteger), kern::RuntimeError);
+}
+
+TEST_CASE("Value out of range addition throws instead of wrapping",
+          "[unit][Value]")
 {
   Value value(static_cast<int32_t>(2000000000));
   Value operand(static_cast<int32_t>(2000000000));
 
-  value += operand;
-
-  // Would not fit in a float.
-  double expected = 4000000000.0;
-
-  int32_t result = 0;
-  REQUIRE(value.convert(result));
-  REQUIRE(static_cast<double>(result + 2147483648.0) ==
-          expected - 2147483648.0);
+  // The sum does not fit in an int32, so the operation throws instead of
+  // wrapping around.
+  REQUIRE_THROWS_AS(value += operand, kern::RuntimeError);
 }
 
 TEST_CASE("Value multiplies", "[unit][Value]")

@@ -2,9 +2,61 @@
 
 #include "kern/RuntimeError.h"
 
+#include <cmath>
 #include <cstring>
 #include <sstream>
 #include <cassert>
+#include <limits>
+
+namespace
+{
+
+/**
+* \brief Range-checks a widened result before narrowing back to int32.
+*
+* Signed overflow is undefined, so same-type integer arithmetic widens to
+* 64 bit first and only narrows when the value fits.
+*/
+void checkIntRange(int64_t value)
+{
+  if (value < static_cast<int64_t>(std::numeric_limits<int32_t>::min()) ||
+      value > static_cast<int64_t>(std::numeric_limits<int32_t>::max()))
+  {
+    throw kern::RuntimeError("Signed integer overflow.");
+  }
+}
+
+/**
+* \brief Range-checks a double before narrowing to int32.
+*
+* Out-of-range float-to-int conversion is undefined, so the check runs on the
+* widened value where every int32 boundary is exactly representable.
+*/
+void checkDoubleToIntRange(double value)
+{
+  if (!std::isfinite(value) ||
+      value < static_cast<double>(std::numeric_limits<int32_t>::min()) ||
+      value > static_cast<double>(std::numeric_limits<int32_t>::max()))
+  {
+    throw kern::RuntimeError("Cannot convert out-of-range float to integer.");
+  }
+}
+
+/**
+* \brief Range-checks a double before narrowing to uint32.
+*/
+void checkDoubleToUintRange(double value)
+{
+  if (!std::isfinite(value) || value < 0.0 ||
+      value >
+          static_cast<double>(std::numeric_limits<uint32_t>::max()))
+  {
+    throw kern::RuntimeError(
+        "Cannot convert out-of-range float to unsigned integer.");
+  }
+}
+
+}
 
 Value::Value()
 {
@@ -60,8 +112,11 @@ bool Value::convert(int32_t &value) const
     value = (int32_t)m_unsignedInteger;
     return true;
   case Type::Float:
-    value = (int32_t)m_float;
+  {
+    checkDoubleToIntRange(static_cast<double>(m_float));
+    value = static_cast<int32_t>(m_float);
     return true;
+  }
   case Type::String:
     throw kern::RuntimeError("Cannot convert string to integer.");
   default:
@@ -81,8 +136,11 @@ bool Value::convert(uint32_t &value) const
     value = m_unsignedInteger;
     return true;
   case Type::Float:
-    value = (uint32_t)m_float;
+  {
+    checkDoubleToUintRange(static_cast<double>(m_float));
+    value = static_cast<uint32_t>(m_float);
     return true;
+  }
   case Type::String:
     throw kern::RuntimeError("Cannot convert string to unsigned integer.");
   default:
@@ -314,9 +372,12 @@ void Value::store(Type type, double value)
   switch (type)
   {
   case Type::Integer:
+    // Narrowing an out-of-range double to int32 is undefined, so check first.
+    checkDoubleToIntRange(value);
     m_integer = static_cast<int32_t>(value);
     break;
   case Type::UnsignedInteger:
+    checkDoubleToUintRange(value);
     m_unsignedInteger = static_cast<uint32_t>(value);
     break;
   case Type::Float:
@@ -358,11 +419,14 @@ Value &Value::operator+=(const Value &rhs)
   {
     const Type result = widen(m_type, rhs.m_type);
 
-    // Same-type operands stay exact. Mixed types go through double, which
-    // narrows for integers beyond 2^53.
+    // Same-type operands stay exact by widening to 64 bit first. Mixed types
+    // go through double, which narrows for integers beyond 2^53.
     if (m_type == rhs.m_type && m_type == Type::Integer)
     {
-      m_integer = static_cast<int32_t>(m_integer + rhs.m_integer);
+      const int64_t result = static_cast<int64_t>(m_integer) +
+                             static_cast<int64_t>(rhs.m_integer);
+      checkIntRange(result);
+      m_integer = static_cast<int32_t>(result);
     }
     else if (m_type == rhs.m_type && m_type == Type::UnsignedInteger)
     {
@@ -388,7 +452,10 @@ Value &Value::operator-=(const Value &rhs)
 
     if (m_type == rhs.m_type && m_type == Type::Integer)
     {
-      m_integer = static_cast<int32_t>(m_integer - rhs.m_integer);
+      const int64_t result = static_cast<int64_t>(m_integer) -
+                             static_cast<int64_t>(rhs.m_integer);
+      checkIntRange(result);
+      m_integer = static_cast<int32_t>(result);
     }
     else if (m_type == rhs.m_type && m_type == Type::UnsignedInteger)
     {
@@ -414,7 +481,10 @@ Value &Value::operator*=(const Value &rhs)
 
     if (m_type == rhs.m_type && m_type == Type::Integer)
     {
-      m_integer = static_cast<int32_t>(m_integer * rhs.m_integer);
+      const int64_t result = static_cast<int64_t>(m_integer) *
+                             static_cast<int64_t>(rhs.m_integer);
+      checkIntRange(result);
+      m_integer = static_cast<int32_t>(result);
     }
     else if (m_type == rhs.m_type && m_type == Type::UnsignedInteger)
     {
@@ -446,6 +516,12 @@ Value &Value::operator/=(const Value &rhs)
     if (rhs.m_integer == 0)
     {
       return *this;
+    }
+    // INT_MIN / -1 overflows int32 and traps on x86, so reject it here.
+    if (m_integer == std::numeric_limits<int32_t>::min() &&
+        rhs.m_integer == -1)
+    {
+      throw kern::RuntimeError("Signed integer overflow.");
     }
     m_integer /= rhs.m_integer;
     return *this;
