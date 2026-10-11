@@ -6,6 +6,8 @@
 #include "testutil/TestSupport.hpp"
 
 #include "common/Instruction.h"
+#include "common/ScriptHeader.h"
+#include "common/Version.h"
 #include "vm/VirtualMachine.h"
 
 namespace
@@ -43,6 +45,21 @@ void writeString(std::stringstream &stream, const std::string &text)
   stream.write(text.data(), static_cast<std::streamsize>(text.size()));
 }
 
+/**
+* \brief Writes the valid header every load() expects.
+*
+* Hand built streams carry corrupt table contents the assembler would never
+* emit, but the header itself stays valid so the tests reach the table under
+* test instead of failing on magic or version.
+*/
+void writeHeader(std::stringstream &stream)
+{
+  stream.write("KERN", 4);
+  writeRaw<uint8_t>(stream, static_cast<uint8_t>(majorVersion));
+  writeRaw<uint8_t>(stream, static_cast<uint8_t>(minorVersion));
+  writeRaw<uint32_t>(stream, 0);
+}
+
 Instruction makeInstruction(Opcode id, int32_t arg0 = 0,
                              int32_t arg1 = 0)
 {
@@ -63,6 +80,7 @@ std::stringstream buildByteCode(const std::vector<std::string> &strings,
                                 const std::vector<FakeFunction> &functions)
 {
   std::stringstream stream;
+  writeHeader(stream);
   writeRaw<uint32_t>(stream, static_cast<uint32_t>(strings.size()));
   for (const auto &text : strings)
   {
@@ -996,6 +1014,7 @@ TEST_CASE("clearScripts drops the runtime and call stacks",
 TEST_CASE("A huge strings count is rejected", "[integration][vm][c7]")
 {
   std::stringstream stream;
+  writeHeader(stream);
   writeRaw<uint32_t>(stream, 0xFFFFFFFF);
 
   VirtualMachine vm(nullptr);
@@ -1005,6 +1024,7 @@ TEST_CASE("A huge strings count is rejected", "[integration][vm][c7]")
 TEST_CASE("A huge string length prefix is rejected", "[integration][vm][c7]")
 {
   std::stringstream stream;
+  writeHeader(stream);
   writeRaw<uint32_t>(stream, 1);
   writeRaw<uint32_t>(stream, 100 * 1024 * 1024);
 
@@ -1015,6 +1035,7 @@ TEST_CASE("A huge string length prefix is rejected", "[integration][vm][c7]")
 TEST_CASE("A huge extern count is rejected", "[integration][vm][c7]")
 {
   std::stringstream stream;
+  writeHeader(stream);
   writeRaw<uint32_t>(stream, 0);
   writeRaw<uint32_t>(stream, 0xFFFFFFFF);
 
@@ -1025,6 +1046,7 @@ TEST_CASE("A huge extern count is rejected", "[integration][vm][c7]")
 TEST_CASE("A huge function count is rejected", "[integration][vm][c7]")
 {
   std::stringstream stream;
+  writeHeader(stream);
   writeRaw<uint32_t>(stream, 0);
   writeRaw<uint32_t>(stream, 0);
   writeRaw<uint32_t>(stream, 0xFFFFFFFF);
@@ -1036,6 +1058,7 @@ TEST_CASE("A huge function count is rejected", "[integration][vm][c7]")
 TEST_CASE("A huge function name length is rejected", "[integration][vm][c7]")
 {
   std::stringstream stream;
+  writeHeader(stream);
   writeRaw<uint32_t>(stream, 0);
   writeRaw<uint32_t>(stream, 0);
   writeRaw<uint32_t>(stream, 1);
@@ -1048,6 +1071,7 @@ TEST_CASE("A huge function name length is rejected", "[integration][vm][c7]")
 TEST_CASE("A huge instruction count is rejected", "[integration][vm][c7]")
 {
   std::stringstream stream;
+  writeHeader(stream);
   writeRaw<uint32_t>(stream, 0);
   writeRaw<uint32_t>(stream, 0);
   writeRaw<uint32_t>(stream, 1);
@@ -1111,6 +1135,71 @@ TEST_CASE("Mutual recursion works", "[integration][vm][m2]")
   REQUIRE(testutil::runScript(source, "main", recorder));
 
   REQUIRE(recorder.text() == "2\n0\n");
+}
+
+TEST_CASE("Bytecode carries the script header", "[integration][vm][m4]")
+{
+  const std::string source = "module Greetings\nextern println 1\n"
+                             "\nfunc main\n{\nret\n}\n";
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  ScriptHeader header;
+  REQUIRE(deserialize(header, byteCode, 1024));
+  REQUIRE(header.identifier[0] == 'K');
+  REQUIRE(header.identifier[1] == 'E');
+  REQUIRE(header.identifier[2] == 'R');
+  REQUIRE(header.identifier[3] == 'N');
+  REQUIRE(header.majorVersion == kern::getMajorVersion());
+  REQUIRE(header.minorVersion == kern::getMinorVersion());
+  REQUIRE(header.moduleName == "Greetings");
+}
+
+TEST_CASE("load rejects a bad magic", "[integration][vm][m4]")
+{
+  std::stringstream stream;
+  stream.write("XXXX", 4);
+  writeRaw<uint8_t>(stream, 0);
+  writeRaw<uint8_t>(stream, 1);
+  writeRaw<uint32_t>(stream, 0);
+  writeRaw<uint32_t>(stream, 0);
+  writeRaw<uint32_t>(stream, 0);
+  writeRaw<uint32_t>(stream, 0);
+
+  VirtualMachine vm(nullptr);
+  REQUIRE_FALSE(vm.load(stream));
+}
+
+TEST_CASE("load rejects a mismatched major version", "[integration][vm][m4]")
+{
+  std::stringstream stream;
+  stream.write("KERN", 4);
+  writeRaw<uint8_t>(stream,
+                    static_cast<uint8_t>(kern::getMajorVersion() + 1));
+  writeRaw<uint8_t>(stream, static_cast<uint8_t>(kern::getMinorVersion()));
+  writeRaw<uint32_t>(stream, 0);
+  writeRaw<uint32_t>(stream, 0);
+  writeRaw<uint32_t>(stream, 0);
+  writeRaw<uint32_t>(stream, 0);
+
+  VirtualMachine vm(nullptr);
+  REQUIRE_FALSE(vm.load(stream));
+}
+
+TEST_CASE("load accepts a newer minor version", "[integration][vm][m4]")
+{
+  std::stringstream stream;
+  stream.write("KERN", 4);
+  writeRaw<uint8_t>(stream, static_cast<uint8_t>(kern::getMajorVersion()));
+  writeRaw<uint8_t>(stream,
+                    static_cast<uint8_t>(kern::getMinorVersion() + 1));
+  writeRaw<uint32_t>(stream, 0);
+  writeRaw<uint32_t>(stream, 0);
+  writeRaw<uint32_t>(stream, 0);
+  writeRaw<uint32_t>(stream, 0);
+
+  VirtualMachine vm(nullptr);
+  REQUIRE(vm.load(stream));
 }
 
 TEST_CASE("Movs advances the instruction pointer", "[integration][vm]")

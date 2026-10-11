@@ -7,6 +7,8 @@
 
 #include "common/Instructions.h"
 #include "common/Deserialize.h"
+#include "common/ScriptHeader.h"
+#include "common/Version.h"
 #include "logging/Logger.h"
 
 namespace
@@ -73,6 +75,22 @@ VirtualMachine::VirtualMachine(kern::ILogger *logger, kern::VMConfig config)
 
 bool VirtualMachine::load(std::istream &byteCode)
 {
+  // The header leads the bytecode. Anything else is not runnable here.
+  ScriptHeader header;
+  if (!deserialize(header, byteCode, m_maxStringBytes))
+  {
+    return false;
+  }
+  const uint8_t expectedMagic[4] = {'K', 'E', 'R', 'N'};
+  if (memcmp(header.identifier, expectedMagic, sizeof(expectedMagic)) != 0)
+  {
+    return false;
+  }
+  // Major versions must match exactly; newer minor versions stay loadable.
+  if (header.majorVersion != majorVersion)
+  {
+    return false;
+  }
   // Load string constants
   if (!deserializeStrings(byteCode))
   {

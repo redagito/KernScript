@@ -104,12 +104,13 @@ TEST_CASE("ScriptHeader survives serialization", "[unit][serialize]")
   REQUIRE(serialize(header, stream));
 
   ScriptHeader result;
-  REQUIRE(deserialize(result, stream));
+  REQUIRE(deserialize(result, stream, 1024));
 
   REQUIRE(result.identifier[0] == 'K');
   REQUIRE(result.identifier[3] == 'N');
   REQUIRE(result.majorVersion == 0);
   REQUIRE(result.minorVersion == 1);
+  REQUIRE(result.moduleName == "Test");
 }
 
 TEST_CASE("Deserialize reads integer types", "[unit][serialize]")

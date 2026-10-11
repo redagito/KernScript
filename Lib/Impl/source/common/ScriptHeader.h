@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <istream>
 #include <ostream>
@@ -18,4 +19,9 @@ struct ScriptHeader
 };
 
 bool serialize(const ScriptHeader &header, std::ostream &stream);
-bool deserialize(ScriptHeader &header, std::istream &stream);
+
+/**
+* \brief Deserializes a script header, bounding the module name allocation.
+*/
+bool deserialize(ScriptHeader &header, std::istream &stream,
+                 size_t maxModuleLength);

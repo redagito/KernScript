@@ -7,6 +7,8 @@
 
 #include "logging/Logger.h"
 
+#include "common/Version.h"
+
 namespace
 {
 
@@ -33,8 +35,7 @@ Assembler::Assembler(kern::ILogger *logger)
   // Assembler specific
   m_lexer.addKeyword("func");
   m_lexer.addKeyword("extern");
-  // TODO Not supported for now
-  // m_lexer.addKeyword("module");
+  m_lexer.addKeyword("module");
   m_lexer.addKeyword(
       "param"); // Function parameter for implicit calling convention
   m_lexer.addKeyword("var");  // Variable
@@ -100,6 +101,16 @@ bool Assembler::assemble(std::istream &asmCode, std::ostream &byteCode)
   m_strings.clear();
   m_unresolvedCalls.clear();
   m_unresolvedExternCalls.clear();
+
+  // Fresh header for this assembly; the module declaration fills in the
+  // module name while parsing.
+  m_header.identifier[0] = 'K';
+  m_header.identifier[1] = 'E';
+  m_header.identifier[2] = 'R';
+  m_header.identifier[3] = 'N';
+  m_header.majorVersion = static_cast<uint8_t>(majorVersion);
+  m_header.minorVersion = static_cast<uint8_t>(minorVersion);
+  m_header.moduleName.clear();
 
   // Parse code
   do
@@ -177,6 +188,13 @@ bool Assembler::assemble(std::istream &asmCode, std::ostream &byteCode)
     }
   }
 
+  // The header leads the bytecode, so load() validates magic and version
+  // before reading any table.
+  if (!serialize(m_header, byteCode))
+  {
+    m_logger->error("Serialize header failed");
+    return false;
+  }
   // Serialize to byte code
   if (!serializeStrings(byteCode))
   {
