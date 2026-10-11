@@ -123,5 +123,6 @@ private:
   uint32_t m_maxCallDepth = 0;                 /**< Nested call budget in frames. */
   size_t m_maxStringBytes = 0;                 /**< Longest single string or name accepted from byte code. */
   uint32_t m_maxTableEntries = 0;              /**< Most entries accepted in one byte code table. */
+  uint64_t m_maxExecutionSteps = 0;            /**< Instruction budget per callFunction, reset on every call. */
   bool m_running = false;                      /**< Reentrancy guard for execute, reset on every exit. */
 };

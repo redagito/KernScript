@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "testutil/TestSupport.hpp"
@@ -1620,6 +1621,27 @@ TEST_CASE("An execution step budget allows scripts within it", "[integration][vm
   REQUIRE(vm.load(byteCode));
 
   REQUIRE(vm.callFunction("main"));
+}
+
+TEST_CASE("A moved VM keeps its execution step budget", "[integration][vm][limits]") {
+  // The budget is a plain member, so moving the VM carries the custom limit
+  // along instead of falling back to the default.
+  kern::VMConfig config;
+  config.maxExecutionSteps = 10;
+  const std::string source = wrap("pushi 1\npushi 2\npushi 3\npushi 4\n"
+                                  "pushi 5\npushi 6\npushi 7\npushi 8\n"
+                                  "pushi 9\npushi 10\npushi 11\npushi 12\nret");
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine movedFrom(nullptr, config);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(movedFrom, recorder);
+  REQUIRE(movedFrom.load(byteCode));
+
+  VirtualMachine vm(std::move(movedFrom));
+
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
 }
 
 TEST_CASE("A jump to itself throws instead of hanging", "[integration][vm]") {
