@@ -1,0 +1,74 @@
+// Exercises every return form through callees with parameters and locals,
+// plus nop, break and exit.
+extern println 1
+extern print 1
+
+func forty_two
+{
+  param unused
+  var scratch
+  pushi 42
+  popv scratch
+  retv scratch
+}
+
+func pi
+{
+  retf 3.5
+}
+
+func greeting
+{
+  param unused
+  rets "hello"
+}
+
+func empty
+{
+  rets ""
+}
+
+func nothing
+{
+  ret
+}
+
+func main
+{
+  // retv through a parameter and a local
+  pushi 0
+  call forty_two
+  calle println
+
+  // retf constant
+  call pi
+  calle println
+
+  // rets constant, including empty
+  pushi 0
+  call greeting
+  calle println
+  call empty
+  calle println
+
+  // nop and break change nothing
+  nop
+  pushi 7
+  calle println
+  break
+  pushi 8
+  calle println
+
+  // ret with no value ends the function
+  call nothing
+  pushi 9
+  calle println
+
+  // exit stops the script: 10 prints, 11 never runs
+  pushi 10
+  calle println
+  exit
+  pushi 11
+  calle println
+  ret
+}

@@ -54,6 +54,13 @@ TEST_CASE("jumps cover every conditional both ways plus a loop",
                              "3\n2\n1\n");
 }
 
+TEST_CASE("returns cover every return form", "[e2e][fixture]")
+{
+  const testutil::StringRecorder recorder = runFixture("returns");
+
+  REQUIRE(recorder.text() == "42\n3.5\nhello\n\n7\n8\n9\n10\n");
+}
+
 TEST_CASE("test1 prints its values and calls a two argument extern function",
           "[e2e][fixture]")
 {
