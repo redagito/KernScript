@@ -13,8 +13,8 @@ find_package (Catch2 REQUIRED)
 
 target_link_libraries (KernScriptTestUnit PRIVATE
 	KernScriptTestSupport
-	# Private implementation headers, needed to unit test the classes there.
-	KernScriptLibInternal
+	# Implementation library, needed to unit test the classes there.
+	KernScriptLibImpl
 	Catch2::Catch2WithMain
 )
 

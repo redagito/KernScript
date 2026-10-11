@@ -13,6 +13,8 @@ find_package (Catch2 REQUIRED)
 
 target_link_libraries (KernScriptTestIntegration PRIVATE
 	KernScriptTestSupport
+	# Implementation library: integration tests construct internals directly.
+	KernScriptLibImpl
 	Catch2::Catch2WithMain
 )
 

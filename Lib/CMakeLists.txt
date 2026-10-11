@@ -1,32 +1,8 @@
-file (GLOB_RECURSE KERNSCRIPT_LIB_SOURCES CONFIGURE_DEPENDS
-	${CMAKE_CURRENT_SOURCE_DIR}/source/*.cpp
-	${CMAKE_CURRENT_SOURCE_DIR}/source/*.cxx
-)
-
-add_library (KernScriptLib ${KERNSCRIPT_LIB_SOURCES})
-
-find_package (spdlog REQUIRED)
-find_package (fmt REQUIRED)
-
-# fmt is public because the ILogger interface includes it for message
-# formatting. spdlog is only used by the library internal default logger.
-target_link_libraries (KernScriptLib
-	PUBLIC fmt::fmt
-	PRIVATE spdlog::spdlog
-)
-
-target_include_directories (KernScriptLib
-	PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
-
-# The implementation headers are private to the library. They are exposed
-# through an INTERFACE target so the unit tests can exercise the implementation
-# classes without hardcoding a path into this project. Nothing installs or
-# exports either target, so the headers stay internal to the build.
-add_library (KernScriptLibInternal INTERFACE)
-target_include_directories (KernScriptLibInternal INTERFACE
-	${CMAKE_CURRENT_SOURCE_DIR}/source
-)
-
-target_link_libraries (KernScriptLib PUBLIC KernScriptLibInternal)
-
+# Umbrella for the library projects. Only dispatches, it defines nothing itself.
+#
+#   ApiHeaders/ public interface headers, leaf target for both libraries below
+#   Api/        public interface: factories plus the product library
+#   Impl/       implementation detail: assembler, lexer, parser, compiler, VM
+add_subdirectory (ApiHeaders)
+add_subdirectory (Api)
+add_subdirectory (Impl)
