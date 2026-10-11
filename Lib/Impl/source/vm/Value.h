@@ -41,9 +41,11 @@ public:
   /**
   * \brief Returns true for the types arithmetic and comparison operate on.
   *
-  * Strings and invalid values are not numeric. Arithmetic on them leaves the
-  * value unchanged, so callers that must not silently drop an operand check
-  * this first.
+  * Strings and invalid values are not numeric. Arithmetic with a non-numeric
+  * operand leaves the value unchanged, so callers that must not silently
+  * drop an operand check this first. Numeric failures throw
+  * kern::RuntimeError instead: integer overflow and out-of-range conversions
+  * never wrap or narrow silently.
   */
   bool isNumeric() const;
 
