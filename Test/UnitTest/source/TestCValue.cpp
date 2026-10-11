@@ -641,6 +641,48 @@ TEST_CASE("Value assignment replaces the previous string", "[unit][Value]") {
   REQUIRE(text == "second");
 }
 
+TEST_CASE("Value mixed float overflow pins to infinity", "[unit][Value][m8]") {
+  // Mixed-type results narrow through double to float. Out-of-range values
+  // become infinities (never a throw), matching same-type float overflow.
+  // Standalone toolchain probe (MSVC x64): static_cast<float>(1e300) is
+  // +inf, -1e300 is -inf, NaN/inf pass through, no trap.
+  {
+    Value value(std::numeric_limits<float>::max());
+    Value two(static_cast<int32_t>(2));
+    value *= two;
+    REQUIRE(value.getType() == Value::Type::Float);
+    float result = 0.f;
+    REQUIRE(value.convert(result));
+    REQUIRE(std::isinf(result));
+    REQUIRE(result > 0.f);
+  }
+  {
+    Value value(-std::numeric_limits<float>::max());
+    Value two(static_cast<int32_t>(2));
+    value *= two;
+    REQUIRE(value.getType() == Value::Type::Float);
+    float result = 0.f;
+    REQUIRE(value.convert(result));
+    REQUIRE(std::isinf(result));
+    REQUIRE(result < 0.f);
+  }
+}
+
+TEST_CASE("Value mixed float NaN passes through without throwing", "[unit][Value][m8]") {
+  Value big(std::numeric_limits<float>::max());
+  Value inf = big;
+  inf *= big;
+  float infRaw = 0.f;
+  REQUIRE(inf.convert(infRaw));
+  REQUIRE(std::isinf(infRaw));
+
+  // inf * 0 is NaN in double; narrowing keeps NaN instead of throwing.
+  Value zero(static_cast<int32_t>(0));
+  inf *= zero;
+  float raw = 0.f;
+  REQUIRE(inf.convert(raw));
+  REQUIRE(std::isnan(raw));
+}
 TEST_CASE("Value NaN comparisons are unordered", "[unit][Value][nan]") {
   // NaN is reachable with same-type float ops only: overflow to inf, then
   // inf minus inf. Same-type float arithmetic never throws.
