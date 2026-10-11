@@ -549,11 +549,82 @@ TEST_CASE("Value move leaves the moved-from value invalid", "[unit][Value][m7]")
 
 TEST_CASE("Value mixed-type overflow throws", "[unit][Value][m8]")
 {
+  // A mixed result beyond the unsigned range still throws instead of
+  // wrapping; INT_MAX + 1u itself now succeeds as 2147483648u (see below).
+  Value value(static_cast<int32_t>(2000000000));
+  Value operand(static_cast<uint32_t>(3000000000u));
+
+  REQUIRE_THROWS_AS(value += operand, kern::RuntimeError);
+}
+
+TEST_CASE("Value mixed INT_MAX plus one stays unsigned", "[unit][Value][m3]")
+{
   Value value(static_cast<int32_t>(2147483647));
   Value operand(static_cast<uint32_t>(1));
 
-  // Widens to signed, whose range the true sum leaves.
-  REQUIRE_THROWS_AS(value += operand, kern::RuntimeError);
+  value += operand;
+
+  REQUIRE(value.getType() == Value::Type::UnsignedInteger);
+  uint32_t result = 0;
+  REQUIRE(value.convert(result));
+  REQUIRE(result == 2147483648u);
+}
+
+TEST_CASE("Value large unsigned plus one stays unsigned", "[unit][Value][m3]")
+{
+  Value value(static_cast<uint32_t>(3000000000u));
+  Value one(static_cast<int32_t>(1));
+
+  value += one;
+
+  REQUIRE(value.getType() == Value::Type::UnsignedInteger);
+  uint32_t result = 0;
+  REQUIRE(value.convert(result));
+  REQUIRE(result == 3000000001u);
+}
+
+TEST_CASE("Value large unsigned plus zero stays unsigned", "[unit][Value][m3]")
+{
+  Value value(static_cast<uint32_t>(3000000000u));
+  Value zero(static_cast<int32_t>(0));
+
+  value += zero;
+
+  REQUIRE(value.getType() == Value::Type::UnsignedInteger);
+  uint32_t result = 0;
+  REQUIRE(value.convert(result));
+  REQUIRE(result == 3000000000u);
+}
+
+TEST_CASE("Value unsigned decrement edge cases", "[unit][Value][m3]")
+{
+  {
+    Value value(static_cast<uint32_t>(1));
+    Value one(static_cast<int32_t>(1));
+    value -= one;
+    REQUIRE(value.getType() == Value::Type::UnsignedInteger);
+    uint32_t result = 0;
+    REQUIRE(value.convert(result));
+    REQUIRE(result == 0u);
+  }
+  {
+    Value value(static_cast<uint32_t>(3000000001u));
+    Value one(static_cast<int32_t>(1));
+    value -= one;
+    REQUIRE(value.getType() == Value::Type::UnsignedInteger);
+    uint32_t result = 0;
+    REQUIRE(value.convert(result));
+    REQUIRE(result == 3000000000u);
+  }
+  {
+    Value value(static_cast<uint32_t>(0));
+    Value one(static_cast<int32_t>(1));
+    value -= one;
+    REQUIRE(value.getType() == Value::Type::Integer);
+    int32_t result = 0;
+    REQUIRE(value.convert(result));
+    REQUIRE(result == -1);
+  }
 }
 
 TEST_CASE("Value mixed-type arithmetic keeps float precision",

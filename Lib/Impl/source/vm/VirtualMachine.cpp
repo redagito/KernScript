@@ -1,4 +1,3 @@
-#include <cassert>
 #include <cstring>
 #include <new>
 #include <stdexcept>
@@ -244,10 +243,13 @@ void VirtualMachine::addFunction(const std::string &functionName,
   // iterator across the extern call.
   if (m_running)
   {
-    // The VM owns the pointer once added, so take it to avoid leaking it on
-    // the refused registration.
-    std::unique_ptr<kern::IExternFunction> owned(function);
+    // Ownership stays with the caller on failure, so the caller deletes the
+    // pointer instead of the VM deleting it and causing a double-free.
     throwRuntimeError(m_logger, "addFunction is not reentrant.");
+  }
+  if (functionName.empty())
+  {
+    throwRuntimeError(m_logger, "Extern function name must not be empty.");
   }
   m_externFunctionsMap[functionName].reset(function);
 }
@@ -410,9 +412,13 @@ bool VirtualMachine::deserializeStrings(std::istream &stream)
 
 bool VirtualMachine::deserializeExternFunctions(std::istream &stream)
 {
-  // Read size
+  // Read size. A truncated count must fail before the value reaches the
+  // limit check and resize, like deserializeStrings via checked deserialize.
   uint32_t size = 0;
-  stream.read((char *)&size, sizeof(size));
+  if (!deserialize(stream, size))
+  {
+    return false;
+  }
   if (size > m_maxTableEntries)
   {
     throwRuntimeError(m_logger, "Extern function count {} exceeds the limit.",
@@ -444,9 +450,13 @@ bool VirtualMachine::deserializeExternFunctions(std::istream &stream)
 
 bool VirtualMachine::deserializeFunctions(std::istream &stream)
 {
-  // Read size
+  // Read size. A truncated count must fail before the value reaches the
+  // limit check and resize.
   uint32_t size = 0;
-  stream.read((char *)&size, sizeof(size));
+  if (!deserialize(stream, size))
+  {
+    return false;
+  }
   if (size > m_maxTableEntries)
   {
     throwRuntimeError(m_logger, "Function count {} exceeds the limit.", size);
@@ -468,15 +478,38 @@ bool VirtualMachine::deserializeFunctions(std::istream &stream)
   // Read function data
   for (auto &function : m_functions)
   {
-    // Read function name
+    // Read function name. A truncated length must fail before the value
+    // reaches the limit check and reserve.
     uint32_t length = 0;
-    stream.read((char *)&length, sizeof(length));
+    if (!deserialize(stream, length))
+    {
+      return false;
+    }
     if (length > m_maxStringBytes)
     {
       throwRuntimeError(m_logger, "Function name length {} exceeds the limit.",
                         length);
     }
-    function.name.reserve(length);
+    // The limit check passes when the configured limit itself is absurd, so
+    // a failing allocation must still surface as a typed error instead of
+    // bad_alloc, matching the table-resize pattern. The name builds in a
+    // local first, like generic strings, so a truncated stream returns false
+    // without touching the target.
+    std::string temp;
+    try
+    {
+      temp.reserve(length);
+    }
+    catch (const std::bad_alloc &)
+    {
+      throwRuntimeError(m_logger, "Function name length {} exceeds the limit.",
+                        length);
+    }
+    catch (const std::length_error &)
+    {
+      throwRuntimeError(m_logger, "Function name length {} exceeds the limit.",
+                        length);
+    }
     for (uint32_t i = 0; i < length; ++i)
     {
       char c = 0;
@@ -487,18 +520,29 @@ bool VirtualMachine::deserializeFunctions(std::istream &stream)
       {
         return false;
       }
-      function.name.push_back(c);
+      temp.push_back(c);
     }
+    function.name = std::move(temp);
 
-    // Read stack size
-    stream.read((char *)&function.stackSize, sizeof(function.stackSize));
+    // Read stack size. Each count must prove the stream still holds it
+    // before the value is used; truncation returns false instead of
+    // carrying a partial value forward.
+    if (!deserialize(stream, function.stackSize))
+    {
+      return false;
+    }
     // Read parameter size
-    stream.read((char *)&function.parameterSize,
-                sizeof(function.parameterSize));
+    if (!deserialize(stream, function.parameterSize))
+    {
+      return false;
+    }
 
     // Read instructions
     // Instructions size
-    stream.read((char *)&size, sizeof(size));
+    if (!deserialize(stream, size))
+    {
+      return false;
+    }
     if (size > m_maxTableEntries)
     {
       throwRuntimeError(m_logger, "Instruction count {} exceeds the limit.",
@@ -734,6 +778,12 @@ bool VirtualMachine::execute()
     {
       throwRuntimeError(m_logger, "Pop needs a value on the runtime stack.");
     }
+    if (static_cast<uint64_t>(m_runtimeStack.size()) <=
+        static_cast<uint64_t>(m_currentRuntimeStackBaseIndex) +
+            static_cast<uint64_t>(currentFunction.stackSize))
+    {
+      throwRuntimeError(m_logger, "Pop would go below the frame.");
+    }
     m_runtimeStack.pop_back();
     ++m_currentInstructionIndex;
     break;
@@ -745,6 +795,12 @@ bool VirtualMachine::execute()
     if (m_runtimeStack.empty())
     {
       throwRuntimeError(m_logger, "Popv needs a value on the runtime stack.");
+    }
+    if (static_cast<uint64_t>(m_runtimeStack.size()) <=
+        static_cast<uint64_t>(m_currentRuntimeStackBaseIndex) +
+            static_cast<uint64_t>(currentFunction.stackSize))
+    {
+      throwRuntimeError(m_logger, "Popv would go below the frame.");
     }
     if (!indexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0],
                       m_runtimeStack.size()))
@@ -840,8 +896,11 @@ bool VirtualMachine::execute()
         static_cast<uint64_t>(currentFunction.stackSize);
     const uint64_t stackSizeNow =
         static_cast<uint64_t>(m_runtimeStack.size());
-    const uint64_t pushed =
-        stackSizeNow > frameEnd ? stackSizeNow - frameEnd : 0;
+    if (stackSizeNow < frameEnd)
+    {
+      throwRuntimeError(m_logger, "The runtime stack is below the frame.");
+    }
+    const uint64_t pushed = stackSizeNow - frameEnd;
     if (pushed != externFunction.argCount)
     {
       throwRuntimeError(m_logger,
@@ -920,13 +979,8 @@ bool VirtualMachine::execute()
     }
 
     // Resize runtime stack to remove local function variables but the one
-    // holding the return value. The resize can only grow here when the frame
-    // is empty, so it stays within budget by the same argument as below.
-    if (static_cast<uint64_t>(m_currentRuntimeStackBaseIndex) + 1 >
-        m_maxStackSize)
-    {
-      throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
-    }
+    // holding the return value. No budget check: the empty frame returns
+    // above, so base + 1 is at most the current size and this only shrinks.
     m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
 
     // Retrieve function index of previous function
@@ -1399,7 +1453,10 @@ bool VirtualMachine::execute()
 
 void VirtualMachine::pushValue(const Value &val)
 {
-  assert(val.getType() != Value::Type::Invalid);
+  if (val.getType() == Value::Type::Invalid)
+  {
+    throwRuntimeError(m_logger, "Push of an uninitialized value.");
+  }
   if (m_runtimeStack.size() >= m_maxStackSize)
   {
     throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
@@ -1413,8 +1470,11 @@ bool VirtualMachine::popValue(Value &val)
   {
     return false;
   }
+  if (m_runtimeStack.back().getType() == Value::Type::Invalid)
+  {
+    throwRuntimeError(m_logger, "Pop of an uninitialized value.");
+  }
   val = std::move(m_runtimeStack.back());
-  assert(val.getType() != Value::Type::Invalid);
   m_runtimeStack.pop_back();
   return true;
 }

@@ -1,5 +1,8 @@
 #include "Deserialize.h"
 
+#include <new>
+#include <stdexcept>
+
 #include "kern/RuntimeError.h"
 
 template <typename T> bool deserializeBasic(std::istream &stream, T &value)
@@ -71,9 +74,22 @@ bool deserialize(std::istream &stream, std::string &str, size_t maxLength)
     return true;
   }
 
-  // Reserve space
+  // Reserve space. The limit check passes when the configured limit itself
+  // is absurd, so a failing allocation must still surface as a typed error
+  // instead of bad_alloc, matching the table-resize pattern.
   std::string temp;
-  temp.reserve(length);
+  try
+  {
+    temp.reserve(length);
+  }
+  catch (const std::bad_alloc &)
+  {
+    throw kern::RuntimeError("String length exceeds the limit.");
+  }
+  catch (const std::length_error &)
+  {
+    throw kern::RuntimeError("String length exceeds the limit.");
+  }
 
   // Read string content
   // TODO Slow

@@ -2316,3 +2316,406 @@ TEST_CASE("popParameter takes a bool", "[integration][vm][pop]")
   REQUIRE(taker->seen[0]);
   REQUIRE_FALSE(taker->seen[1]);
 }
+
+TEST_CASE("Push of an uninitialized local throws", "[integration][vm]")
+{
+  const std::string source = wrap("var x\npushv x\nret");
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
+}
+
+TEST_CASE("Pop of an uninitialized local throws", "[integration][vm]")
+{
+  FakeFunction main;
+  main.stackSize = 1;
+  main.instructions = {makeInstruction(Opcode::Add)};
+  requireCorrupt({}, {main});
+}
+
+TEST_CASE("Add of uninitialized locals throws", "[integration][vm]")
+{
+  FakeFunction main;
+  main.stackSize = 2;
+  main.instructions = {makeInstruction(Opcode::Add)};
+  requireCorrupt({}, {main});
+}
+
+TEST_CASE("Inc on a large unsigned stays unsigned", "[integration][vm][m3]")
+{
+  const std::string source =
+      wrap("pushu 3000000000\ninc\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "3000000001\n");
+}
+
+TEST_CASE("Dec on a large unsigned stays unsigned", "[integration][vm][m3]")
+{
+  const std::string source =
+      wrap("pushu 3000000001\ndec\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "3000000000\n");
+}
+
+TEST_CASE("Large unsigned plus zero stays unsigned", "[integration][vm][m3]")
+{
+  const std::string source =
+      wrap("pushu 3000000000\npushi 0\nadd\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "3000000000\n");
+}
+
+TEST_CASE("Truncated extern count fails cleanly", "[integration][vm][trunc]")
+{
+  for (size_t bytes = 1; bytes < 4; ++bytes)
+  {
+    std::stringstream stream;
+    writeHeader(stream);
+    writeRaw<uint32_t>(stream, 0);
+    stream.write("\x01\x02\x03", static_cast<std::streamsize>(bytes));
+    VirtualMachine vm(nullptr);
+    bool threwRuntime = false;
+    bool returnedFalse = false;
+    try
+    {
+      returnedFalse = !vm.load(stream);
+    }
+    catch (const kern::RuntimeError &)
+    {
+      threwRuntime = true;
+    }
+    REQUIRE((threwRuntime || returnedFalse));
+  }
+}
+
+TEST_CASE("Truncated function count fails cleanly", "[integration][vm][trunc]")
+{
+  for (size_t bytes = 1; bytes < 4; ++bytes)
+  {
+    std::stringstream stream;
+    writeHeader(stream);
+    writeRaw<uint32_t>(stream, 0);
+    writeRaw<uint32_t>(stream, 0);
+    stream.write("\x01\x02\x03", static_cast<std::streamsize>(bytes));
+    VirtualMachine vm(nullptr);
+    bool threwRuntime = false;
+    bool returnedFalse = false;
+    try
+    {
+      returnedFalse = !vm.load(stream);
+    }
+    catch (const kern::RuntimeError &)
+    {
+      threwRuntime = true;
+    }
+    REQUIRE((threwRuntime || returnedFalse));
+  }
+}
+
+TEST_CASE("Truncated function name length fails cleanly",
+          "[integration][vm][trunc]")
+{
+  for (size_t bytes = 1; bytes < 4; ++bytes)
+  {
+    std::stringstream stream;
+    writeHeader(stream);
+    writeRaw<uint32_t>(stream, 0);
+    writeRaw<uint32_t>(stream, 0);
+    writeRaw<uint32_t>(stream, 1);
+    stream.write("\x04\x00\x00", static_cast<std::streamsize>(bytes));
+    stream.write("ab", 2);
+    VirtualMachine vm(nullptr);
+    bool threwRuntime = false;
+    bool returnedFalse = false;
+    try
+    {
+      returnedFalse = !vm.load(stream);
+    }
+    catch (const kern::RuntimeError &)
+    {
+      threwRuntime = true;
+    }
+    REQUIRE((threwRuntime || returnedFalse));
+  }
+}
+
+TEST_CASE("Failed reentrant addFunction leaves ownership with the caller",
+          "[integration][vm][reentry]")
+{
+  struct Tracker : public kern::IExternFunction
+  {
+    int *count = nullptr;
+    explicit Tracker(int *c) : count(c) { ++(*count); }
+    ~Tracker() override { --(*count); }
+    bool call(kern::IVirtualMachine &) override { return true; }
+    unsigned int getArgumentCount() const override { return 0; }
+  };
+  class AddingFunction : public kern::IExternFunction
+  {
+  public:
+    explicit AddingFunction(int *c) : count(c) {}
+    bool call(kern::IVirtualMachine &vm) override
+    {
+      Tracker *raw = new Tracker(count);
+      REQUIRE(*count == 1);
+      try
+      {
+        vm.addFunction("late", raw);
+      }
+      catch (const kern::RuntimeError &)
+      {
+        // The refused registration must not take ownership: the object is
+        // still alive and the caller deletes it without a double-free.
+        REQUIRE(*count == 1);
+        delete raw;
+        REQUIRE(*count == 0);
+        throw;
+      }
+      return true;
+    }
+
+    unsigned int getArgumentCount() const override { return 0; }
+
+  private:
+    int *count = nullptr;
+  };
+
+  int alive = 0;
+  const std::string source =
+      "extern boom 0\n\nfunc main\n{\ncalle boom\nret\n}\n";
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  vm.addFunction("boom", new AddingFunction(&alive));
+  REQUIRE(vm.load(byteCode));
+
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
+  REQUIRE(alive == 0);
+}
+
+TEST_CASE("Truncated function name leaves no script behind",
+          "[integration][vm][trunc]")
+{
+  const std::string source = wrap("pushi 1\ncalle println\nret");
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr);
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+  REQUIRE(vm.callFunction("main"));
+  REQUIRE(recorder.text() == "1\n");
+
+  std::stringstream truncated;
+  writeHeader(truncated);
+  writeRaw<uint32_t>(truncated, 0);
+  writeRaw<uint32_t>(truncated, 0);
+  writeRaw<uint32_t>(truncated, 1);
+  writeRaw<uint32_t>(truncated, 10);
+  truncated.write("abc", 3);
+
+  REQUIRE_FALSE(vm.load(truncated));
+  REQUIRE_FALSE(vm.callFunction("main"));
+
+  byteCode.clear();
+  byteCode.seekg(0);
+  REQUIRE(vm.load(byteCode));
+  REQUIRE(vm.callFunction("main"));
+  REQUIRE(recorder.text() == "1\n1\n");
+}
+
+TEST_CASE("addFunction refuses an empty name", "[integration][vm]")
+{
+  struct Dummy : public kern::IExternFunction
+  {
+    bool call(kern::IVirtualMachine &) override { return true; }
+    unsigned int getArgumentCount() const override { return 0; }
+  };
+
+  VirtualMachine vm(nullptr);
+  Dummy *raw = new Dummy();
+  try
+  {
+    vm.addFunction("", raw);
+  }
+  catch (const kern::RuntimeError &)
+  {
+    // Ownership stays with the caller on failure.
+    delete raw;
+    return;
+  }
+  delete raw;
+  FAIL("addFunction with an empty name must fail.");
+}
+
+TEST_CASE("A corrupt string length with an absurd limit fails cleanly",
+          "[integration][vm][limits]")
+{
+  // With maxStringBytes=SIZE_MAX the prefix passes the limit check, so the
+  // reserve itself must not let bad_alloc escape. On machines with enough
+  // RAM the reserve succeeds and the truncated content returns false; on
+  // constrained machines it throws RuntimeError. Either is clean, bad_alloc
+  // is not.
+  kern::VMConfig config;
+  config.maxStringBytes = SIZE_MAX;
+  VirtualMachine vm(nullptr, config);
+  std::stringstream stream;
+  writeHeader(stream);
+  writeRaw<uint32_t>(stream, 1);
+  writeRaw<uint32_t>(stream, 0xFFFFFFFF);
+  bool threwRuntime = false;
+  bool returnedFalse = false;
+  try
+  {
+    returnedFalse = !vm.load(stream);
+  }
+  catch (const kern::RuntimeError &)
+  {
+    threwRuntime = true;
+  }
+  REQUIRE((threwRuntime || returnedFalse));
+}
+
+TEST_CASE("A corrupt function name length with an absurd limit fails cleanly",
+          "[integration][vm][limits]")
+{
+  kern::VMConfig config;
+  config.maxStringBytes = SIZE_MAX;
+  VirtualMachine vm(nullptr, config);
+  std::stringstream stream;
+  writeHeader(stream);
+  writeRaw<uint32_t>(stream, 0);
+  writeRaw<uint32_t>(stream, 0);
+  writeRaw<uint32_t>(stream, 1);
+  writeRaw<uint32_t>(stream, 0xFFFFFFFF);
+  bool threwRuntime = false;
+  bool returnedFalse = false;
+  try
+  {
+    returnedFalse = !vm.load(stream);
+  }
+  catch (const kern::RuntimeError &)
+  {
+    threwRuntime = true;
+  }
+  REQUIRE((threwRuntime || returnedFalse));
+}
+
+TEST_CASE("Pop of a local makes a later zero arg calle throw",
+          "[integration][vm][m5]")
+{
+  // One local lives in the frame. Popping it corrupts the frame, so the
+  // following zero argument call must throw instead of silently passing
+  // with a clamped push count.
+  const std::string source =
+      "extern get_value 0\nextern println 1\n\nfunc main\n{\nvar a\n"
+      "movi a, 5\npop\ncalle get_value\nret\n}\n";
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
+}
+
+TEST_CASE("Pop below the frame throws", "[integration][vm][m5]")
+{
+  // The frame holds one local and nothing was pushed above it, so pop would
+  // remove the local itself.
+  const std::string source = "extern println 1\n\nfunc main\n{\nvar a\n"
+                             "movi a, 5\npop\nret\n}\n";
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
+}
+
+TEST_CASE("Popv below the frame throws", "[integration][vm][m5]")
+{
+  // Only the local lives in the frame, so storing the top into it and
+  // popping would still drop below the frame end.
+  const std::string source = "extern println 1\n\nfunc main\n{\nvar a\n"
+                             "movi a, 5\npopv a\nret\n}\n";
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
+}
+
+TEST_CASE("Pop of a pushed value above the frame still works",
+          "[integration][vm][m5]")
+{
+  const std::string source =
+      wrap("pushi 1\npushi 2\npop\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+  REQUIRE(recorder.text() == "1\n");
+}
+
+TEST_CASE("Popv of a pushed value above the frame still works",
+          "[integration][vm][m5]")
+{
+  const std::string source = "extern println 1\n\nfunc main\n{\nvar x\n"
+                             "pushi 5\npopv x\npushv x\ncalle println\n"
+                             "ret\n}\n";
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+  REQUIRE(recorder.text() == "5\n");
+}
+
+TEST_CASE("Popping an extern return above the frame still works",
+          "[integration][vm][m5]")
+{
+  const std::string source =
+      "extern get_value 0\nextern println 1\n\nfunc main\n{\n"
+      "calle get_value\npop\npushi 1\ncalle println\nret\n}\n";
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+  REQUIRE(recorder.text() == "1\n");
+}
+
+TEST_CASE("Extern return chaining still works", "[integration][vm][m5]")
+{
+  const std::string source = "extern get_value 0\nextern println 1\n"
+                             "\nfunc main\n{\ncalle get_value\n"
+                             "calle println\nret\n}\n";
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+  REQUIRE(recorder.text() == "35\n");
+}

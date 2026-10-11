@@ -485,12 +485,14 @@ namespace
 * Float wins over the integers, matching how the conversions widen. Two
 * unsigned integers stay unsigned, everything else becomes signed.
 *
-* Language limits: mixed-type arithmetic runs through double, so integers
-* beyond 2^53 would lose precision, and results are float-precision whenever
-* either side is a float. A mixed-type result that no longer fits its target
-* type throws instead of narrowing: store() range-checks integer targets, so
-* INT_MAX + 1u fails rather than wraps. Same-type integers never touch
-* double; they widen to 64 bit and range-check before narrowing back.
+* Language limits: mixed integer/float arithmetic runs through double, so
+* integers beyond 2^53 would lose precision, and results are float-precision
+* whenever either side is a float. Mixed signed/unsigned integers never touch
+* double; they use the exact 64 bit path in storeMixedInteger instead, so a
+* large unsigned value plus a small signed one keeps its unsigned range. A
+* mixed-type result that no longer fits its target type throws instead of
+* narrowing: store() range-checks integer targets. Same-type integers never
+* touch double; they widen to 64 bit and range-check before narrowing back.
 */
 Value::Type widen(Value::Type lhs, Value::Type rhs)
 {
@@ -507,14 +509,34 @@ Value::Type widen(Value::Type lhs, Value::Type rhs)
 }
 }
 
+void Value::storeMixedInteger(int64_t value)
+{
+  // Negative results have no unsigned form, non-negative results keep the
+  // unsigned range so large unsigned operands survive mixing with small
+  // signed ones.
+  if (value < 0)
+  {
+    checkIntRange(value);
+    m_type = Type::Integer;
+    m_integer = static_cast<int32_t>(value);
+  }
+  else
+  {
+    checkUintRange(static_cast<uint64_t>(value));
+    m_type = Type::UnsignedInteger;
+    m_unsignedInteger = static_cast<uint32_t>(value);
+  }
+}
+
 Value &Value::operator+=(const Value &rhs)
 {
   if (isNumeric() && rhs.isNumeric())
   {
     const Type result = widen(m_type, rhs.m_type);
 
-    // Same-type operands stay exact by widening to 64 bit first. Mixed types
-    // go through double, which narrows for integers beyond 2^53.
+    // Same-type operands stay exact by widening to 64 bit first. Mixed
+    // signed/unsigned integers stay exact the same way via storeMixedInteger;
+    // only mixes with float go through double.
     if (m_type == rhs.m_type && m_type == Type::Integer)
     {
       const int64_t result = static_cast<int64_t>(m_integer) +
@@ -532,6 +554,19 @@ Value &Value::operator+=(const Value &rhs)
     else if (m_type == rhs.m_type && m_type == Type::Float)
     {
       m_float += rhs.m_float;
+    }
+    else if ((m_type == Type::Integer &&
+              rhs.m_type == Type::UnsignedInteger) ||
+             (m_type == Type::UnsignedInteger &&
+              rhs.m_type == Type::Integer))
+    {
+      const int64_t lhs = (m_type == Type::Integer)
+                              ? static_cast<int64_t>(m_integer)
+                              : static_cast<int64_t>(m_unsignedInteger);
+      const int64_t rhsv = (rhs.m_type == Type::Integer)
+                               ? static_cast<int64_t>(rhs.m_integer)
+                               : static_cast<int64_t>(rhs.m_unsignedInteger);
+      storeMixedInteger(lhs + rhsv);
     }
     else
     {
@@ -566,6 +601,19 @@ Value &Value::operator-=(const Value &rhs)
     {
       m_float -= rhs.m_float;
     }
+    else if ((m_type == Type::Integer &&
+              rhs.m_type == Type::UnsignedInteger) ||
+             (m_type == Type::UnsignedInteger &&
+              rhs.m_type == Type::Integer))
+    {
+      const int64_t lhs = (m_type == Type::Integer)
+                              ? static_cast<int64_t>(m_integer)
+                              : static_cast<int64_t>(m_unsignedInteger);
+      const int64_t rhsv = (rhs.m_type == Type::Integer)
+                               ? static_cast<int64_t>(rhs.m_integer)
+                               : static_cast<int64_t>(rhs.m_unsignedInteger);
+      storeMixedInteger(lhs - rhsv);
+    }
     else
     {
       store(result, asDouble(*this) - asDouble(rhs));
@@ -597,6 +645,19 @@ Value &Value::operator*=(const Value &rhs)
     else if (m_type == rhs.m_type && m_type == Type::Float)
     {
       m_float *= rhs.m_float;
+    }
+    else if ((m_type == Type::Integer &&
+              rhs.m_type == Type::UnsignedInteger) ||
+             (m_type == Type::UnsignedInteger &&
+              rhs.m_type == Type::Integer))
+    {
+      const int64_t lhs = (m_type == Type::Integer)
+                              ? static_cast<int64_t>(m_integer)
+                              : static_cast<int64_t>(m_unsignedInteger);
+      const int64_t rhsv = (rhs.m_type == Type::Integer)
+                               ? static_cast<int64_t>(rhs.m_integer)
+                               : static_cast<int64_t>(rhs.m_unsignedInteger);
+      storeMixedInteger(lhs * rhsv);
     }
     else
     {
@@ -646,6 +707,22 @@ Value &Value::operator/=(const Value &rhs)
   }
 
   const Type result = widen(m_type, rhs.m_type);
+  if ((m_type == Type::Integer && rhs.m_type == Type::UnsignedInteger) ||
+      (m_type == Type::UnsignedInteger && rhs.m_type == Type::Integer))
+  {
+    const int64_t lhs = (m_type == Type::Integer)
+                            ? static_cast<int64_t>(m_integer)
+                            : static_cast<int64_t>(m_unsignedInteger);
+    const int64_t rhsv = (rhs.m_type == Type::Integer)
+                             ? static_cast<int64_t>(rhs.m_integer)
+                             : static_cast<int64_t>(rhs.m_unsignedInteger);
+    if (rhsv == 0)
+    {
+      return *this;
+    }
+    storeMixedInteger(lhs / rhsv);
+    return *this;
+  }
   const double divisor = asDouble(rhs);
   if (divisor == 0.0)
   {

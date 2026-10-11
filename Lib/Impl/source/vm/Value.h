@@ -95,6 +95,16 @@ private:
   void store(Type type, double value);
 
   /**
+  * \brief Stores a mixed signed/unsigned integer result exactly.
+  *
+  * Negative results become Integer, non-negative results become
+  * UnsignedInteger, so a large unsigned value plus a small signed one keeps
+  * its unsigned range instead of failing the signed check. Out-of-range
+  * results throw kern::RuntimeError instead of wrapping.
+  */
+  void storeMixedInteger(int64_t value);
+
+  /**
   * \brief Converts to a bool, used by the logical operators.
   */
   static bool asBool(const Value &value);

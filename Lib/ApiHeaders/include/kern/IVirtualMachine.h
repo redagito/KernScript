@@ -52,11 +52,14 @@ public:
 
   /**
   * \brief Registers an extern function by name.
-  * \param functionName Name scripts use in calle instructions.
+  * \param functionName Name scripts use in calle instructions. Must not be
+  *        empty, matching the wire format which refuses empty names.
   * \param function Implementation of the extern function. Ownership passes to
-  *        the virtual machine, which deletes it on removeFunction or on
-  *        destruction, so the caller must not delete it. Anything the
-  *        function refers to must outlive the virtual machine.
+  *        the virtual machine only on success, which deletes it on
+  *        removeFunction or on destruction, so the caller must not delete it.
+  *        On failure (a reentrant call or an empty name) ownership stays with
+  *        the caller, which must delete it. Anything the function refers to
+  *        must outlive the virtual machine.
   */
   virtual void addFunction(const ::std::string &functionName,
                            IExternFunction *function) = 0;
