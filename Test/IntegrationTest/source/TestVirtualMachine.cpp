@@ -386,6 +386,66 @@ TEST_CASE("Jmp to an unknown label fails to assemble", "[integration][vm]")
   REQUIRE_FALSE(testutil::assemble(source, byteCode));
 }
 
+TEST_CASE("Jump if equal is taken", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 5\npushi 5\nje a\n"
+                                  "pushi 20\ncalle println\n"
+                                  "label a\npushi 10\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "10\n");
+}
+
+TEST_CASE("Jump if equal is not taken", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 5\npushi 6\nje a\n"
+                                  "pushi 20\ncalle println\n"
+                                  "label a\npushi 10\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "20\n10\n");
+}
+
+TEST_CASE("Jump if equal compares across types", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 2\npushf 2.0\nje a\n"
+                                  "pushi 20\ncalle println\n"
+                                  "label a\npushi 10\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "10\n");
+}
+
+TEST_CASE("Jump if not equal is taken", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 5\npushi 6\njne a\n"
+                                  "pushi 20\ncalle println\n"
+                                  "label a\npushi 10\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "10\n");
+}
+
+TEST_CASE("Jump if not equal is not taken", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 5\npushi 5\njne a\n"
+                                  "pushi 20\ncalle println\n"
+                                  "label a\npushi 10\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "20\n10\n");
+}
+
 TEST_CASE("A script function receives its parameter", "[integration][vm]")
 {
   const std::string source = "extern println 1\n\nfunc print\n{\nparam a\n"
