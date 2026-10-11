@@ -4,7 +4,7 @@ project (KernScript LANGUAGES CXX)
 
 # Build settings that apply to every project below. Everything project
 # specific lives in the project's own CMakeLists.txt.
-set (CMAKE_CXX_STANDARD 17)
+set (CMAKE_CXX_STANDARD 23)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Required once at the top level so that projects added below can register
