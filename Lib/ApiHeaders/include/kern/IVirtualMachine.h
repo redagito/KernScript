@@ -52,10 +52,12 @@ public:
    * \brief Registers an extern function by name.
    * \param functionName Name scripts use in calle instructions. Must not be
    *        empty, matching the wire format which refuses empty names.
-   * \param function Implementation of the extern function. Ownership passes to
+   * \param function Implementation of the extern function. Must not be null.
+   *        Ownership passes to
    *        the virtual machine only on success, which deletes it on
    *        removeFunction or on destruction, so the caller must not delete it.
-   *        On failure (a reentrant call or an empty name) ownership stays with
+   *        On failure (a reentrant call, an empty name or a null function)
+   *        ownership stays with
    *        the caller, which must delete it. Anything the function refers to
    *        must outlive the virtual machine.
    */

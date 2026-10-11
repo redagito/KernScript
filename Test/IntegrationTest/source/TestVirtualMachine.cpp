@@ -2240,6 +2240,27 @@ TEST_CASE("addFunction refuses an empty name", "[integration][vm]") {
   FAIL("addFunction with an empty name must fail.");
 }
 
+TEST_CASE("addFunction refuses a null function", "[integration][vm]") {
+  struct Dummy : public kern::IExternFunction {
+    bool call(kern::IVirtualMachine &) override { return true; }
+    unsigned int getArgumentCount() const override { return 0; }
+  };
+
+  VirtualMachine vm(nullptr);
+  REQUIRE_THROWS_AS(vm.addFunction("nullfn", nullptr), kern::RuntimeError);
+
+  // Nothing was planted: registering the name for real works and the script
+  // reaches the new registration instead of a stored null.
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  vm.addFunction("nullfn", new Dummy());
+  const std::string source = "extern nullfn 0\n\nfunc main\n{\ncalle nullfn\nret\n}\n";
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+  REQUIRE(vm.load(byteCode));
+  REQUIRE(vm.callFunction("main"));
+}
+
 TEST_CASE("A corrupt string length with an absurd limit fails cleanly", "[integration][vm][limits]") {
   // With maxStringBytes=SIZE_MAX the prefix passes the limit check, so the
   // reserve itself must not let bad_alloc escape. On machines with enough

@@ -203,6 +203,12 @@ void VirtualMachine::addFunction(const std::string &functionName, kern::IExternF
   if (functionName.empty()) {
     throwRuntimeError(m_logger, "Extern function name must not be empty.");
   }
+  // A null would sit in the map until Calle dereferences it past the
+  // missing-registration guard, so refuse it here. Null transfers no
+  // ownership, so the caller has nothing to delete.
+  if (function == nullptr) {
+    throwRuntimeError(m_logger, "Extern function must not be null.");
+  }
   m_externFunctionsMap[functionName].reset(function);
 }
 
