@@ -1240,6 +1240,58 @@ TEST_CASE("Calle with too many pushed values is refused",
   REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
 }
 
+TEST_CASE("Pushi accepts a negative literal", "[integration][vm][m6]")
+{
+  const std::string source = wrap("pushi -5\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "-5\n");
+}
+
+TEST_CASE("Movi accepts a negative literal", "[integration][vm][m6]")
+{
+  const std::string source = "extern println 1\n\nfunc main\n{\nvar a\n"
+                             "movi a, -7\npushv a\ncalle println\nret\n}\n";
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "-7\n");
+}
+
+TEST_CASE("Reti accepts a negative literal", "[integration][vm][m6]")
+{
+  const std::string source = "extern println 1\n\nfunc f\n{\nreti -3\n}\n"
+                             "\nfunc main\n{\ncall f\ncalle println\nret\n}\n";
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "-3\n");
+}
+
+TEST_CASE("Pushf accepts a negative literal", "[integration][vm][m6]")
+{
+  const std::string source = wrap("pushf -1.5\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "-1.5\n");
+}
+
+TEST_CASE("Pushi accepts the minimum integer", "[integration][vm][m6]")
+{
+  const std::string source = wrap("pushi -2147483648\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "-2147483648\n");
+}
+
 TEST_CASE("Movs advances the instruction pointer", "[integration][vm]")
 {
   const std::string source = "extern println 1\n\nfunc main\n{\nvar x\n"

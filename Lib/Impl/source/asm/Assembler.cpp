@@ -490,19 +490,39 @@ bool Assembler::parseFunction(std::istream &stream)
         }
 
         // Expect integer
+        // A leading dash negates the literal. The minus is assembler-level
+        // unary minus, not a lexer-level negative number, so the token
+        // stream stays stable.
         m_lexer.lex(stream);
+        bool moviNegative = false;
+        if (m_lexer.getToken() == LexerToken::Dash)
+        {
+          moviNegative = true;
+          m_lexer.lex(stream);
+        }
         if (m_lexer.getToken() != LexerToken::Integer)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
 
-        int32_t value = 0;
-        if (!parseInteger(m_lexer.getLexeme(), value))
+        // Parse the magnitude wide so that -2147483648 stays representable,
+        // then fold the sign in with a range check.
+        int64_t moviMagnitude = 0;
+        if (!parseInteger(m_lexer.getLexeme(), moviMagnitude))
         {
           m_logger->error("Invalid integer literal: {}", m_lexer.getLexeme());
           return false;
         }
+        const int64_t moviSigned =
+            moviNegative ? -moviMagnitude : moviMagnitude;
+        if (moviSigned < static_cast<int64_t>(INT32_MIN) ||
+            moviSigned > static_cast<int64_t>(INT32_MAX))
+        {
+          m_logger->error("Invalid integer literal: {}", m_lexer.getLexeme());
+          return false;
+        }
+        int32_t value = static_cast<int32_t>(moviSigned);
 
         // Set arg 0 to relative variable stack index of var1
         memcpy(&instruction.args[0], &entry1->second,
@@ -544,8 +564,15 @@ bool Assembler::parseFunction(std::istream &stream)
           return false;
         }
 
-        // Expect float
+        // Expect float, with an optional leading dash (assembler-level unary
+        // minus, keeping the token stream stable)
         m_lexer.lex(stream);
+        bool movfNegative = false;
+        if (m_lexer.getToken() == LexerToken::Dash)
+        {
+          movfNegative = true;
+          m_lexer.lex(stream);
+        }
         if (m_lexer.getToken() != LexerToken::Float)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
@@ -557,6 +584,10 @@ bool Assembler::parseFunction(std::istream &stream)
         float value;
         std::stringstream ss(m_lexer.getLexeme());
         ss >> value;
+        if (movfNegative)
+        {
+          value = -value;
+        }
 
         // Set arg 0 to relative variable stack index of var1
         memcpy(&instruction.args[0], &entry1->second,
@@ -650,19 +681,35 @@ bool Assembler::parseFunction(std::istream &stream)
       {
         // Push integer instruction
         instruction.id = Opcode::Pushi;
-        // Expects one integer constant as argument
+        // Expects one integer constant as argument, with an optional leading
+        // dash (assembler-level unary minus, keeping the token stream stable)
         m_lexer.lex(stream);
+        bool pushNegative = false;
+        if (m_lexer.getToken() == LexerToken::Dash)
+        {
+          pushNegative = true;
+          m_lexer.lex(stream);
+        }
         if (m_lexer.getToken() != LexerToken::Integer)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
-        int32_t pushValue = 0;
-        if (!parseInteger(m_lexer.getLexeme(), pushValue))
+        int64_t pushMagnitude = 0;
+        if (!parseInteger(m_lexer.getLexeme(), pushMagnitude))
         {
           m_logger->error("Invalid integer literal: {}", m_lexer.getLexeme());
           return false;
         }
+        const int64_t pushSigned =
+            pushNegative ? -pushMagnitude : pushMagnitude;
+        if (pushSigned < static_cast<int64_t>(INT32_MIN) ||
+            pushSigned > static_cast<int64_t>(INT32_MAX))
+        {
+          m_logger->error("Invalid integer literal: {}", m_lexer.getLexeme());
+          return false;
+        }
+        int32_t pushValue = static_cast<int32_t>(pushSigned);
         instruction.args[0] = pushValue;
 
         // Add assembled instruction
@@ -696,8 +743,15 @@ bool Assembler::parseFunction(std::istream &stream)
       {
         // Push float instruction
         instruction.id = Opcode::Pushf;
-        // Expects one float constant as argument
+        // Expects one float constant as argument, with an optional leading
+        // dash (assembler-level unary minus, keeping the token stream stable)
         m_lexer.lex(stream);
+        bool pushfNegative = false;
+        if (m_lexer.getToken() == LexerToken::Dash)
+        {
+          pushfNegative = true;
+          m_lexer.lex(stream);
+        }
         if (m_lexer.getToken() != LexerToken::Float)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
@@ -708,6 +762,10 @@ bool Assembler::parseFunction(std::istream &stream)
         ss << m_lexer.getLexeme();
         float temp;
         ss >> temp;
+        if (pushfNegative)
+        {
+          temp = -temp;
+        }
         // Store float binary data in arg
         memcpy((void *)&instruction.args[0], (void *)&temp, sizeof(float));
 
@@ -846,19 +904,34 @@ bool Assembler::parseFunction(std::istream &stream)
       {
         // Return integer from function
         instruction.id = Opcode::Reti;
-        // Expects one integer constant as argument
+        // Expects one integer constant as argument, with an optional leading
+        // dash (assembler-level unary minus, keeping the token stream stable)
         m_lexer.lex(stream);
+        bool retNegative = false;
+        if (m_lexer.getToken() == LexerToken::Dash)
+        {
+          retNegative = true;
+          m_lexer.lex(stream);
+        }
         if (m_lexer.getToken() != LexerToken::Integer)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
-        int32_t retValue = 0;
-        if (!parseInteger(m_lexer.getLexeme(), retValue))
+        int64_t retMagnitude = 0;
+        if (!parseInteger(m_lexer.getLexeme(), retMagnitude))
         {
           m_logger->error("Invalid integer literal: {}", m_lexer.getLexeme());
           return false;
         }
+        const int64_t retSigned = retNegative ? -retMagnitude : retMagnitude;
+        if (retSigned < static_cast<int64_t>(INT32_MIN) ||
+            retSigned > static_cast<int64_t>(INT32_MAX))
+        {
+          m_logger->error("Invalid integer literal: {}", m_lexer.getLexeme());
+          return false;
+        }
+        int32_t retValue = static_cast<int32_t>(retSigned);
         instruction.args[0] = retValue;
 
         // Add assembled instruction
@@ -868,8 +941,15 @@ bool Assembler::parseFunction(std::istream &stream)
       {
         // Return float from function
         instruction.id = Opcode::Retf;
-        // Expects one float constant as argument
+        // Expects one float constant as argument, with an optional leading
+        // dash (assembler-level unary minus, keeping the token stream stable)
         m_lexer.lex(stream);
+        bool retfNegative = false;
+        if (m_lexer.getToken() == LexerToken::Dash)
+        {
+          retfNegative = true;
+          m_lexer.lex(stream);
+        }
         if (m_lexer.getToken() != LexerToken::Float)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
@@ -880,6 +960,10 @@ bool Assembler::parseFunction(std::istream &stream)
         float value;
         std::stringstream ss(m_lexer.getLexeme());
         ss >> value;
+        if (retfNegative)
+        {
+          value = -value;
+        }
 
         // Set arg 0 to float value
         memcpy(&instruction.args[0], &value, sizeof(value));
