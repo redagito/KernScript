@@ -1,5 +1,6 @@
 #include "testutil/TestSupport.hpp"
 
+#include <cctype>
 #include <fstream>
 #include <sstream>
 
@@ -27,6 +28,18 @@ const ReportModeInitializer g_reportModeInitializer;
 
 namespace
 {
+
+// Matches a subject case insensitively, so a test keyword does not break when
+// only the capitalisation of a message changes.
+std::string toLower(const std::string &text)
+{
+  std::string lowered = text;
+  for (auto &character : lowered)
+  {
+    character = static_cast<char>(::tolower(static_cast<unsigned char>(character)));
+  }
+  return lowered;
+}
 
 // The active recorder the host functions forward to. Host functions are
 // registered as plain function pointers, so the recorder has to be reachable
@@ -71,6 +84,27 @@ const std::vector<std::string> &testutil::RecordingLogger::messages() const
 }
 
 bool testutil::RecordingLogger::empty() const { return m_messages.empty(); }
+
+bool testutil::RecordingLogger::loggedAny() const { return !m_messages.empty(); }
+
+bool testutil::RecordingLogger::loggedContaining(
+    const std::string &subject) const
+{
+  const std::string needle = toLower(subject);
+  if (needle.empty())
+  {
+    return false;
+  }
+
+  for (const auto &message : m_messages)
+  {
+    if (toLower(message).find(needle) != std::string::npos)
+    {
+      return true;
+    }
+  }
+  return false;
+}
 
 std::string testutil::RecordingLogger::text() const
 {
