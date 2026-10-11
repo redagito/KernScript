@@ -75,5 +75,18 @@ public:
   virtual void setReturnValue(int value) = 0;
   virtual void setReturnValue(float value) = 0;
   virtual void setReturnValue(const std::string &value) = 0;
+  /**
+  * \brief Sets a double return value, narrowed to the runtime float type.
+  */
+  virtual void setReturnValue(double value) = 0;
+  /**
+  * \brief Sets an unsigned integer return value.
+  */
+  virtual void setReturnValue(unsigned int value) = 0;
+  /**
+  * \brief Sets a boolean return value, stored as 1 or 0 like the logical
+  * operators produce.
+  */
+  virtual void setReturnValue(bool value) = 0;
 };
 }

@@ -49,6 +49,9 @@ public:
   void setReturnValue(int value);
   void setReturnValue(float value);
   void setReturnValue(const std::string &value);
+  void setReturnValue(double value);
+  void setReturnValue(unsigned int value);
+  void setReturnValue(bool value);
 
 protected:
   /**

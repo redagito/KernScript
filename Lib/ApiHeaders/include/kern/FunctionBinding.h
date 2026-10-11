@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <type_traits>
 
 #include "IExternFunction.h"
 #include "IVirtualMachine.h"
@@ -393,5 +394,32 @@ IExternFunction *createExternFunction(ReturnType (*externFunction)(ArgType0,
 {
   return new ExternFunction<ReturnType, ArgType0, ArgType1, ArgType2>(
       externFunction);
+}
+
+template <typename ReturnType, typename ArgType0, typename ArgType1,
+          typename ArgType2, typename ArgType3>
+IExternFunction *createExternFunction(ReturnType (*externFunction)(ArgType0,
+                                                                   ArgType1,
+                                                                   ArgType2,
+                                                                   ArgType3))
+{
+  return new ExternFunction<ReturnType, ArgType0, ArgType1, ArgType2, ArgType3>(
+      externFunction);
+}
+
+/**
+* \brief Rejects extern functions with more than four arguments.
+*
+* The enable_if keeps this overload out of overload resolution for up to four
+* arguments, so the overloads above are never ambiguous. Anything larger lands
+* here and fails with the message below instead of a deduction backtrace.
+*/
+template <typename ReturnType, typename... ArgTypes,
+          typename std::enable_if<(sizeof...(ArgTypes) > 4), int>::type = 0>
+IExternFunction *createExternFunction(ReturnType (*externFunction)(ArgTypes...))
+{
+  static_assert(sizeof...(ArgTypes) <= 4,
+                "Extern functions support at most 4 arguments.");
+  return nullptr;
 }
 }

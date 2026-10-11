@@ -220,6 +220,23 @@ void VirtualMachine::setReturnValue(const std::string &value)
   pushValue(Value(value));
 }
 
+void VirtualMachine::setReturnValue(double value)
+{
+  // The runtime model stores floats, so doubles narrow here.
+  pushValue(Value(static_cast<float>(value)));
+}
+
+void VirtualMachine::setReturnValue(unsigned int value)
+{
+  pushValue(Value(static_cast<uint32_t>(value)));
+}
+
+void VirtualMachine::setReturnValue(bool value)
+{
+  // Stored as 1 or 0, matching what the logical operators produce.
+  pushValue(Value(static_cast<int32_t>(value)));
+}
+
 bool VirtualMachine::deserializeStrings(std::istream &stream)
 {
   // Get string table size and reserve space
