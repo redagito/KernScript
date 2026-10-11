@@ -883,8 +883,14 @@ bool CVirtualMachine::execute()
 
   case EInstruction::Jmp:
   {
-    // Arg 0 is target instruction index for jump
-    uint32_t jumpIndex = *((uint32_t *)&instruction.args[0]);
+    // Arg 0 is target instruction index for jump. The end of the function
+    // itself is a legal target: the fetch treats it as an implicit return,
+    // which is how trailing labels resolve.
+    const uint32_t jumpIndex = *((uint32_t *)&instruction.args[0]);
+    if (jumpIndex > currentFunction.instructionSize)
+    {
+      throwRuntimeError(m_logger, "Jmp target out of range.");
+    }
     m_currentInstructionIndex = jumpIndex;
   }
   break;
@@ -900,7 +906,11 @@ bool CVirtualMachine::execute()
     if (x == y)
     {
       // Arg 0 is target instruction index for jump
-      uint32_t jumpIndex = *((uint32_t *)&instruction.args[0]);
+      const uint32_t jumpIndex = *((uint32_t *)&instruction.args[0]);
+      if (jumpIndex > currentFunction.instructionSize)
+      {
+        throwRuntimeError(m_logger, "Je target out of range.");
+      }
       m_currentInstructionIndex = jumpIndex;
     }
     else
@@ -921,7 +931,11 @@ bool CVirtualMachine::execute()
     if (x != y)
     {
       // Arg 0 is target instruction index for jump
-      uint32_t jumpIndex = *((uint32_t *)&instruction.args[0]);
+      const uint32_t jumpIndex = *((uint32_t *)&instruction.args[0]);
+      if (jumpIndex > currentFunction.instructionSize)
+      {
+        throwRuntimeError(m_logger, "Jne target out of range.");
+      }
       m_currentInstructionIndex = jumpIndex;
     }
     else
@@ -942,7 +956,11 @@ bool CVirtualMachine::execute()
     if (x <= y)
     {
       // Arg 0 is target instruction index for jump
-      uint32_t jumpIndex = *((uint32_t *)&instruction.args[0]);
+      const uint32_t jumpIndex = *((uint32_t *)&instruction.args[0]);
+      if (jumpIndex > currentFunction.instructionSize)
+      {
+        throwRuntimeError(m_logger, "Jle target out of range.");
+      }
       m_currentInstructionIndex = jumpIndex;
     }
     else
@@ -963,7 +981,11 @@ bool CVirtualMachine::execute()
     if (x > y)
     {
       // Arg 0 is target instruction index for jump
-      uint32_t jumpIndex = *((uint32_t *)&instruction.args[0]);
+      const uint32_t jumpIndex = *((uint32_t *)&instruction.args[0]);
+      if (jumpIndex > currentFunction.instructionSize)
+      {
+        throwRuntimeError(m_logger, "Jg target out of range.");
+      }
       m_currentInstructionIndex = jumpIndex;
     }
     else
@@ -984,7 +1006,11 @@ bool CVirtualMachine::execute()
     if (x >= y)
     {
       // Arg 0 is target instruction index for jump
-      uint32_t jumpIndex = *((uint32_t *)&instruction.args[0]);
+      const uint32_t jumpIndex = *((uint32_t *)&instruction.args[0]);
+      if (jumpIndex > currentFunction.instructionSize)
+      {
+        throwRuntimeError(m_logger, "Jge target out of range.");
+      }
       m_currentInstructionIndex = jumpIndex;
     }
     else
@@ -1005,7 +1031,11 @@ bool CVirtualMachine::execute()
     if (x < y)
     {
       // Arg 0 is target instruction index for jump
-      uint32_t jumpIndex = *((uint32_t *)&instruction.args[0]);
+      const uint32_t jumpIndex = *((uint32_t *)&instruction.args[0]);
+      if (jumpIndex > currentFunction.instructionSize)
+      {
+        throwRuntimeError(m_logger, "Jl target out of range.");
+      }
       m_currentInstructionIndex = jumpIndex;
     }
     else

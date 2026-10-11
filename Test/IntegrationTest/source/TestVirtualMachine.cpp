@@ -1395,3 +1395,77 @@ TEST_CASE("Rets with a corrupt string index throws",
   callee.instructions = {makeInstruction(EInstruction::Rets, 0)};
   requireCorrupt({}, {main, callee});
 }
+
+TEST_CASE("Jmp past the end throws", "[integration][vm][corrupt]")
+{
+  FakeFunction main;
+  main.instructions = {makeInstruction(EInstruction::Jmp, 99)};
+  requireCorrupt({}, {main});
+}
+
+TEST_CASE("Je past the end throws", "[integration][vm][corrupt]")
+{
+  FakeFunction main;
+  main.instructions = {makeInstruction(EInstruction::Pushi, 1),
+                       makeInstruction(EInstruction::Pushi, 1),
+                       makeInstruction(EInstruction::Je, 99)};
+  requireCorrupt({}, {main});
+}
+
+TEST_CASE("Jne past the end throws", "[integration][vm][corrupt]")
+{
+  FakeFunction main;
+  main.instructions = {makeInstruction(EInstruction::Pushi, 1),
+                       makeInstruction(EInstruction::Pushi, 2),
+                       makeInstruction(EInstruction::Jne, 99)};
+  requireCorrupt({}, {main});
+}
+
+TEST_CASE("Jg past the end throws", "[integration][vm][corrupt]")
+{
+  FakeFunction main;
+  main.instructions = {makeInstruction(EInstruction::Pushi, 2),
+                       makeInstruction(EInstruction::Pushi, 1),
+                       makeInstruction(EInstruction::Jg, 99)};
+  requireCorrupt({}, {main});
+}
+
+TEST_CASE("Jge past the end throws", "[integration][vm][corrupt]")
+{
+  FakeFunction main;
+  main.instructions = {makeInstruction(EInstruction::Pushi, 1),
+                       makeInstruction(EInstruction::Pushi, 1),
+                       makeInstruction(EInstruction::Jge, 99)};
+  requireCorrupt({}, {main});
+}
+
+TEST_CASE("Jl past the end throws", "[integration][vm][corrupt]")
+{
+  FakeFunction main;
+  main.instructions = {makeInstruction(EInstruction::Pushi, 1),
+                       makeInstruction(EInstruction::Pushi, 2),
+                       makeInstruction(EInstruction::Jl, 99)};
+  requireCorrupt({}, {main});
+}
+
+TEST_CASE("Jle past the end throws", "[integration][vm][corrupt]")
+{
+  FakeFunction main;
+  main.instructions = {makeInstruction(EInstruction::Pushi, 1),
+                       makeInstruction(EInstruction::Pushi, 1),
+                       makeInstruction(EInstruction::Jle, 99)};
+  requireCorrupt({}, {main});
+}
+
+TEST_CASE("Jmp to exactly the end returns cleanly",
+          "[integration][vm][corrupt]")
+{
+  // A trailing label resolves to the instruction count itself, which the
+  // fetch treats as an implicit return. That boundary stays legal.
+  FakeFunction main;
+  main.instructions = {makeInstruction(EInstruction::Jmp, 1)};
+  std::stringstream byteCode = buildByteCode({}, {main});
+  CVirtualMachine vm(nullptr);
+  REQUIRE(vm.load(byteCode));
+  REQUIRE(vm.callFunction("main"));
+}
