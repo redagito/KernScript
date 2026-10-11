@@ -1,5 +1,7 @@
 #include <cassert>
 #include <cstring>
+#include <new>
+#include <stdexcept>
 
 #include "VirtualMachine.h"
 
@@ -69,8 +71,20 @@ VirtualMachine::VirtualMachine(kern::ILogger *logger, kern::VMConfig config)
       m_maxStringBytes(config.maxStringBytes),
       m_maxTableEntries(config.maxTableEntries)
 {
-  // Preallocate the whole budget, so steady state never reallocates.
-  m_runtimeStack.reserve(m_maxStackSize);
+  // Preallocate the whole budget, so steady state never reallocates. An
+  // absurd budget fails here as a typed error instead of bad_alloc.
+  try
+  {
+    m_runtimeStack.reserve(m_maxStackSize);
+  }
+  catch (const std::bad_alloc &)
+  {
+    throwRuntimeError(m_logger, "Maximum runtime stack size exceeds the limit.");
+  }
+  catch (const std::length_error &)
+  {
+    throwRuntimeError(m_logger, "Maximum runtime stack size exceeds the limit.");
+  }
 }
 
 bool VirtualMachine::load(std::istream &byteCode)

@@ -1343,6 +1343,15 @@ TEST_CASE("Falling past the last instruction returns", "[integration][vm][m5]")
   REQUIRE(recorder.text() == "1\n");
 }
 
+TEST_CASE("An absurd stack budget throws instead of bad_alloc",
+          "[integration][vm][m10]")
+{
+  kern::VMConfig config;
+  config.maxStackBytes = SIZE_MAX;
+
+  REQUIRE_THROWS_AS(VirtualMachine(nullptr, config), kern::RuntimeError);
+}
+
 TEST_CASE("Movs advances the instruction pointer", "[integration][vm]")
 {
   const std::string source = "extern println 1\n\nfunc main\n{\nvar x\n"
