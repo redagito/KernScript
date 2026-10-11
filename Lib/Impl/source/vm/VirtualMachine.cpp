@@ -319,7 +319,22 @@ bool VirtualMachine::deserializeStrings(std::istream &stream)
     throwRuntimeError(m_logger, "String table size {} exceeds the limit.",
                       size);
   }
-  m_strings.resize(size);
+  // The limit check passes when the configured limit itself is absurd, so a
+  // failing allocation must still surface as a typed error.
+  try
+  {
+    m_strings.resize(size);
+  }
+  catch (const std::bad_alloc &)
+  {
+    throwRuntimeError(m_logger, "String table size {} exceeds the limit.",
+                      size);
+  }
+  catch (const std::length_error &)
+  {
+    throwRuntimeError(m_logger, "String table size {} exceeds the limit.",
+                      size);
+  }
 
   // Read strings into string table
   for (auto &str : m_strings)
@@ -342,7 +357,20 @@ bool VirtualMachine::deserializeExternFunctions(std::istream &stream)
     throwRuntimeError(m_logger, "Extern function count {} exceeds the limit.",
                       size);
   }
-  m_externFunctions.resize(size);
+  try
+  {
+    m_externFunctions.resize(size);
+  }
+  catch (const std::bad_alloc &)
+  {
+    throwRuntimeError(m_logger, "Extern function count {} exceeds the limit.",
+                      size);
+  }
+  catch (const std::length_error &)
+  {
+    throwRuntimeError(m_logger, "Extern function count {} exceeds the limit.",
+                      size);
+  }
   for (auto &externFunction : m_externFunctions)
   {
     if (!deserialize(stream, externFunction, m_maxStringBytes))
@@ -363,7 +391,18 @@ bool VirtualMachine::deserializeFunctions(std::istream &stream)
     throwRuntimeError(m_logger, "Function count {} exceeds the limit.", size);
   }
   // Reserve space
-  m_functions.resize(size);
+  try
+  {
+    m_functions.resize(size);
+  }
+  catch (const std::bad_alloc &)
+  {
+    throwRuntimeError(m_logger, "Function count {} exceeds the limit.", size);
+  }
+  catch (const std::length_error &)
+  {
+    throwRuntimeError(m_logger, "Function count {} exceeds the limit.", size);
+  }
 
   // Read function data
   for (auto &function : m_functions)
@@ -404,7 +443,20 @@ bool VirtualMachine::deserializeFunctions(std::istream &stream)
       throwRuntimeError(m_logger, "Instruction count {} exceeds the limit.",
                         size);
     }
-    function.instructions.resize(size);
+    try
+    {
+      function.instructions.resize(size);
+    }
+    catch (const std::bad_alloc &)
+    {
+      throwRuntimeError(m_logger, "Instruction count {} exceeds the limit.",
+                        size);
+    }
+    catch (const std::length_error &)
+    {
+      throwRuntimeError(m_logger, "Instruction count {} exceeds the limit.",
+                        size);
+    }
     // Instructions
     for (auto &instruction : function.instructions)
     {

@@ -1357,6 +1357,22 @@ TEST_CASE("An absurd stack budget throws instead of bad_alloc",
   REQUIRE_THROWS_AS(VirtualMachine(nullptr, config), kern::RuntimeError);
 }
 
+TEST_CASE("A huge table count with a huge limit throws typed",
+          "[integration][vm][limits]")
+{
+  // The limit check passes, so the resize itself must fail as a typed error
+  // instead of bad_alloc.
+  kern::VMConfig config;
+  config.maxTableEntries = 0xFFFFFFFF;
+
+  VirtualMachine vm(nullptr, config);
+  std::stringstream stream;
+  writeHeader(stream);
+  writeRaw<uint32_t>(stream, 0xFFFFFFFF);
+
+  REQUIRE_THROWS_AS(vm.load(stream), kern::RuntimeError);
+}
+
 TEST_CASE("callFunction is not reentrant", "[integration][vm][m11]")
 {
   // An extern function that calls back into the running VM. The nested call
