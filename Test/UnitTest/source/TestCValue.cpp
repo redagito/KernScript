@@ -457,6 +457,28 @@ TEST_CASE("Value toString prints every type", "[unit][Value][tostring]")
   REQUIRE(Value().toString() == "Invalid");
 }
 
+TEST_CASE("Value float to int truncates in-range fractions",
+          "[unit][Value][frac]")
+{
+  Value value(2.9f);
+
+  int32_t asInteger = 0;
+  REQUIRE(value.convert(asInteger));
+  REQUIRE(asInteger == 2);
+}
+
+TEST_CASE("Value float to int stays strict past the boundary",
+          "[unit][Value][frac]")
+{
+  // The widened value exceeds INT32_MAX, so it throws even though truncation
+  // would land in range. Strictness is deliberate: the check runs on the
+  // value the language holds, not on its truncation.
+  Value value(2147483647.9f);
+
+  int32_t asInteger = 0;
+  REQUIRE_THROWS_AS(value.convert(asInteger), kern::RuntimeError);
+}
+
 TEST_CASE("Invalid Value does not convert", "[unit][Value]")
 {
   Value value;

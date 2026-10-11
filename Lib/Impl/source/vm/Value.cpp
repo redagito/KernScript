@@ -32,6 +32,13 @@ void checkIntRange(int64_t value)
 *
 * Out-of-range float-to-int conversion is undefined, so the check runs on the
 * widened value where every int32 boundary is exactly representable.
+*
+* Deliberately strict about fractions: a value such as 2147483647.9 fails even
+* though truncation would land in range. Truncating first would need the value
+* to already be in a range where truncation is defined, and at int32
+* magnitudes the source float has rounded the fraction away already, so the
+* widened value is what the language actually holds. Fail-loud beats silently
+* keeping a truncated survivor of a value that left the target range.
 */
 void checkDoubleToIntRange(double value)
 {
