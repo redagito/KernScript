@@ -18,7 +18,7 @@ public:
   /**
   * \brief Virtual destructor for interface class.
   */
-  virtual ~ICompiler();
+  virtual ~ICompiler() = default;
 
   /**
   * \brief Compiles script source code into assembly source code.

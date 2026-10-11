@@ -17,7 +17,7 @@ public:
   /**
   * \brief Virtual destructor for interface class.
   */
-  virtual ~IAssembler();
+  virtual ~IAssembler() = default;
 
   /**
   * \brief Assembles source code into byte code.

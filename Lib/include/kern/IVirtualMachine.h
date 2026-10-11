@@ -21,7 +21,7 @@ public:
   /**
   * \brief Virtual destructor for interface class.
   */
-  virtual ~IVirtualMachine();
+  virtual ~IVirtualMachine() = default;
 
   /**
   * \brief Loads byte code from input stream.

@@ -13,7 +13,7 @@ class IVirtualMachine;
 class IExternFunction
 {
 public:
-  virtual ~IExternFunction();
+  virtual ~IExternFunction() = default;
 
   /**
   * \brief Returns number of expected function arguments.
