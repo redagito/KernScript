@@ -41,7 +41,8 @@ public:
   * Returns false when the function does not exist. Throws kern::RuntimeError
   * when the script cannot continue, for example on stack underflow, a type
   * mismatch or division by zero. Normal termination through ret or exit does
-  * not throw.
+  * not throw. Calls must not nest: calling callFunction again from inside an
+  * extern function throws kern::RuntimeError.
   */
   virtual bool callFunction(const std::string &functionName) = 0;
 

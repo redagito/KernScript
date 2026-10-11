@@ -125,4 +125,6 @@ private:
       0; /**< Longest single string or name accepted from byte code. */
   uint32_t m_maxTableEntries =
       0; /**< Most entries accepted in one byte code table. */
+  bool m_running =
+      false; /**< Reentrancy guard for callFunction, reset on every exit. */
 };

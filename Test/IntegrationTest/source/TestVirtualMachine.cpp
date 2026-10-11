@@ -1352,6 +1352,41 @@ TEST_CASE("An absurd stack budget throws instead of bad_alloc",
   REQUIRE_THROWS_AS(VirtualMachine(nullptr, config), kern::RuntimeError);
 }
 
+TEST_CASE("callFunction is not reentrant", "[integration][vm][m11]")
+{
+  // An extern function that calls back into the running VM. The nested call
+  // must throw instead of resetting the stacks mid-execution.
+  class ReentrantFunction : public kern::IExternFunction
+  {
+  public:
+    bool call(kern::IVirtualMachine &vm) override
+    {
+      vm.callFunction("main");
+      return true;
+    }
+
+    unsigned int getArgumentCount() const override { return 0; }
+  };
+
+  const std::string source =
+      "extern boom 0\nextern println 1\n\nfunc main\n{\ncalle boom\nret\n}\n"
+      "\nfunc clean\n{\npushi 1\ncalle println\nret\n}\n";
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr);
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  vm.addFunction("boom", new ReentrantFunction());
+  REQUIRE(vm.load(byteCode));
+
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
+
+  // The guard resets on unwind, so a later call runs normally.
+  REQUIRE(vm.callFunction("clean"));
+  REQUIRE(recorder.text() == "1\n");
+}
+
 TEST_CASE("Movs advances the instruction pointer", "[integration][vm]")
 {
   const std::string source = "extern println 1\n\nfunc main\n{\nvar x\n"

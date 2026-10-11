@@ -46,6 +46,25 @@ bool indexInRange(uint32_t base, int32_t rawIndex, size_t size)
   return index < static_cast<uint64_t>(size);
 }
 
+/**
+* \brief Holds the callFunction reentrancy guard for the duration of a call.
+*
+* Resetting in the destructor covers both normal return and unwinding through
+* a script error, so one throw cannot wedge later calls.
+*/
+class CallGuard
+{
+public:
+  explicit CallGuard(bool &flag) : m_flag(flag) { m_flag = true; }
+  ~CallGuard() { m_flag = false; }
+
+  CallGuard(const CallGuard &) = delete;
+  CallGuard &operator=(const CallGuard &) = delete;
+
+private:
+  bool &m_flag;
+};
+
 }
 
 VirtualMachine::FunctionFrame::FunctionFrame() {}
@@ -142,11 +161,18 @@ void VirtualMachine::clearScripts()
 
 bool VirtualMachine::callFunction(const std::string &functionName)
 {
+  // Calls must not nest: an extern function calling back in here would reset
+  // the stacks of the still-running call.
+  if (m_running)
+  {
+    throwRuntimeError(m_logger, "callFunction is not reentrant.");
+  }
   // Retrieve function index if exists
   if (!getFunctionIndexByName(functionName, m_currentFunctionIndex))
   {
     return false;
   }
+  const CallGuard guard(m_running);
   // Start from a clean slate: a previous call may have thrown out of nested
   // frames, leaving stale values, frames and a base index behind. Clearing
   // first also keeps locals from leaking values a previous call left in the
