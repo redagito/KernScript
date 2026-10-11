@@ -455,6 +455,16 @@ TEST_CASE("Value mixed-type arithmetic keeps float precision",
   REQUIRE(result == 16777216.f);
 }
 
+TEST_CASE("Invalid values never equal", "[unit][Value][m9]")
+{
+  // Both hold null buffers; equality must answer without touching them.
+  Value first;
+  Value second;
+
+  REQUIRE_FALSE(first == second);
+  REQUIRE(first != second);
+}
+
 TEST_CASE("Value copies strings", "[unit][Value]")
 {
   Value value(std::string("copy"));

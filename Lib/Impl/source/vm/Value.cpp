@@ -568,8 +568,17 @@ bool Value::operator==(const Value &rhs) const
     {
       return false;
     }
-    return m_type == Type::String ? strcmp(m_string, rhs.m_string) == 0
-                                   : false;
+    if (m_type != Type::String)
+    {
+      return false;
+    }
+    // Every string value owns its buffer, so null is unreachable here, but a
+    // null guard is cheaper than proving it again after every future edit.
+    if (m_string == nullptr || rhs.m_string == nullptr)
+    {
+      return false;
+    }
+    return strcmp(m_string, rhs.m_string) == 0;
   }
 
   if (m_type == rhs.m_type)
