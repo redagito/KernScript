@@ -1502,9 +1502,9 @@ uint32_t Assembler::addString(const std::string &str)
 {
   // Add string to table if it does not exist
   uint32_t index = 0;
-  for (const auto &str : m_strings)
+  for (const auto &entry : m_strings)
   {
-    if (str == m_lexer.getLexeme())
+    if (entry == str)
     {
       return index;
     }
