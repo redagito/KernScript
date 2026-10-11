@@ -551,13 +551,42 @@ bool CVirtualMachine::execute()
   break;
 
   case EInstruction::Inc:
-    // Not implemented
-    return false;
-    break;
+  {
+    // Increments the top of the runtime stack in place.
+    if (m_runtimeStack.empty())
+    {
+      m_logger->error("Inc needs a value on the runtime stack.");
+      return false;
+    }
+    CValue &top = m_runtimeStack.back();
+    if (!top.isNumeric())
+    {
+      m_logger->error("Inc needs a numeric value.");
+      return false;
+    }
+    top += CValue(static_cast<int32_t>(1));
+    ++m_currentInstructionIndex;
+  }
+  break;
+
   case EInstruction::Dec:
-    // Not implemented
-    return false;
-    break;
+  {
+    // Decrements the top of the runtime stack in place.
+    if (m_runtimeStack.empty())
+    {
+      m_logger->error("Dec needs a value on the runtime stack.");
+      return false;
+    }
+    CValue &top = m_runtimeStack.back();
+    if (!top.isNumeric())
+    {
+      m_logger->error("Dec needs a numeric value.");
+      return false;
+    }
+    top -= CValue(static_cast<int32_t>(1));
+    ++m_currentInstructionIndex;
+  }
+  break;
 
   case EInstruction::And:
     // Not implemented

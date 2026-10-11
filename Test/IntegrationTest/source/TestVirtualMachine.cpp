@@ -15,6 +15,147 @@ std::string wrap(const std::string &body)
 }
 }
 
+TEST_CASE("Inc increments the top of the stack in place", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 41\ninc\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "42\n");
+}
+
+TEST_CASE("Dec decrements the top of the stack in place", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 43\ndec\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "42\n");
+}
+
+TEST_CASE("Inc on a float keeps the value a float", "[integration][vm]")
+{
+  const std::string source = wrap("pushf 1.5\ninc\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "2.5\n");
+}
+
+TEST_CASE("Dec on a float keeps the value a float", "[integration][vm]")
+{
+  const std::string source = wrap("pushf 2.5\ndec\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "1.5\n");
+}
+
+TEST_CASE("Inc leaves the rest of the stack alone", "[integration][vm]")
+{
+  // 100 stays underneath, 1 becomes 2, then 100 is pushed again and added.
+  const std::string source = wrap("pushi 100\npushi 1\ninc\ncalle println\n"
+                                  "pushi 100\nadd\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "2\n200\n");
+}
+
+TEST_CASE("Inc and dec can be chained", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 0\ninc\ninc\ninc\ndec\n"
+                                  "calle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "2\n");
+}
+
+TEST_CASE("Inc on an empty stack stops the script", "[integration][vm]")
+{
+  const std::string source = wrap("inc\npushi 1\ncalle println\nret");
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  testutil::RecordingLogger logger;
+  CVirtualMachine vm(&logger);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  vm.callFunction("main");
+
+  bool sawRefusal = false;
+  for (const auto &message : logger.messages())
+  {
+    if (message.find("Inc needs a value") != std::string::npos)
+    {
+      sawRefusal = true;
+    }
+  }
+  REQUIRE(sawRefusal);
+}
+
+TEST_CASE("Inc on a string operand is refused", "[integration][vm]")
+{
+  const std::string source = wrap("pushs \"text\"\ninc\ncalle println\nret");
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  testutil::RecordingLogger logger;
+  CVirtualMachine vm(&logger);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  vm.callFunction("main");
+
+  bool sawRefusal = false;
+  for (const auto &message : logger.messages())
+  {
+    if (message.find("Inc needs a numeric value") != std::string::npos)
+    {
+      sawRefusal = true;
+    }
+  }
+  REQUIRE(sawRefusal);
+}
+
+TEST_CASE("Dec on an empty stack stops the script", "[integration][vm]")
+{
+  const std::string source = wrap("dec\npushi 1\ncalle println\nret");
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  testutil::RecordingLogger logger;
+  CVirtualMachine vm(&logger);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  vm.callFunction("main");
+
+  bool sawRefusal = false;
+  for (const auto &message : logger.messages())
+  {
+    if (message.find("Dec needs a value") != std::string::npos)
+    {
+      sawRefusal = true;
+    }
+  }
+  REQUIRE(sawRefusal);
+}
+
 TEST_CASE("A script function returns from ret", "[integration][vm]")
 {
   const std::string source = wrap("pushi 1\ncalle println\nret");
