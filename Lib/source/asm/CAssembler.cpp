@@ -53,6 +53,11 @@ CAssembler::CAssembler(kern::ILogger *logger)
   m_lexer.addKeyword("inc");
   m_lexer.addKeyword("dec");
 
+  m_lexer.addKeyword("and");
+  m_lexer.addKeyword("or");
+  m_lexer.addKeyword("not");
+  m_lexer.addKeyword("xor");
+
   m_lexer.addKeyword("jmp");
   m_lexer.addKeyword("je");
   m_lexer.addKeyword("jne");
@@ -814,6 +819,42 @@ bool CAssembler::parseFunction(std::istream &stream)
       {
         // Decrement top value of the stack in place
         instruction.id = EInstruction::Dec;
+        // No arguments
+
+        // Add assembled instruction
+        function.instructions.push_back(instruction);
+      }
+      else if (m_lexer.getLexeme() == "and")
+      {
+        // Logical AND of the top 2 values of the stack, result pushed back
+        instruction.id = EInstruction::And;
+        // No arguments
+
+        // Add assembled instruction
+        function.instructions.push_back(instruction);
+      }
+      else if (m_lexer.getLexeme() == "or")
+      {
+        // Logical OR of the top 2 values of the stack, result pushed back
+        instruction.id = EInstruction::Or;
+        // No arguments
+
+        // Add assembled instruction
+        function.instructions.push_back(instruction);
+      }
+      else if (m_lexer.getLexeme() == "not")
+      {
+        // Logical NOT of the top value of the stack, result pushed back
+        instruction.id = EInstruction::Not;
+        // No arguments
+
+        // Add assembled instruction
+        function.instructions.push_back(instruction);
+      }
+      else if (m_lexer.getLexeme() == "xor")
+      {
+        // Logical XOR of the top 2 values of the stack, result pushed back
+        instruction.id = EInstruction::Xor;
         // No arguments
 
         // Add assembled instruction

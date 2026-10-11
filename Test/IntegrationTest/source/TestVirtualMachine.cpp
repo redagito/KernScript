@@ -93,15 +93,7 @@ TEST_CASE("Inc on an empty stack stops the script", "[integration][vm]")
 
   vm.callFunction("main");
 
-  bool sawRefusal = false;
-  for (const auto &message : logger.messages())
-  {
-    if (message.find("Inc needs a value") != std::string::npos)
-    {
-      sawRefusal = true;
-    }
-  }
-  REQUIRE(sawRefusal);
+  REQUIRE( logger.loggedContaining("Inc needs a value") );
 }
 
 TEST_CASE("Inc on a string operand is refused", "[integration][vm]")
@@ -119,15 +111,7 @@ TEST_CASE("Inc on a string operand is refused", "[integration][vm]")
 
   vm.callFunction("main");
 
-  bool sawRefusal = false;
-  for (const auto &message : logger.messages())
-  {
-    if (message.find("Inc needs a numeric value") != std::string::npos)
-    {
-      sawRefusal = true;
-    }
-  }
-  REQUIRE(sawRefusal);
+  REQUIRE( logger.loggedContaining("Inc needs a numeric value") );
 }
 
 TEST_CASE("Dec on an empty stack stops the script", "[integration][vm]")
@@ -145,15 +129,194 @@ TEST_CASE("Dec on an empty stack stops the script", "[integration][vm]")
 
   vm.callFunction("main");
 
-  bool sawRefusal = false;
-  for (const auto &message : logger.messages())
-  {
-    if (message.find("Dec needs a value") != std::string::npos)
-    {
-      sawRefusal = true;
-    }
-  }
-  REQUIRE(sawRefusal);
+  REQUIRE( logger.loggedContaining("Dec needs a value") );
+}
+
+TEST_CASE("And produces the logical conjunction of two values",
+          "[integration][vm]")
+{
+  const std::string source =
+      wrap("pushi 1\npushi 0\nand\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "0\n");
+}
+
+TEST_CASE("And reports true for two true values", "[integration][vm]")
+{
+  const std::string source =
+      wrap("pushi 5\npushi 0\nand\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  // Zero is the only false value, so 5 and 0 is false.
+  REQUIRE(recorder.text() == "0\n");
+}
+
+TEST_CASE("And treats any non zero value as true", "[integration][vm]")
+{
+  const std::string source =
+      wrap("pushi 7\npushi 3\nand\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "1\n");
+}
+
+TEST_CASE("Or produces the logical disjunction of two values",
+          "[integration][vm]")
+{
+  const std::string source =
+      wrap("pushi 0\npushi 4\nor\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "1\n");
+}
+
+TEST_CASE("Or reports false when both values are false", "[integration][vm]")
+{
+  const std::string source =
+      wrap("pushi 0\npushi 0\nor\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "0\n");
+}
+
+TEST_CASE("Not negates the truth of the top value", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 0\nnot\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "1\n");
+}
+
+TEST_CASE("Not negates a true value to false", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 9\nnot\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "0\n");
+}
+
+TEST_CASE("Xor reports true for differing values", "[integration][vm]")
+{
+  const std::string source =
+      wrap("pushi 1\npushi 0\nxor\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "1\n");
+}
+
+TEST_CASE("Xor reports false for equal values", "[integration][vm]")
+{
+  const std::string source =
+      wrap("pushi 1\npushi 1\nxor\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "0\n");
+}
+
+TEST_CASE("Xor reports false for two false values", "[integration][vm]")
+{
+  const std::string source =
+      wrap("pushi 0\npushi 0\nxor\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "0\n");
+}
+
+TEST_CASE("And works on floats", "[integration][vm]")
+{
+  const std::string source =
+      wrap("pushf 0.5\npushf 0.0\nand\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "0\n");
+}
+
+TEST_CASE("Not on a float keeps an integer result", "[integration][vm]")
+{
+  const std::string source = wrap("pushf 1.5\nnot\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "0\n");
+}
+
+TEST_CASE("Or on strings is refused", "[integration][vm]")
+{
+  const std::string source =
+      wrap("pushs \"a\"\npushs \"b\"\nor\ncalle println\nret");
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  testutil::RecordingLogger logger;
+  CVirtualMachine vm(&logger);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  vm.callFunction("main");
+
+  REQUIRE( logger.loggedContaining("Or needs numeric values") );
+}
+
+TEST_CASE("Not on an empty stack stops the script", "[integration][vm]")
+{
+  const std::string source = wrap("not\npushi 1\ncalle println\nret");
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  testutil::RecordingLogger logger;
+  CVirtualMachine vm(&logger);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  vm.callFunction("main");
+
+  REQUIRE( logger.loggedContaining("Not needs a value") );
+}
+
+TEST_CASE("And on a short stack stops the script", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 1\nand\ncalle println\nret");
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  testutil::RecordingLogger logger;
+  CVirtualMachine vm(&logger);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  vm.callFunction("main");
+
+  REQUIRE( logger.loggedContaining("And needs two values") );
 }
 
 TEST_CASE("A script function returns from ret", "[integration][vm]")
@@ -366,15 +529,7 @@ TEST_CASE("Div by zero stops the script and logs an error",
   // The script stops at the division instead of producing a value.
   vm.callFunction("main");
 
-  bool sawDivisionError = false;
-  for (const auto &message : logger.messages())
-  {
-    if (message.find("Division by zero") != std::string::npos)
-    {
-      sawDivisionError = true;
-    }
-  }
-  REQUIRE(sawDivisionError);
+  REQUIRE( logger.loggedContaining("Division by zero") );
 }
 
 TEST_CASE("Arithmetic on a string operand is refused", "[integration][vm]")
@@ -394,15 +549,7 @@ TEST_CASE("Arithmetic on a string operand is refused", "[integration][vm]")
   // The script stops at the multiplication instead of producing a value.
   vm.callFunction("main");
 
-  bool sawRefusal = false;
-  for (const auto &message : logger.messages())
-  {
-    if (message.find("numeric operands") != std::string::npos)
-    {
-      sawRefusal = true;
-    }
-  }
-  REQUIRE(sawRefusal);
+  REQUIRE( logger.loggedContaining("numeric operands") );
 }
 
 TEST_CASE("Movs advances the instruction pointer", "[integration][vm]")

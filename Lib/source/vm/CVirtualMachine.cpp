@@ -589,21 +589,81 @@ bool CVirtualMachine::execute()
   break;
 
   case EInstruction::And:
-    // Not implemented
-    return false;
-    break;
+  {
+    CValue x;
+    CValue y;
+    if (!popValue(x) || !popValue(y))
+    {
+      m_logger->error("And needs two values on the runtime stack.");
+      return false;
+    }
+    if (!x.isNumeric() || !y.isNumeric())
+    {
+      m_logger->error("And needs numeric values.");
+      return false;
+    }
+    // Zero is the only false value, any other value is true.
+    pushValue(CValue(static_cast<int32_t>(!x.isZero() && !y.isZero())));
+    ++m_currentInstructionIndex;
+  }
+  break;
+
   case EInstruction::Or:
-    // Not implemented
-    return false;
-    break;
+  {
+    CValue x;
+    CValue y;
+    if (!popValue(x) || !popValue(y))
+    {
+      m_logger->error("Or needs two values on the runtime stack.");
+      return false;
+    }
+    if (!x.isNumeric() || !y.isNumeric())
+    {
+      m_logger->error("Or needs numeric values.");
+      return false;
+    }
+    pushValue(CValue(static_cast<int32_t>(!x.isZero() || !y.isZero())));
+    ++m_currentInstructionIndex;
+  }
+  break;
+
   case EInstruction::Not:
-    // Not implemented
-    return false;
-    break;
+  {
+    if (m_runtimeStack.empty())
+    {
+      m_logger->error("Not needs a value on the runtime stack.");
+      return false;
+    }
+    if (!m_runtimeStack.back().isNumeric())
+    {
+      m_logger->error("Not needs a numeric value.");
+      return false;
+    }
+    const bool truth = !m_runtimeStack.back().isZero();
+    m_runtimeStack.back() = CValue(static_cast<int32_t>(!truth));
+    ++m_currentInstructionIndex;
+  }
+  break;
   case EInstruction::Xor:
-    // Not implemented
-    return false;
-    break;
+  {
+    CValue x;
+    CValue y;
+    if (!popValue(x) || !popValue(y))
+    {
+      m_logger->error("Xor needs two values on the runtime stack.");
+      return false;
+    }
+    if (!x.isNumeric() || !y.isNumeric())
+    {
+      m_logger->error("Xor needs numeric values.");
+      return false;
+    }
+    // True only when exactly one side is true.
+    const bool truth = (!x.isZero()) != (!y.isZero());
+    pushValue(CValue(static_cast<int32_t>(truth)));
+    ++m_currentInstructionIndex;
+  }
+  break;
 
   case EInstruction::Jmp:
     // Not implemented
