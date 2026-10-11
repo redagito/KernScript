@@ -265,6 +265,23 @@ TEST_CASE("Deserialize refuses an unknown instruction id",
   REQUIRE_FALSE(deserialize(result, stream));
 }
 
+TEST_CASE("ExternFunction with an empty name is refused",
+          "[unit][serialize][m12]")
+{
+  ExternFunction empty;
+  empty.argCount = 0;
+
+  std::stringstream stream;
+  REQUIRE_FALSE(serialize(empty, stream));
+
+  std::stringstream corrupt;
+  writeRaw<uint32_t>(corrupt, 0);
+  writeRaw<uint8_t>(corrupt, 0);
+
+  ExternFunction result;
+  REQUIRE_FALSE(deserialize(corrupt, result, 1024));
+}
+
 TEST_CASE("toString names an unknown instruction id", "[unit][serialize]")
 {
   Instruction instruction;

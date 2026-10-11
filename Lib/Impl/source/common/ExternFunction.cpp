@@ -33,6 +33,13 @@ bool deserialize(std::istream &stream, ExternFunction &externFunction,
     return false;
   }
 
+  // Empty names are never emitted, matching serialize(), so one on the wire
+  // is corrupt input.
+  if (name.empty())
+  {
+    return false;
+  }
+
   // Argument count
   uint8_t argCount;
   if (!deserialize(stream, argCount))
