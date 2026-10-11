@@ -1,5 +1,7 @@
 #include "Deserialize.h"
 
+#include "kern/RuntimeError.h"
+
 template <typename T> bool deserializeBasic(std::istream &stream, T &value)
 {
   stream.read((char *)&value, sizeof(T));
@@ -46,13 +48,20 @@ bool deserialize(std::istream &stream, float &value)
   return deserializeBasic(stream, value);
 }
 
-bool deserialize(std::istream &stream, std::string &str)
+bool deserialize(std::istream &stream, std::string &str, size_t maxLength)
 {
   // Read length
   uint32_t length = 0;
   if (!deserialize(stream, length))
   {
     return false;
+  }
+
+  // A corrupt prefix must not reach reserve(), where it would throw bad_alloc
+  // instead of a typed error.
+  if (length > maxLength)
+  {
+    throw kern::RuntimeError("String length exceeds the limit.");
   }
 
   // TODO Empty string invalid?

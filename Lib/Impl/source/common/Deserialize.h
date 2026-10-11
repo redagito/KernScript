@@ -46,5 +46,7 @@ bool deserialize(std::istream &stream, float &value);
 
 /**
 * \brief Deserialize string.
+* \param maxLength Longest accepted content length. Longer prefixes throw
+*        kern::RuntimeError instead of reserving memory for corrupt input.
 */
-bool deserialize(std::istream &stream, std::string &str);
+bool deserialize(std::istream &stream, std::string &str, size_t maxLength);

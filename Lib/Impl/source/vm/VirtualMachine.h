@@ -118,4 +118,8 @@ private:
   kern::ILogger *m_logger = nullptr;      /**< Receives diagnostics. */
   size_t m_maxStackSize = 0;              /**< Runtime stack budget in slots. */
   uint32_t m_maxCallDepth = 0;            /**< Nested call budget in frames. */
+  size_t m_maxStringBytes =
+      0; /**< Longest single string or name accepted from byte code. */
+  uint32_t m_maxTableEntries =
+      0; /**< Most entries accepted in one byte code table. */
 };

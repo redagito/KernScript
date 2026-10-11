@@ -63,7 +63,9 @@ VirtualMachine::VirtualMachine(kern::ILogger *logger)
 VirtualMachine::VirtualMachine(kern::ILogger *logger, kern::VMConfig config)
     : m_logger(logger != nullptr ? logger : nullLogger()),
       m_maxStackSize(config.maxStackBytes / sizeof(Value)),
-      m_maxCallDepth(config.maxCallDepth)
+      m_maxCallDepth(config.maxCallDepth),
+      m_maxStringBytes(config.maxStringBytes),
+      m_maxTableEntries(config.maxTableEntries)
 {
   // Preallocate the whole budget, so steady state never reallocates.
   m_runtimeStack.reserve(m_maxStackSize);
@@ -208,12 +210,19 @@ bool VirtualMachine::deserializeStrings(std::istream &stream)
   {
     return false;
   }
+  // A corrupt count must not reach resize(), where it would throw bad_alloc
+  // instead of a typed error.
+  if (size > m_maxTableEntries)
+  {
+    throwRuntimeError(m_logger, "String table size {} exceeds the limit.",
+                      size);
+  }
   m_strings.resize(size);
 
   // Read strings into string table
   for (auto &str : m_strings)
   {
-    if (!deserialize(stream, str))
+    if (!deserialize(stream, str, m_maxStringBytes))
     {
       return false;
     }
@@ -226,10 +235,15 @@ bool VirtualMachine::deserializeExternFunctions(std::istream &stream)
   // Read size
   uint32_t size = 0;
   stream.read((char *)&size, sizeof(size));
+  if (size > m_maxTableEntries)
+  {
+    throwRuntimeError(m_logger, "Extern function count {} exceeds the limit.",
+                      size);
+  }
   m_externFunctions.resize(size);
   for (auto &externFunction : m_externFunctions)
   {
-    if (!deserialize(stream, externFunction))
+    if (!deserialize(stream, externFunction, m_maxStringBytes))
     {
       return false;
     }
@@ -242,6 +256,10 @@ bool VirtualMachine::deserializeFunctions(std::istream &stream)
   // Read size
   uint32_t size = 0;
   stream.read((char *)&size, sizeof(size));
+  if (size > m_maxTableEntries)
+  {
+    throwRuntimeError(m_logger, "Function count {} exceeds the limit.", size);
+  }
   // Reserve space
   m_functions.resize(size);
 
@@ -251,6 +269,11 @@ bool VirtualMachine::deserializeFunctions(std::istream &stream)
     // Read function name
     uint32_t length = 0;
     stream.read((char *)&length, sizeof(length));
+    if (length > m_maxStringBytes)
+    {
+      throwRuntimeError(m_logger, "Function name length {} exceeds the limit.",
+                        length);
+    }
     function.name.reserve(length);
     for (uint32_t i = 0; i < length; ++i)
     {
@@ -268,6 +291,11 @@ bool VirtualMachine::deserializeFunctions(std::istream &stream)
     // Read instructions
     // Instructions size
     stream.read((char *)&size, sizeof(size));
+    if (size > m_maxTableEntries)
+    {
+      throwRuntimeError(m_logger, "Instruction count {} exceeds the limit.",
+                        size);
+    }
     function.instructions.resize(size);
     // Instructions
     for (auto &instruction : function.instructions)

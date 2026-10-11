@@ -21,5 +21,8 @@ bool serialize(const ExternFunction &externFunction, std::ostream &stream);
 
 /**
 * \brief Deserializes extern function from stream.
+* \param maxNameLength Longest accepted name, bounding the name allocation the
+*        same way string deserialization bounds string contents.
 */
-bool deserialize(std::istream &stream, ExternFunction &externFunction);
+bool deserialize(std::istream &stream, ExternFunction &externFunction,
+                 size_t maxNameLength);

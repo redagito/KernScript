@@ -23,11 +23,12 @@ bool serialize(const ExternFunction &externFunction, std::ostream &stream)
   return stream.good();
 }
 
-bool deserialize(std::istream &stream, ExternFunction &externFunction)
+bool deserialize(std::istream &stream, ExternFunction &externFunction,
+                 size_t maxNameLength)
 {
   // Function name
   std::string name;
-  if (!deserialize(stream, name))
+  if (!deserialize(stream, name, maxNameLength))
   {
     return false;
   }

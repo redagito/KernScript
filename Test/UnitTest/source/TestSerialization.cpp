@@ -8,6 +8,8 @@
 #include "common/Instruction.h"
 #include "common/ScriptHeader.h"
 
+#include <kern/RuntimeError.h>
+
 namespace
 {
 
@@ -81,7 +83,7 @@ TEST_CASE("ExternFunction survives serialization", "[unit][serialize]")
   REQUIRE(serialize(externFunction, stream));
 
   ExternFunction result;
-  REQUIRE(deserialize(stream, result));
+  REQUIRE(deserialize(stream, result, 1024));
 
   REQUIRE(result.name == "println");
   REQUIRE(result.argCount == 1);
@@ -181,7 +183,7 @@ TEST_CASE("Deserialize reads strings", "[unit][serialize]")
   stream.write(text.data(), length);
 
   std::string result;
-  REQUIRE(deserialize(stream, result));
+  REQUIRE(deserialize(stream, result, 1024));
   REQUIRE(result == text);
 }
 
@@ -194,7 +196,30 @@ TEST_CASE("Deserialize reports failure on a truncated stream",
   stream.write("short", 5);
 
   std::string result;
-  REQUIRE_FALSE(deserialize(stream, result));
+  REQUIRE_FALSE(deserialize(stream, result, 1024));
+}
+
+TEST_CASE("Deserialize throws on a string longer than the limit",
+          "[unit][serialize][c7]")
+{
+  std::stringstream stream;
+  writeRaw<uint32_t>(stream, 16);
+  stream.write("1234567890123456", 16);
+
+  std::string result;
+  REQUIRE_THROWS_AS(deserialize(stream, result, 15), kern::RuntimeError);
+}
+
+TEST_CASE("Deserialize accepts a string at exactly the limit",
+          "[unit][serialize][c7]")
+{
+  std::stringstream stream;
+  writeRaw<uint32_t>(stream, 16);
+  stream.write("1234567890123456", 16);
+
+  std::string result;
+  REQUIRE(deserialize(stream, result, 16));
+  REQUIRE(result == "1234567890123456");
 }
 
 TEST_CASE("Serialize refuses an unknown instruction id", "[unit][serialize]")

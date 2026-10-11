@@ -993,6 +993,73 @@ TEST_CASE("clearScripts drops the runtime and call stacks",
   REQUIRE_THROWS_AS(vm.callFunction("reader"), kern::RuntimeError);
 }
 
+TEST_CASE("A huge strings count is rejected", "[integration][vm][c7]")
+{
+  std::stringstream stream;
+  writeRaw<uint32_t>(stream, 0xFFFFFFFF);
+
+  VirtualMachine vm(nullptr);
+  REQUIRE_THROWS_AS(vm.load(stream), kern::RuntimeError);
+}
+
+TEST_CASE("A huge string length prefix is rejected", "[integration][vm][c7]")
+{
+  std::stringstream stream;
+  writeRaw<uint32_t>(stream, 1);
+  writeRaw<uint32_t>(stream, 100 * 1024 * 1024);
+
+  VirtualMachine vm(nullptr);
+  REQUIRE_THROWS_AS(vm.load(stream), kern::RuntimeError);
+}
+
+TEST_CASE("A huge extern count is rejected", "[integration][vm][c7]")
+{
+  std::stringstream stream;
+  writeRaw<uint32_t>(stream, 0);
+  writeRaw<uint32_t>(stream, 0xFFFFFFFF);
+
+  VirtualMachine vm(nullptr);
+  REQUIRE_THROWS_AS(vm.load(stream), kern::RuntimeError);
+}
+
+TEST_CASE("A huge function count is rejected", "[integration][vm][c7]")
+{
+  std::stringstream stream;
+  writeRaw<uint32_t>(stream, 0);
+  writeRaw<uint32_t>(stream, 0);
+  writeRaw<uint32_t>(stream, 0xFFFFFFFF);
+
+  VirtualMachine vm(nullptr);
+  REQUIRE_THROWS_AS(vm.load(stream), kern::RuntimeError);
+}
+
+TEST_CASE("A huge function name length is rejected", "[integration][vm][c7]")
+{
+  std::stringstream stream;
+  writeRaw<uint32_t>(stream, 0);
+  writeRaw<uint32_t>(stream, 0);
+  writeRaw<uint32_t>(stream, 1);
+  writeRaw<uint32_t>(stream, 100 * 1024 * 1024);
+
+  VirtualMachine vm(nullptr);
+  REQUIRE_THROWS_AS(vm.load(stream), kern::RuntimeError);
+}
+
+TEST_CASE("A huge instruction count is rejected", "[integration][vm][c7]")
+{
+  std::stringstream stream;
+  writeRaw<uint32_t>(stream, 0);
+  writeRaw<uint32_t>(stream, 0);
+  writeRaw<uint32_t>(stream, 1);
+  writeString(stream, "main");
+  writeRaw<uint32_t>(stream, 0);
+  writeRaw<uint32_t>(stream, 0);
+  writeRaw<uint32_t>(stream, 0xFFFFFFFF);
+
+  VirtualMachine vm(nullptr);
+  REQUIRE_THROWS_AS(vm.load(stream), kern::RuntimeError);
+}
+
 TEST_CASE("Movs advances the instruction pointer", "[integration][vm]")
 {
   const std::string source = "extern println 1\n\nfunc main\n{\nvar x\n"
