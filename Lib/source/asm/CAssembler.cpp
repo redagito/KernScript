@@ -32,7 +32,9 @@ CAssembler::CAssembler(kern::ILogger *logger)
 
   m_lexer.addKeyword("pushv");
   m_lexer.addKeyword("pushi");
+  m_lexer.addKeyword("pushu");
   m_lexer.addKeyword("pushf");
+  m_lexer.addKeyword("pushs");
 
   m_lexer.addKeyword("pop");
   m_lexer.addKeyword("popv");
@@ -539,6 +541,28 @@ bool CAssembler::parseFunction(std::istream &stream)
         // Add assembled instruction
         function.instructions.push_back(instruction);
       }
+      else if (m_lexer.getLexeme() == "pushu")
+      {
+        // Push unsigned integer instruction
+        instruction.id = EInstruction::Pushu;
+        // Expects one integer constant as argument
+        m_lexer.lex(stream);
+        if (m_lexer.getToken() != ELexerToken::Integer)
+        {
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
+          return false;
+        }
+        // Read as unsigned so that values beyond the signed range are kept.
+        std::stringstream ss;
+        ss << m_lexer.getLexeme();
+        uint32_t temp = 0;
+        ss >> temp;
+        memcpy((void *)&instruction.args[0], (void *)&temp,
+               sizeof(uint32_t));
+
+        // Add assembled instruction
+        function.instructions.push_back(instruction);
+      }
       else if (m_lexer.getLexeme() == "pushf")
       {
         // Push float instruction
@@ -572,8 +596,10 @@ bool CAssembler::parseFunction(std::istream &stream)
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
-        // TODO Add string to strings list and write id
-        return false;
+        // Add string to string table
+        uint32_t strIndex = addString(m_lexer.getLexeme());
+        // Set arg 0 to string index
+        instruction.args[0] = *((int32_t *)&strIndex);
 
         // Add assembled instruction
         function.instructions.push_back(instruction);

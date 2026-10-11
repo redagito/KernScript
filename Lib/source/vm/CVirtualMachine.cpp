@@ -311,6 +311,18 @@ bool CVirtualMachine::execute()
     ++m_currentInstructionIndex;
     break;
 
+  case EInstruction::Pushu:
+    // Arg 0 is an unsigned integer value
+    pushValue(CValue(*((uint32_t *)&instruction.args[0])));
+    ++m_currentInstructionIndex;
+    break;
+
+  case EInstruction::Pushs:
+    // Arg 0 is string index
+    pushValue(m_strings.at(*((uint32_t *)&instruction.args[0])));
+    ++m_currentInstructionIndex;
+    break;
+
   case EInstruction::Pushf:
     // Arg 0 is float value
     pushValue(CValue(*((float *)&instruction.args[0])));
@@ -321,12 +333,6 @@ bool CVirtualMachine::execute()
     // Arg 0 is variable index
     pushValue(m_runtimeStack.at(m_currentRuntimeStackBaseIndex +
                                 *((uint32_t *)&instruction.args[0])));
-    ++m_currentInstructionIndex;
-    break;
-
-  case EInstruction::Pushs:
-    // Arg 0 is string index
-    pushValue(m_strings.at(*((uint32_t *)&instruction.args[0])));
     ++m_currentInstructionIndex;
     break;
 

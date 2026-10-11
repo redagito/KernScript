@@ -2,6 +2,8 @@
 
 #include "testutil/TestSupport.hpp"
 
+#include "vm/CVirtualMachine.h"
+
 namespace
 {
 
@@ -68,6 +70,179 @@ TEST_CASE("A script function receives its parameter", "[integration][vm]")
 
   testutil::DiscardRecorder recorder;
   REQUIRE(testutil::runScript(source, "main", recorder));
+}
+
+TEST_CASE("Pushu pushes an unsigned integer constant", "[integration][vm]")
+{
+  const std::string source = wrap("pushu 3000000000\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  // Would overflow if it were read back as a signed integer.
+  REQUIRE(recorder.text() == "3000000000\n");
+}
+
+TEST_CASE("Pushu keeps its value unsigned across arithmetic",
+          "[integration][vm]")
+{
+  const std::string source =
+      wrap("pushu 4000000000\npushu 1\nadd\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "4000000001\n");
+}
+
+TEST_CASE("Pushs pushes a string constant", "[integration][vm]")
+{
+  const std::string source =
+      wrap("pushs \"pushed string\"\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "pushed string\n");
+}
+
+TEST_CASE("Pushs reuses identical strings from the table",
+          "[integration][vm]")
+{
+  const std::string source =
+      wrap("pushs \"same\"\ncalle println\npushs \"same\"\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "same\nsame\n");
+}
+
+TEST_CASE("Pushs accepts an empty string", "[integration][vm]")
+{
+  const std::string source = wrap("pushs \"\"\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "\n");
+}
+
+TEST_CASE("Mul multiplies integers on the runtime stack", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 6\npushi 7\nmul\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "42\n");
+}
+
+TEST_CASE("Mul multiplies floats", "[integration][vm]")
+{
+  const std::string source =
+      wrap("pushf 2.5\npushf 4.0\nmul\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "10\n");
+}
+
+TEST_CASE("Mul widens to float when the operands differ",
+          "[integration][vm]")
+{
+  const std::string source =
+      wrap("pushi 3\npushf 0.5\nmul\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "1.5\n");
+}
+
+TEST_CASE("Mul multiplies unsigned integers", "[integration][vm]")
+{
+  const std::string source = wrap("pushu 3000000000\npushu 2\nmul\n"
+                                  "calle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "705032704\n");
+}
+
+TEST_CASE("Mul leaves the rest of the stack alone", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 100\npushi 6\npushi 7\nmul\n"
+                                  "add\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "142\n");
+}
+
+TEST_CASE("Div divides integers with truncation", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 17\npushi 5\ndiv\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "3\n");
+}
+
+TEST_CASE("Div divides floats", "[integration][vm]")
+{
+  const std::string source =
+      wrap("pushf 1.0\npushf 8.0\ndiv\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "0.125\n");
+}
+
+TEST_CASE("Div by zero stops the script and logs an error",
+          "[integration][vm]")
+{
+  const std::string source = wrap("pushi 1\npushi 0\ndiv\npushi 2\nret");
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  // Built directly rather than through the factory, so the diagnostics can be
+  // captured through the recording logger.
+  testutil::RecordingLogger logger;
+  CVirtualMachine vm(&logger);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+
+  REQUIRE(vm.load(byteCode));
+
+  // The script stops at the division instead of producing a value.
+  vm.callFunction("main");
+
+  bool sawDivisionError = false;
+  for (const auto &message : logger.messages())
+  {
+    if (message.find("division by zero") != std::string::npos)
+    {
+      sawDivisionError = true;
+    }
+  }
+  REQUIRE(sawDivisionError);
+}
+
+TEST_CASE("Arithmetic on a string operand is refused", "[integration][vm]")
+{
+  const std::string source = wrap("pushs \"text\"\npushi 1\nmul\nret");
+
+  std::stringstream byteCode;
+  // pushs is not implemented in the assembler yet, so the script cannot be
+  // built. This is covered by the CValue unit tests instead.
+  REQUIRE_FALSE(testutil::assemble(source, byteCode));
 }
 
 TEST_CASE("Movs advances the instruction pointer", "[integration][vm]")
