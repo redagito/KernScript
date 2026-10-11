@@ -24,8 +24,10 @@ unsigned int Lexer::lex(std::istream &stream)
   m_currentLexeme.clear();
   m_currentToken = LexerToken::Invalid;
 
-  // Peek next char
-  char next = stream.peek();
+  // peek() returns int so that EOF (-1) stays distinct. Narrowing to char
+  // first would turn a 0xFF byte into -1 as well, and handing a negative
+  // value other than EOF to the ctype functions below is undefined.
+  int next = stream.peek();
 
   // For counting whitespaces
   m_blankSkipped = 0;
@@ -43,13 +45,23 @@ unsigned int Lexer::lex(std::istream &stream)
     next = stream.peek();
   }
 
+  // End of stream is decided on the int, before any narrowing.
+  if (next == EOF)
+  {
+    m_currentToken = LexerToken::End;
+    return m_blankSkipped;
+  }
+
+  // The ctype functions take EOF or a value representable as unsigned char.
+  const unsigned char narrow = static_cast<unsigned char>(next);
+
   // Check for numeric values
-  if (std::isdigit(next))
+  if (std::isdigit(narrow))
   {
     // The next lexeme is a numeric type, either int or float
     lexNumeric(stream);
   }
-  else if (std::isalpha(next))
+  else if (std::isalpha(narrow))
   {
     // Either identifier or keyword
     lexIdentifierOrKeyword(stream);
@@ -171,12 +183,11 @@ unsigned int Lexer::lex(std::istream &stream)
     case '\n':
       lexSingleCharLexeme(stream, LexerToken::NewLine);
       break;
-    case EOF:
-      m_currentToken = LexerToken::End;
-      break;
     default:
-      // Error
-      m_logger->error("Lexer error: Invalid character '{}' encountered.", next);
+      // Error. EOF is handled before the switch, so everything landing here
+      // is a genuinely unexpected byte, logged as a character.
+      m_logger->error("Lexer error: Invalid character '{}' encountered.",
+                      static_cast<char>(next));
       break;
     }
   }
@@ -347,6 +358,13 @@ void Lexer::lexString(std::istream &stream)
   while (!(stream.peek() == '"' && !escaped))
   {
     stream.get(c);
+    // A failed extraction (EOF or stream error) leaves c holding stale
+    // content. The string is unterminated, so stop instead of processing it.
+    if (stream.fail())
+    {
+      m_currentToken = LexerToken::Invalid;
+      return;
+    }
     if (!escaped)
     {
       if (c == '\\')

@@ -224,6 +224,37 @@ TEST_CASE("Lexer counts skipped blanks", "[unit][Lexer]")
   REQUIRE(lexer.getLexeme() == "42");
 }
 
+TEST_CASE("Lexer rejects a 0xFF byte instead of ending", "[unit][Lexer][c8]")
+{
+  // 0xFF narrows to -1, which equals EOF on platforms with signed char. It
+  // must not be mistaken for the end of the stream.
+  std::string input(1, static_cast<char>(0xFF));
+  std::istringstream stream(input);
+  Lexer lexer(nullptr);
+
+  lexer.lex(stream);
+  REQUIRE(lexer.getToken() == LexerToken::Invalid);
+}
+
+TEST_CASE("Lexer rejects a string ending in an escape at end of stream",
+          "[unit][Lexer][c8]")
+{
+  std::istringstream stream("\"ab\\");
+  Lexer lexer(nullptr);
+
+  lexer.lex(stream);
+  REQUIRE(lexer.getToken() == LexerToken::Invalid);
+}
+
+TEST_CASE("Lexer rejects a lone quote at end of stream", "[unit][Lexer][c8]")
+{
+  std::istringstream stream("\"");
+  Lexer lexer(nullptr);
+
+  lexer.lex(stream);
+  REQUIRE(lexer.getToken() == LexerToken::Invalid);
+}
+
 TEST_CASE("Lexer signals end of stream", "[unit][Lexer]")
 {
   std::istringstream stream("");
