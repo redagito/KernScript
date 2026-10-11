@@ -87,12 +87,6 @@ private:
   };
 
   /**
-   * Gets function by name.
-   */
-  bool getFunctionByName(const std::string &functionName,
-                         const Function *function) const;
-
-  /**
   * \brief Represents function and instruction index to return to, after
   * instruction ret is executed.
   */

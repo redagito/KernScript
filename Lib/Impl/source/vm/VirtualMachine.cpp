@@ -281,21 +281,6 @@ bool VirtualMachine::getFunctionIndexByName(const std::string &functionName,
   return false;
 }
 
-bool VirtualMachine::getFunctionByName(
-    const std::string &functionName,
-    const VirtualMachine::Function *function_out) const
-{
-  for (const auto &function : m_functions)
-  {
-    if (function.name == functionName)
-    {
-      function_out = &function;
-      return true;
-    }
-  }
-  return false;
-}
-
 bool VirtualMachine::execute()
 {
   // Cache current function
