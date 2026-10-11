@@ -1,2 +1,26 @@
+KernScript Language (overview)
+============================
+
+KernScript has two input layers:
+
+1. The scripting language (Scripting Language.txt): high-level source
+   with func/var/extern/if/else/while/return. It is NOT implemented:
+   Compiler::compile always returns false and the Parser sub-parsers
+   always return false (see Lib/Impl/source/comp/Compiler.cpp and
+   Parser.cpp). The two-line grammar below is the retained intent,
+   not a working specification.
+2. The assembly language (Assembly Language.txt): the implemented
+   input. The Assembler turns it into bytecode; the VirtualMachine
+   executes it. Write scripts in assembly.
+
+Intended scripting grammar (aspirational, unverified by any working
+compiler):
+
 Function : 'func' Identifier '(' Identifier (',' Identifier)* ')' Block
 Block : '{' Statements* '}'
+
+Execution limits from Lib/ApiHeaders/include/kern/VMConfig.h apply to
+whatever the VM runs: each callFunction executes at most
+maxExecutionSteps instructions (default 10000000) and throws
+kern::RuntimeError past the budget, so infinite loops stop instead of
+hanging the host.
