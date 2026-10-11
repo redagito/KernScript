@@ -1331,6 +1331,18 @@ TEST_CASE("A refused jump leaves the stack intact",
   REQUIRE(next == 1);
 }
 
+TEST_CASE("Falling past the last instruction returns", "[integration][vm][m5]")
+{
+  // No trailing ret: running off the end is an implicit return, which is
+  // also what a trailing label resolves to.
+  const std::string source = wrap("pushi 1\ncalle println");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "1\n");
+}
+
 TEST_CASE("Movs advances the instruction pointer", "[integration][vm]")
 {
   const std::string source = "extern println 1\n\nfunc main\n{\nvar x\n"

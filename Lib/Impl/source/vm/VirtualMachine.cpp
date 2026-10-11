@@ -366,6 +366,10 @@ bool VirtualMachine::execute()
   // Cache current function
   const Function &currentFunction = m_functions.at(m_currentFunctionIndex);
 
+  // An instruction index past the last instruction implicitly returns instead
+  // of throwing. This is deliberate: a trailing label resolves to exactly
+  // this position, so a function ending in a label would otherwise need a
+  // redundant ret, and an empty function would have no valid entry state.
   // Default current instruction to implicit return
   Instruction instruction;
   instruction.id = Opcode::Ret;
