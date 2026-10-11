@@ -716,6 +716,11 @@ bool VirtualMachine::execute() {
     if (!indexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0], m_runtimeStack.size())) {
       throwRuntimeError(m_logger, "Popv variable index out of range.");
     }
+    // Copying would spread Invalid through assignment, so refuse it here
+    // like pushValue and popValue do instead of erroring late.
+    if (m_runtimeStack.back().getType() == Value::Type::Invalid) {
+      throwRuntimeError(m_logger, "Popv of an uninitialized value.");
+    }
     uint32_t destIndex = 0;
     memcpy(&destIndex, &instruction.args[0], sizeof(destIndex));
     m_runtimeStack[m_currentRuntimeStackBaseIndex + destIndex] = m_runtimeStack.back();

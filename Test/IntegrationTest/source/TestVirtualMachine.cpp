@@ -2141,6 +2141,21 @@ TEST_CASE("Add of uninitialized locals throws", "[integration][vm]") {
   requireCorrupt({}, {main});
 }
 
+TEST_CASE("Popv of an uninitialized value throws", "[integration][vm]") {
+  // The callee returns its untouched local, leaving Invalid above the
+  // caller's frame. Storing it with popv must throw instead of spreading the
+  // uninitialized value.
+  FakeFunction main;
+  main.stackSize = 1;
+  main.instructions = {makeInstruction(Opcode::Call, 1), makeInstruction(Opcode::Popv, 0),
+                       makeInstruction(Opcode::Ret)};
+  FakeFunction callee;
+  callee.name = "callee";
+  callee.stackSize = 1;
+  callee.instructions = {makeInstruction(Opcode::Retv, 0)};
+  requireCorrupt({}, {main, callee});
+}
+
 TEST_CASE("Inc on a large unsigned stays unsigned", "[integration][vm][m3]") {
   const std::string source = wrap("pushu 3000000000\ninc\ncalle println\nret");
 
