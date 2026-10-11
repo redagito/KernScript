@@ -1,139 +1,54 @@
-KernScript Assembly Language
-===========================
+# KernScript Assembly Language
 
-String literals
----------------
+`module` (optional, once), `extern` declarations, `func` blocks.
+Two-operand instructions separate operands with a comma.
+Forward references are allowed; redefining anything is an error.
 
-A string literal is delimited by double quotes ('"'). The quotes are
-not part of the lexeme. Implemented in Lexer::lexString
-(Lib/Impl/source/common/Lexer.cpp).
+## Declarations
 
-Backslash escapes are kept verbatim: the lexer stores the backslash
-and the character after it exactly as written, without translating
-them. For example the source text "a\"b" lexes to the 4-character
-value a\"b (a, backslash, quote, b). A \n sequence stays two
-characters (backslash, n); it is NOT converted to a newline.
+`module <name>` — names the script, at most once.
+`extern <name> <argCount>` — declares a host function taking 0-255 arguments.
+`func <name> { ... }` — script function.
+`param <name>` — parameter slot, filled from pushed arguments in order.
+`var <name>` — one local slot.
+`vara <name> <size>` — array of size >= 1 slots.
+`label <name>` — marks the next instruction as a jump target.
 
-The backslash only controls termination: a quote preceded by an odd
-run of escapes does not close the string, so an escaped quote stays
-inside the value instead of ending it.
+Literals: signed ints -2147483648..2147483647, unsigned ints
+0..4294967295 (`pushu` only), 32-bit floats, `"double-quoted strings"`.
+Backslashes in strings are kept verbatim (`"\n"` is two characters, not a
+newline); a string must close on its line.
 
-A string must close on the same line. A newline or end of stream
-before the closing quote yields an Invalid token, and the value is
-discarded. An unterminated string at end of stream is Invalid as well.
+## Instructions
 
-Verbatim values flow unchanged through the assembler string table
-(movs, pushs, rets) into the bytecode and into Value at runtime: what
-the lexer kept is what the script compares and prints.
+`nop` — no-op. `break` — no-op, no debugger attached. `exit` — end the script.
+`movv <dst>, <src>` — copy variable to variable.
+`movi <dst>, <int>` — set variable to signed constant.
+`movf <dst>, <float>` — set variable to float constant.
+`movs <dst>, "<str>"` — set variable to string constant.
+`pushv <var>` — push variable value.
+`pushi <int>` / `pushu <uint>` / `pushf <float>` / `pushs "<str>"` — push constant.
+`pop` — discard top of stack; never below the frame.
+`popv <var>` — store top of stack in variable and discard it.
+`call <func>` — call script function; takes its parameters from the top of
+the stack and leaves the return value there.
+`calle <name>` — call extern function; needs exactly its declared argument
+count pushed. Results the host leaves behind stay on the stack and count
+toward the next call.
+`ret` — return without value; ends the script in `main`.
+`retv <var>` — return variable value.
+`reti <int>` / `retf <float>` / `rets "<str>"` — return constant.
+`add` / `sub` / `mul` / `div` — pop two numbers, push the result.
+Division by zero fails the run.
+`inc` / `dec` — add/subtract 1 on the top of stack, in place.
+`and` / `or` / `xor` — pop two numbers, push 1 or 0. `not` — negate top
+of stack in place. Zero is false, anything else is true.
+`jmp <label>` — unconditional jump.
+`je` / `jne` / `jg` / `jge` / `jl` / `jle <label>` — pop two values,
+jump on the comparison. `je`/`jne` compare strings by value; ordered
+jumps never jump on strings.
 
-See TestCLexer.cpp "Lexer keeps backslash escapes inside string
-literals", which asserts this retention. Do not change the lexer to
-translate escapes without updating this document and that test.
-
-Modules and functions
----------------------
-
-A script is assembly text assembled by Assembler::assemble
-(Lib/Impl/source/asm/Assembler.cpp) into bytecode, then run by
-VirtualMachine::callFunction. An optional single `module <name>`
-declaration names the script; declaring it twice is an error.
-
-Each script function has the form:
-
-  func <name> { ... }
-
-Redefining a function name is an error. Calls (`call <name>`) and
-extern calls (`calle <name>`) may refer to functions declared later
-in the script: they are resolved after the full parse, so forward
-references and mutual recursion assemble.
-
-Parameters and variables
-------------------------
-
-Inside a function body:
-
-  param <name>   declares a parameter slot
-  var <name>     declares one variable slot
-  vara <name> <size>  declares an array of <size> slots (<size> >= 1)
-
-Parameters share the variable namespace: redeclaring any existing
-name (param or var) is an error. The frame size is the total of all
-declared slots; parameters are the first parameterSize slots.
-A caller pushes argument values onto the runtime stack and then
-executes `call`; the callee's frame base is set so the pushed values
-land in its parameter slots. Values are read and written with
-movv/movi/movf/movs, pushv, popv; see the opcode list in
-Lib/Impl/source/common/Instructions.h.
-
-Extern declarations and call discipline
----------------------------------------
-
-An extern function is declared as:
-
-  extern <name> <argCount>
-
-where <argCount> is an integer 0..255 (it serializes as one byte).
-Redeclaring an extern name is an error.
-
-At runtime, `calle` requires exactly <argCount> values pushed above
-the current frame; fewer or more throws kern::RuntimeError. The
-extern must be registered on the host side with
-IVirtualMachine::addFunction, else the call throws; an extern whose
-call() method returns false also stops the script with
-kern::RuntimeError. popParameter and setReturnValue may only be used
-inside an extern call; any other use throws.
-
-Return chaining: return values a previous extern call left on the
-stack count toward the next call's argument count. Scripts must
-consume (or pop) values they do not need before pushing the next
-call's arguments. A return value flowing directly into the next
-extern call (for example `calle get_value` followed by
-`calle println`) is accepted by this stack-contents count. See the
-"Calle" comment block in VirtualMachine::execute
-(Lib/Impl/source/vm/VirtualMachine.cpp).
-
-Labels and jumps
-----------------
-
-  label <name>   marks the next instruction index
-
-Duplicate labels in one function are an error; jumping to an unknown
-label is an error. Conditional jumps pop two values and branch on
-the comparison:
-
-  jmp <label>    unconditional
-  je <label>     jump if x == y
-  jne <label>    jump if x != y
-  jg <label>     jump if x > y
-  jge <label>    jump if x >= y
-  jl <label>     jump if x < y
-  jle <label>    jump if x <= y
-
-A jump whose target is the end of the function (a trailing label that
-resolves to instructionSize) is legal: the VM treats an instruction
-index past the last instruction as an implicit return, so a function
-ending in a label needs no redundant ret. Falling off the end of a
-function likewise returns implicitly. `ret` without a caller ends the
-script; `exit` ends it immediately.
-
-Comparisons and strings
------------------------
-
-Equality (je/jne, Value::operator==/!= in Lib/Impl/source/vm/Value.cpp)
-accepts strings: two strings compare by value (strcmp), but a string
-and a non-string are never equal. Ordered comparisons
-(jle/jg/jge/jl, Value::operator<=/</>=/>) return false for any
-non-numeric operand pair, including strings (and NaN): the jump is
-simply not taken and execution falls through. So string scripts must
-branch with je/jne only.
-
-Execution step budget
----------------------
-
-Each callFunction run executes at most VMConfig::maxExecutionSteps
-instructions (default 10000000, see
-Lib/ApiHeaders/include/kern/VMConfig.h); the count resets on every
-call. Exceeding the budget throws kern::RuntimeError, which also
-stops a script that jumps to itself forever. Other VMConfig limits
-(maxStackBytes, maxCallDepth, maxStringBytes, maxTableEntries) bound
-the runtime stack, call depth and bytecode tables the same way.
+A jump to a trailing label and falling off the end return implicitly.
+A runaway script is stopped after a bounded number of instructions.
+Wrong argument count, empty stack and reading a never-assigned variable
+fail the run.
