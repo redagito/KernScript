@@ -2060,3 +2060,17 @@ TEST_CASE("Extern removing itself throws", "[integration][vm][reentry]")
 
   REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
 }
+
+TEST_CASE("Truncated function name fails to load", "[integration][vm][trunc]")
+{
+  std::stringstream stream;
+  writeHeader(stream);
+  writeRaw<uint32_t>(stream, 0);
+  writeRaw<uint32_t>(stream, 0);
+  writeRaw<uint32_t>(stream, 1);
+  writeRaw<uint32_t>(stream, 10);
+  stream.write("abc", 3);
+
+  VirtualMachine vm(nullptr);
+  REQUIRE_FALSE(vm.load(stream));
+}

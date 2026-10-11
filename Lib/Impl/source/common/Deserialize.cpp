@@ -79,8 +79,14 @@ bool deserialize(std::istream &stream, std::string &str, size_t maxLength)
   // TODO Slow
   for (uint32_t i = 0; i < length; ++i)
   {
-    char c;
+    char c = 0;
     stream.read(&c, sizeof(c));
+    // A truncated stream must fail cleanly instead of pushing an
+    // indeterminate character and continuing.
+    if (!stream.good())
+    {
+      return false;
+    }
     temp.push_back(c);
   }
 

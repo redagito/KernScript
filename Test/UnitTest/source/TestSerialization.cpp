@@ -200,6 +200,18 @@ TEST_CASE("Deserialize reports failure on a truncated stream",
   REQUIRE_FALSE(deserialize(stream, result, 1024));
 }
 
+TEST_CASE("Deserialize leaves the target alone on a truncated string",
+          "[unit][serialize][trunc]")
+{
+  std::stringstream stream;
+  writeRaw<uint32_t>(stream, 10);
+  stream.write("abc", 3);
+
+  std::string result = "sentinel";
+  REQUIRE_FALSE(deserialize(stream, result, 1024));
+  REQUIRE(result == "sentinel");
+}
+
 TEST_CASE("Deserialize throws on a string longer than the limit",
           "[unit][serialize][c7]")
 {

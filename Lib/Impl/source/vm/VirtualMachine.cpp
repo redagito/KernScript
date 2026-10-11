@@ -379,8 +379,14 @@ bool VirtualMachine::deserializeFunctions(std::istream &stream)
     function.name.reserve(length);
     for (uint32_t i = 0; i < length; ++i)
     {
-      char c;
+      char c = 0;
       stream.read(&c, 1);
+      // A truncated name must fail cleanly instead of pushing an
+      // indeterminate character and continuing.
+      if (!stream.good())
+      {
+        return false;
+      }
       function.name.push_back(c);
     }
 
