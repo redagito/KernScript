@@ -446,6 +446,91 @@ TEST_CASE("Jump if not equal is not taken", "[integration][vm]")
   REQUIRE(recorder.text() == "20\n10\n");
 }
 
+TEST_CASE("Jump if greater is taken", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 6\npushi 5\njg a\n"
+                                  "pushi 20\ncalle println\n"
+                                  "label a\npushi 10\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "10\n");
+}
+
+TEST_CASE("Jump if greater is not taken on equal values", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 5\npushi 5\njg a\n"
+                                  "pushi 20\ncalle println\n"
+                                  "label a\npushi 10\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "20\n10\n");
+}
+
+TEST_CASE("Jump if greater compares across types", "[integration][vm]")
+{
+  const std::string source = wrap("pushf 2.5\npushi 2\njg a\n"
+                                  "pushi 20\ncalle println\n"
+                                  "label a\npushi 10\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "10\n");
+}
+
+TEST_CASE("Jump if greater or equal is taken on equal values",
+          "[integration][vm]")
+{
+  const std::string source = wrap("pushi 5\npushi 5\njge a\n"
+                                  "pushi 20\ncalle println\n"
+                                  "label a\npushi 10\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "10\n");
+}
+
+TEST_CASE("Jump if greater or equal is not taken", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 4\npushi 5\njge a\n"
+                                  "pushi 20\ncalle println\n"
+                                  "label a\npushi 10\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "20\n10\n");
+}
+
+TEST_CASE("Jump if less is taken", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 4\npushi 5\njl a\n"
+                                  "pushi 20\ncalle println\n"
+                                  "label a\npushi 10\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "10\n");
+}
+
+TEST_CASE("Jump if less is not taken on equal values", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 5\npushi 5\njl a\n"
+                                  "pushi 20\ncalle println\n"
+                                  "label a\npushi 10\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "20\n10\n");
+}
+
 TEST_CASE("A script function receives its parameter", "[integration][vm]")
 {
   const std::string source = "extern println 1\n\nfunc print\n{\nparam a\n"

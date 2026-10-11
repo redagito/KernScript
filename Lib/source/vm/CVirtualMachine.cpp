@@ -738,6 +738,72 @@ bool CVirtualMachine::execute()
     }
   }
   break;
+  case EInstruction::Jg:
+  {
+    // Compare top 2 values from stack, x > y
+    CValue y;
+    CValue x;
+    if (!popValue(y) || !popValue(x))
+    {
+      // Not enough values on stack
+      return false;
+    }
+    if (x > y)
+    {
+      // Arg 0 is target instruction index for jump
+      uint32_t jumpIndex = *((uint32_t *)&instruction.args[0]);
+      m_currentInstructionIndex = jumpIndex;
+    }
+    else
+    {
+      ++m_currentInstructionIndex;
+    }
+  }
+  break;
+  case EInstruction::Jge:
+  {
+    // Compare top 2 values from stack, x >= y
+    CValue y;
+    CValue x;
+    if (!popValue(y) || !popValue(x))
+    {
+      // Not enough values on stack
+      return false;
+    }
+    if (x >= y)
+    {
+      // Arg 0 is target instruction index for jump
+      uint32_t jumpIndex = *((uint32_t *)&instruction.args[0]);
+      m_currentInstructionIndex = jumpIndex;
+    }
+    else
+    {
+      ++m_currentInstructionIndex;
+    }
+  }
+  break;
+  case EInstruction::Jl:
+  {
+    // Compare top 2 values from stack, x < y
+    CValue y;
+    CValue x;
+    if (!popValue(y) || !popValue(x))
+    {
+      // Not enough values on stack
+      return false;
+    }
+    if (x < y)
+    {
+      // Arg 0 is target instruction index for jump
+      uint32_t jumpIndex = *((uint32_t *)&instruction.args[0]);
+      m_currentInstructionIndex = jumpIndex;
+    }
+    else
+    {
+      ++m_currentInstructionIndex;
+    }
+  }
+  break;
 
   default:
     assert(false);

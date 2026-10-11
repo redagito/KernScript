@@ -825,6 +825,64 @@ bool CAssembler::parseFunction(std::istream &stream)
         unresolvedJumps.push_back(std::make_tuple(&function.instructions.back(),
                                                   m_lexer.getLexeme()));
       }
+      else if (m_lexer.getLexeme() == "jg")
+      {
+        // Compare top 2 parameters from stack and jump to label if greater
+        instruction.id = EInstruction::Jg;
+        // Expects identifier for label name as argument
+        m_lexer.lex(stream);
+        if (m_lexer.getToken() != ELexerToken::Identifier)
+        {
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
+          return false;
+        }
+
+        // Add assembled instruction
+        function.instructions.push_back(instruction);
+
+        // Add instruction to unresolved jumps
+        unresolvedJumps.push_back(std::make_tuple(&function.instructions.back(),
+                                                  m_lexer.getLexeme()));
+      }
+      else if (m_lexer.getLexeme() == "jge")
+      {
+        // Compare top 2 parameters from stack and jump to label if greater or
+        // equal
+        instruction.id = EInstruction::Jge;
+        // Expects identifier for label name as argument
+        m_lexer.lex(stream);
+        if (m_lexer.getToken() != ELexerToken::Identifier)
+        {
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
+          return false;
+        }
+
+        // Add assembled instruction
+        function.instructions.push_back(instruction);
+
+        // Add instruction to unresolved jumps
+        unresolvedJumps.push_back(std::make_tuple(&function.instructions.back(),
+                                                  m_lexer.getLexeme()));
+      }
+      else if (m_lexer.getLexeme() == "jl")
+      {
+        // Compare top 2 parameters from stack and jump to label if less
+        instruction.id = EInstruction::Jl;
+        // Expects identifier for label name as argument
+        m_lexer.lex(stream);
+        if (m_lexer.getToken() != ELexerToken::Identifier)
+        {
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
+          return false;
+        }
+
+        // Add assembled instruction
+        function.instructions.push_back(instruction);
+
+        // Add instruction to unresolved jumps
+        unresolvedJumps.push_back(std::make_tuple(&function.instructions.back(),
+                                                  m_lexer.getLexeme()));
+      }
       else if (m_lexer.getLexeme() == "jle")
       {
         // Compare top 2 parameters from stack and jump to label if less or
