@@ -57,6 +57,21 @@ void checkDoubleToUintRange(double value)
   }
 }
 
+/**
+* \brief Range-checks a widened result before narrowing back to uint32.
+*
+* Mirrors checkIntRange: same-type unsigned arithmetic widens to 64 bit first
+* and only narrows when the value fits, so overflow throws instead of
+* wrapping.
+*/
+void checkUintRange(uint64_t value)
+{
+  if (value > static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()))
+  {
+    throw kern::RuntimeError("Unsigned integer overflow.");
+  }
+}
+
 }
 
 Value::Value()
@@ -438,7 +453,10 @@ Value &Value::operator+=(const Value &rhs)
     }
     else if (m_type == rhs.m_type && m_type == Type::UnsignedInteger)
     {
-      m_unsignedInteger += rhs.m_unsignedInteger;
+      const uint64_t result = static_cast<uint64_t>(m_unsignedInteger) +
+                              static_cast<uint64_t>(rhs.m_unsignedInteger);
+      checkUintRange(result);
+      m_unsignedInteger = static_cast<uint32_t>(result);
     }
     else if (m_type == rhs.m_type && m_type == Type::Float)
     {
@@ -467,6 +485,10 @@ Value &Value::operator-=(const Value &rhs)
     }
     else if (m_type == rhs.m_type && m_type == Type::UnsignedInteger)
     {
+      if (m_unsignedInteger < rhs.m_unsignedInteger)
+      {
+        throw kern::RuntimeError("Unsigned integer overflow.");
+      }
       m_unsignedInteger -= rhs.m_unsignedInteger;
     }
     else if (m_type == rhs.m_type && m_type == Type::Float)
@@ -496,7 +518,10 @@ Value &Value::operator*=(const Value &rhs)
     }
     else if (m_type == rhs.m_type && m_type == Type::UnsignedInteger)
     {
-      m_unsignedInteger *= rhs.m_unsignedInteger;
+      const uint64_t result = static_cast<uint64_t>(m_unsignedInteger) *
+                              static_cast<uint64_t>(rhs.m_unsignedInteger);
+      checkUintRange(result);
+      m_unsignedInteger = static_cast<uint32_t>(result);
     }
     else if (m_type == rhs.m_type && m_type == Type::Float)
     {

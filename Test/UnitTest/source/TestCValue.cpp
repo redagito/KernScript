@@ -269,17 +269,69 @@ TEST_CASE("Value reports whether it is numeric", "[unit][Value]")
   REQUIRE_FALSE(invalid.isNumeric());
 }
 
-TEST_CASE("Value unsigned arithmetic wraps", "[unit][Value]")
+TEST_CASE("Value unsigned addition overflow throws", "[unit][Value][uint]")
+{
+  Value value(static_cast<uint32_t>(4294967295u));
+  Value operand(static_cast<uint32_t>(1));
+
+  REQUIRE_THROWS_AS(value += operand, kern::RuntimeError);
+}
+
+TEST_CASE("Value unsigned subtraction underflow throws", "[unit][Value][uint]")
 {
   Value value(static_cast<uint32_t>(0));
   Value operand(static_cast<uint32_t>(1));
 
-  value -= operand;
+  REQUIRE_THROWS_AS(value -= operand, kern::RuntimeError);
+}
 
-  REQUIRE(value.getType() == Value::Type::UnsignedInteger);
+TEST_CASE("Value unsigned multiplication overflow throws", "[unit][Value][uint]")
+{
+  Value value(static_cast<uint32_t>(3000000000u));
+  Value operand(static_cast<uint32_t>(2));
+
+  REQUIRE_THROWS_AS(value *= operand, kern::RuntimeError);
+}
+
+TEST_CASE("Value increment on unsigned maximum throws", "[unit][Value][uint]")
+{
+  Value value(static_cast<uint32_t>(4294967295u));
+  Value one(static_cast<int32_t>(1));
+
+  REQUIRE_THROWS_AS(value += one, kern::RuntimeError);
+}
+
+TEST_CASE("Value unsigned division stays in range", "[unit][Value][uint]")
+{
+  Value value(static_cast<uint32_t>(4294967295u));
+  Value half(static_cast<uint32_t>(2));
+
+  value /= half;
+
   uint32_t result = 0;
   REQUIRE(value.convert(result));
-  REQUIRE(result == 4294967295u);
+  REQUIRE(result == 2147483647u);
+}
+
+TEST_CASE("Value unsigned division by zero leaves the value unchanged",
+          "[unit][Value][uint]")
+{
+  Value value(static_cast<uint32_t>(10));
+  Value zero(static_cast<uint32_t>(0));
+
+  value /= zero;
+
+  uint32_t result = 0;
+  REQUIRE(value.convert(result));
+  REQUIRE(result == 10u);
+}
+
+TEST_CASE("Value unsigned arithmetic underflow throws", "[unit][Value]")
+{
+  Value value(static_cast<uint32_t>(0));
+  Value operand(static_cast<uint32_t>(1));
+
+  REQUIRE_THROWS_AS(value -= operand, kern::RuntimeError);
 }
 
 TEST_CASE("Default constructed Value is invalid", "[unit][Value]")

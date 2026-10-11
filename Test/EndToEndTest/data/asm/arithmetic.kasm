@@ -1,5 +1,5 @@
 // Exercises mul, div, inc and dec in one program, including widening and
-// unsigned wrap around.
+// unsigned arithmetic.
 extern println 1
 
 func main
@@ -34,8 +34,8 @@ func main
   dec
   calle println
 
-  // unsigned wrap: 4294967295 + 1 = 0
-  pushu 4294967295
+  // unsigned add in range: 4000000000 + 1 = 4000000001
+  pushu 4000000000
   pushu 1
   add
   calle println

@@ -820,16 +820,21 @@ TEST_CASE("Mul widens to float when the operands differ",
   REQUIRE(recorder.text() == "1.5\n");
 }
 
-TEST_CASE("Mul multiplies unsigned integers", "[integration][vm]")
+TEST_CASE("Mul of overflowing unsigned integers throws", "[integration][vm]")
 {
   const std::string source = wrap("pushu 3000000000\npushu 2\nmul\n"
                                   "calle println\nret");
 
-  testutil::StringRecorder recorder;
-  REQUIRE(testutil::runScript(source, "main", recorder));
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
 
-  // 3000000000 * 2 wraps around an unsigned 32 bit integer.
-  REQUIRE(recorder.text() == "1705032704\n");
+  VirtualMachine vm(nullptr);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  // 3000000000 * 2 leaves the uint32 range, so it throws instead of wrapping.
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
 }
 
 TEST_CASE("Mul leaves the rest of the stack alone", "[integration][vm]")

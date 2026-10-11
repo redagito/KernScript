@@ -30,7 +30,7 @@ TEST_CASE("arithmetic chains mul div inc and dec", "[e2e][fixture]")
 {
   const testutil::StringRecorder recorder = runFixture("arithmetic");
 
-  REQUIRE(recorder.text() == "24\n3\n11\n9\n0\n");
+  REQUIRE(recorder.text() == "24\n3\n11\n9\n4000000001\n");
 }
 
 TEST_CASE("logic evaluates truth tables and a combined expression",
