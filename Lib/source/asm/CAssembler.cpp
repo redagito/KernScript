@@ -21,6 +21,7 @@ CAssembler::CAssembler()
 
   // Instructions
   m_lexer.addKeyword("nop");
+  m_lexer.addKeyword("exit");
 
   m_lexer.addKeyword("movv");
   m_lexer.addKeyword("movi");
