@@ -1548,6 +1548,52 @@ TEST_CASE("VMConfig defaults to 1MB stack and 1024 depth", "[integration][vm][li
   const kern::VMConfig config{};
   REQUIRE(config.maxStackBytes == 1024 * 1024);
   REQUIRE(config.maxCallDepth == 1024);
+  REQUIRE(config.maxExecutionSteps == 10000000);
+}
+
+TEST_CASE("A small execution step budget stops a long script", "[integration][vm][limits]") {
+  kern::VMConfig config;
+  config.maxExecutionSteps = 10;
+  const std::string source = wrap("pushi 1\npushi 2\npushi 3\npushi 4\n"
+                                  "pushi 5\npushi 6\npushi 7\npushi 8\n"
+                                  "pushi 9\npushi 10\npushi 11\npushi 12\nret");
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr, config);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
+}
+
+TEST_CASE("An execution step budget allows scripts within it", "[integration][vm][limits]") {
+  kern::VMConfig config;
+  config.maxExecutionSteps = 10;
+  const std::string source = wrap("pushi 1\npushi 2\npushi 3\npushi 4\n"
+                                  "pushi 5\npushi 6\npushi 7\npushi 8\n"
+                                  "pushi 9\nret");
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr, config);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  REQUIRE(vm.callFunction("main"));
+}
+
+TEST_CASE("A jump to itself throws instead of hanging", "[integration][vm]") {
+  FakeFunction main;
+  main.instructions = {makeInstruction(Opcode::Jmp, 0)};
+  std::stringstream byteCode = buildByteCode({}, {main});
+
+  VirtualMachine vm(nullptr);
+  REQUIRE(vm.load(byteCode));
+
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
 }
 
 TEST_CASE("Stack limit allows pushes within budget", "[integration][vm][limits]") {

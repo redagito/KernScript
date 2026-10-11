@@ -44,7 +44,10 @@ public:
    * when the script cannot continue, for example on stack underflow, a type
    * mismatch or division by zero. Normal termination through ret or exit does
    * not throw. Calls must not nest: calling callFunction again from inside an
-   * extern function throws kern::RuntimeError.
+   * extern function throws kern::RuntimeError. Each call runs at most
+   * VMConfig::maxExecutionSteps instructions, counted from zero on every
+   * call; exceeding the budget throws kern::RuntimeError, which also stops
+   * a script that jumps to itself forever.
    */
   virtual bool callFunction(const std::string &functionName) = 0;
 

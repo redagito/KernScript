@@ -15,12 +15,16 @@ namespace kern {
  * maxStringBytes bounds a single string or name read from byte code, and
  * maxTableEntries bounds each byte code table, so corrupt length prefixes
  * throw kern::RuntimeError instead of exhausting memory.
+ * maxExecutionSteps bounds the instructions one callFunction runs, so a
+ * backward jump to itself throws kern::RuntimeError instead of hanging the
+ * host. The count resets on every callFunction.
  */
 struct VMConfig {
   size_t maxStackBytes = 1024 * 1024;
   uint32_t maxCallDepth = 1024;
   size_t maxStringBytes = 1024 * 1024;
   uint32_t maxTableEntries = 1024 * 1024;
+  uint64_t maxExecutionSteps = 10000000;
 };
 
 } // namespace kern

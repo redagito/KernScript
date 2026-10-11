@@ -1,6 +1,8 @@
+#include <cstdint>
 #include <cstring>
 #include <new>
 #include <stdexcept>
+#include <unordered_map>
 
 #include "VirtualMachine.h"
 
@@ -72,6 +74,25 @@ void checkPopAllowed(kern::ILogger *logger, bool running, const std::vector<Valu
 }
 
 /**
+ * \brief Per-instance execution step limits.
+ *
+ * The header is frozen for this change set, so the configured limit lives in
+ * this side table instead of a member. The constructor writes it with
+ * insert-or-assign, so address reuse after a destruction stays correct, and
+ * callFunction reads it once per call. Like the rest of the VM this assumes
+ * single-threaded use, matching the plain bool reentrancy guard.
+ */
+std::unordered_map<const void *, uint64_t> g_executionStepLimits;
+
+uint64_t stepLimitFor(const void *instance) {
+  const auto entry = g_executionStepLimits.find(instance);
+  if (entry != g_executionStepLimits.end()) {
+    return entry->second;
+  }
+  return kern::VMConfig{}.maxExecutionSteps;
+}
+
+/**
  * \brief Holds the callFunction reentrancy guard for the duration of a call.
  *
  * Resetting in the destructor covers both normal return and unwinding through
@@ -105,6 +126,7 @@ VirtualMachine::VirtualMachine(kern::ILogger *logger, kern::VMConfig config)
     : m_logger(logger != nullptr ? logger : nullLogger()), m_maxStackSize(config.maxStackBytes / sizeof(Value)),
       m_maxCallDepth(config.maxCallDepth), m_maxStringBytes(config.maxStringBytes),
       m_maxTableEntries(config.maxTableEntries) {
+  g_executionStepLimits[this] = config.maxExecutionSteps;
   // Preallocate the whole budget, so steady state never reallocates. An
   // absurd budget fails here as a typed error instead of bad_alloc.
   try {
@@ -217,9 +239,18 @@ bool VirtualMachine::callFunction(const std::string &functionName) {
 
   // Execute function
   bool running = true;
+  // Every execute() runs exactly one instruction, so counting loop rounds
+  // counts executed instructions. A backward jump to itself would otherwise
+  // spin the host forever; exceeding the budget stops the script instead.
+  // The counter is local, so every callFunction starts from zero.
+  uint64_t executedSteps = 0;
+  const uint64_t stepLimit = stepLimitFor(this);
   while (running) {
     // Single step execution until finished
     running = execute();
+    if (++executedSteps > stepLimit) {
+      throwRuntimeError(m_logger, "Maximum execution steps exceeded.");
+    }
   }
   return true;
 }
