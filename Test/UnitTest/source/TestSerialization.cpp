@@ -196,3 +196,31 @@ TEST_CASE("Deserialize reports failure on a truncated stream",
   std::string result;
   REQUIRE_FALSE(deserialize(stream, result));
 }
+
+TEST_CASE("Serialize refuses an unknown instruction id", "[unit][serialize]")
+{
+  SInstruction instruction;
+  instruction.id = static_cast<EInstruction>(999);
+
+  std::stringstream stream;
+  REQUIRE_FALSE(serialize(instruction, stream));
+  REQUIRE(stream.str().empty());
+}
+
+TEST_CASE("Deserialize refuses an unknown instruction id",
+          "[unit][serialize]")
+{
+  std::stringstream stream;
+  writeRaw<uint16_t>(stream, 999);
+
+  SInstruction result;
+  REQUIRE_FALSE(deserialize(result, stream));
+}
+
+TEST_CASE("toString names an unknown instruction id", "[unit][serialize]")
+{
+  SInstruction instruction;
+  instruction.id = static_cast<EInstruction>(999);
+
+  REQUIRE(toString(instruction) == "<invalid>");
+}
