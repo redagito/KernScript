@@ -1034,6 +1034,14 @@ bool VirtualMachine::execute()
   break;
   case Opcode::Je:
   {
+    // The target is validated before the operands pop, so a refused jump
+    // leaves the stack intact.
+    uint32_t jumpIndex = 0;
+    memcpy(&jumpIndex, &instruction.args[0], sizeof(jumpIndex));
+    if (jumpIndex > currentFunction.instructionSize)
+    {
+      throwRuntimeError(m_logger, "Je target out of range.");
+    }
     // Compare top 2 values from stack, x == y
     Value y;
     Value x;
@@ -1043,13 +1051,6 @@ bool VirtualMachine::execute()
     }
     if (x == y)
     {
-      // Arg 0 is target instruction index for jump
-      uint32_t jumpIndex = 0;
-      memcpy(&jumpIndex, &instruction.args[0], sizeof(jumpIndex));
-      if (jumpIndex > currentFunction.instructionSize)
-      {
-        throwRuntimeError(m_logger, "Je target out of range.");
-      }
       m_currentInstructionIndex = jumpIndex;
     }
     else
@@ -1060,6 +1061,12 @@ bool VirtualMachine::execute()
   break;
   case Opcode::Jne:
   {
+    uint32_t jumpIndex = 0;
+    memcpy(&jumpIndex, &instruction.args[0], sizeof(jumpIndex));
+    if (jumpIndex > currentFunction.instructionSize)
+    {
+      throwRuntimeError(m_logger, "Jne target out of range.");
+    }
     // Compare top 2 values from stack, x != y
     Value y;
     Value x;
@@ -1069,13 +1076,6 @@ bool VirtualMachine::execute()
     }
     if (x != y)
     {
-      // Arg 0 is target instruction index for jump
-      uint32_t jumpIndex = 0;
-      memcpy(&jumpIndex, &instruction.args[0], sizeof(jumpIndex));
-      if (jumpIndex > currentFunction.instructionSize)
-      {
-        throwRuntimeError(m_logger, "Jne target out of range.");
-      }
       m_currentInstructionIndex = jumpIndex;
     }
     else
@@ -1086,6 +1086,12 @@ bool VirtualMachine::execute()
   break;
   case Opcode::Jle:
   {
+    uint32_t jumpIndex = 0;
+    memcpy(&jumpIndex, &instruction.args[0], sizeof(jumpIndex));
+    if (jumpIndex > currentFunction.instructionSize)
+    {
+      throwRuntimeError(m_logger, "Jle target out of range.");
+    }
     // Compare top 2 values from stack, x <= y
     Value y;
     Value x;
@@ -1095,13 +1101,6 @@ bool VirtualMachine::execute()
     }
     if (x <= y)
     {
-      // Arg 0 is target instruction index for jump
-      uint32_t jumpIndex = 0;
-      memcpy(&jumpIndex, &instruction.args[0], sizeof(jumpIndex));
-      if (jumpIndex > currentFunction.instructionSize)
-      {
-        throwRuntimeError(m_logger, "Jle target out of range.");
-      }
       m_currentInstructionIndex = jumpIndex;
     }
     else
@@ -1112,6 +1111,12 @@ bool VirtualMachine::execute()
   break;
   case Opcode::Jg:
   {
+    uint32_t jumpIndex = 0;
+    memcpy(&jumpIndex, &instruction.args[0], sizeof(jumpIndex));
+    if (jumpIndex > currentFunction.instructionSize)
+    {
+      throwRuntimeError(m_logger, "Jg target out of range.");
+    }
     // Compare top 2 values from stack, x > y
     Value y;
     Value x;
@@ -1121,13 +1126,6 @@ bool VirtualMachine::execute()
     }
     if (x > y)
     {
-      // Arg 0 is target instruction index for jump
-      uint32_t jumpIndex = 0;
-      memcpy(&jumpIndex, &instruction.args[0], sizeof(jumpIndex));
-      if (jumpIndex > currentFunction.instructionSize)
-      {
-        throwRuntimeError(m_logger, "Jg target out of range.");
-      }
       m_currentInstructionIndex = jumpIndex;
     }
     else
@@ -1138,6 +1136,12 @@ bool VirtualMachine::execute()
   break;
   case Opcode::Jge:
   {
+    uint32_t jumpIndex = 0;
+    memcpy(&jumpIndex, &instruction.args[0], sizeof(jumpIndex));
+    if (jumpIndex > currentFunction.instructionSize)
+    {
+      throwRuntimeError(m_logger, "Jge target out of range.");
+    }
     // Compare top 2 values from stack, x >= y
     Value y;
     Value x;
@@ -1147,13 +1151,6 @@ bool VirtualMachine::execute()
     }
     if (x >= y)
     {
-      // Arg 0 is target instruction index for jump
-      uint32_t jumpIndex = 0;
-      memcpy(&jumpIndex, &instruction.args[0], sizeof(jumpIndex));
-      if (jumpIndex > currentFunction.instructionSize)
-      {
-        throwRuntimeError(m_logger, "Jge target out of range.");
-      }
       m_currentInstructionIndex = jumpIndex;
     }
     else
@@ -1164,6 +1161,12 @@ bool VirtualMachine::execute()
   break;
   case Opcode::Jl:
   {
+    uint32_t jumpIndex = 0;
+    memcpy(&jumpIndex, &instruction.args[0], sizeof(jumpIndex));
+    if (jumpIndex > currentFunction.instructionSize)
+    {
+      throwRuntimeError(m_logger, "Jl target out of range.");
+    }
     // Compare top 2 values from stack, x < y
     Value y;
     Value x;
@@ -1173,13 +1176,6 @@ bool VirtualMachine::execute()
     }
     if (x < y)
     {
-      // Arg 0 is target instruction index for jump
-      uint32_t jumpIndex = 0;
-      memcpy(&jumpIndex, &instruction.args[0], sizeof(jumpIndex));
-      if (jumpIndex > currentFunction.instructionSize)
-      {
-        throwRuntimeError(m_logger, "Jl target out of range.");
-      }
       m_currentInstructionIndex = jumpIndex;
     }
     else

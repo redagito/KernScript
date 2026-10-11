@@ -1309,6 +1309,28 @@ TEST_CASE("Calling a function with a huge frame is refused",
   REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
 }
 
+TEST_CASE("A refused jump leaves the stack intact",
+          "[integration][vm][corrupt][m4]")
+{
+  FakeFunction main;
+  main.instructions = {makeInstruction(Opcode::Pushi, 1),
+                       makeInstruction(Opcode::Pushi, 1),
+                       makeInstruction(Opcode::Je, 99)};
+  std::stringstream byteCode = buildByteCode({}, {main});
+
+  VirtualMachine vm(nullptr);
+  REQUIRE(vm.load(byteCode));
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
+
+  // The target is validated before the operands pop, so both survive.
+  int top = 0;
+  int next = 0;
+  REQUIRE(vm.popParameter(top));
+  REQUIRE(vm.popParameter(next));
+  REQUIRE(top == 1);
+  REQUIRE(next == 1);
+}
+
 TEST_CASE("Movs advances the instruction pointer", "[integration][vm]")
 {
   const std::string source = "extern println 1\n\nfunc main\n{\nvar x\n"
