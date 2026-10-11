@@ -783,6 +783,42 @@ bool CAssembler::parseFunction(std::istream &stream)
         unresolvedJumps.push_back(std::make_tuple(&function.instructions.back(),
                                                   m_lexer.getLexeme()));
       }
+      else if (m_lexer.getLexeme() == "mul")
+      {
+        // Multiply top 2 values from stack and push result to stack
+        instruction.id = EInstruction::Mul;
+        // No arguments
+
+        // Add assembled instruction
+        function.instructions.push_back(instruction);
+      }
+      else if (m_lexer.getLexeme() == "div")
+      {
+        // Divide top 2 values from stack and push result to stack
+        instruction.id = EInstruction::Div;
+        // No arguments
+
+        // Add assembled instruction
+        function.instructions.push_back(instruction);
+      }
+      else if (m_lexer.getLexeme() == "inc")
+      {
+        // Increment top value of the stack in place
+        instruction.id = EInstruction::Inc;
+        // No arguments
+
+        // Add assembled instruction
+        function.instructions.push_back(instruction);
+      }
+      else if (m_lexer.getLexeme() == "dec")
+      {
+        // Decrement top value of the stack in place
+        instruction.id = EInstruction::Dec;
+        // No arguments
+
+        // Add assembled instruction
+        function.instructions.push_back(instruction);
+      }
       else
       {
         // A keyword with no branch here would otherwise fall through to the

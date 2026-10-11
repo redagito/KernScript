@@ -169,7 +169,8 @@ TEST_CASE("Mul multiplies unsigned integers", "[integration][vm]")
   testutil::StringRecorder recorder;
   REQUIRE(testutil::runScript(source, "main", recorder));
 
-  REQUIRE(recorder.text() == "705032704\n");
+  // 3000000000 * 2 wraps around an unsigned 32 bit integer.
+  REQUIRE(recorder.text() == "1705032704\n");
 }
 
 TEST_CASE("Mul leaves the rest of the stack alone", "[integration][vm]")
@@ -227,7 +228,7 @@ TEST_CASE("Div by zero stops the script and logs an error",
   bool sawDivisionError = false;
   for (const auto &message : logger.messages())
   {
-    if (message.find("division by zero") != std::string::npos)
+    if (message.find("Division by zero") != std::string::npos)
     {
       sawDivisionError = true;
     }
@@ -237,12 +238,30 @@ TEST_CASE("Div by zero stops the script and logs an error",
 
 TEST_CASE("Arithmetic on a string operand is refused", "[integration][vm]")
 {
-  const std::string source = wrap("pushs \"text\"\npushi 1\nmul\nret");
+  const std::string source =
+      wrap("pushs \"text\"\npushi 1\nmul\ncalle println\nret");
 
   std::stringstream byteCode;
-  // pushs is not implemented in the assembler yet, so the script cannot be
-  // built. This is covered by the CValue unit tests instead.
-  REQUIRE_FALSE(testutil::assemble(source, byteCode));
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  testutil::RecordingLogger logger;
+  CVirtualMachine vm(&logger);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  // The script stops at the multiplication instead of producing a value.
+  vm.callFunction("main");
+
+  bool sawRefusal = false;
+  for (const auto &message : logger.messages())
+  {
+    if (message.find("numeric operands") != std::string::npos)
+    {
+      sawRefusal = true;
+    }
+  }
+  REQUIRE(sawRefusal);
 }
 
 TEST_CASE("Movs advances the instruction pointer", "[integration][vm]")

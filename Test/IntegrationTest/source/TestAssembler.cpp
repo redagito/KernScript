@@ -95,10 +95,14 @@ TEST_CASE("Assembler rejects a keyword it does not know",
           "[integration][assembler]")
 {
   // Every registered keyword has to have a branch in the parser. Without one
-  // the token falls through to the break at the end of the keyword case and
-  // the instruction is silently dropped, which produces bytecode that runs
-  // with wrong semantics rather than an error.
-  const std::string source = wrap("mul");
+  // the token falls through to a break at the end of the keyword case and the
+  // instruction is silently dropped, which produces bytecode that runs with
+  // wrong semantics rather than an error.
+  //
+  // jmp is a registered keyword without a branch yet, so it exercises the
+  // safety net. This test has to be re-pointed at another unimplemented
+  // keyword once jmp gets its branch.
+  const std::string source = wrap("jmp");
   std::stringstream byteCode;
 
   REQUIRE_FALSE(testutil::assemble(source, byteCode));

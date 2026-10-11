@@ -542,7 +542,7 @@ bool CVirtualMachine::execute()
     // dividing, so the check belongs to the caller.
     if (x.isZero())
     {
-      m_logger->error("Div by zero.");
+      m_logger->error("Division by zero.");
       return false;
     }
     m_runtimeStack.back() /= x;
