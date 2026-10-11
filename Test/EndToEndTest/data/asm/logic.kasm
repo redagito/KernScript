@@ -1,0 +1,77 @@
+// Exercises and, or, not and xor as truth tables plus a combined expression.
+extern println 1
+
+func main
+{
+  // and table: 00 01 10 11 -> 0 0 0 1
+  pushi 0
+  pushi 0
+  and
+  calle println
+  pushi 0
+  pushi 1
+  and
+  calle println
+  pushi 1
+  pushi 0
+  and
+  calle println
+  pushi 1
+  pushi 1
+  and
+  calle println
+
+  // or table: 00 01 10 11 -> 0 1 1 1
+  pushi 0
+  pushi 0
+  or
+  calle println
+  pushi 0
+  pushi 7
+  or
+  calle println
+  pushi 7
+  pushi 0
+  or
+  calle println
+  pushi 7
+  pushi 7
+  or
+  calle println
+
+  // xor table: 00 01 10 11 -> 0 1 1 0
+  pushi 0
+  pushi 0
+  xor
+  calle println
+  pushi 0
+  pushi 1
+  xor
+  calle println
+  pushi 1
+  pushi 0
+  xor
+  calle println
+  pushi 1
+  pushi 1
+  xor
+  calle println
+
+  // not: 0 -> 1, nonzero -> 0
+  pushi 0
+  not
+  calle println
+  pushi 42
+  not
+  calle println
+
+  // combined: not (1 and (0 or 1)) = not 1 = 0
+  pushi 0
+  pushi 1
+  or
+  pushi 1
+  and
+  not
+  calle println
+  ret
+}

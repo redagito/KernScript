@@ -33,6 +33,18 @@ TEST_CASE("arithmetic chains mul div inc and dec", "[e2e][fixture]")
   REQUIRE(recorder.text() == "24\n3\n11\n9\n0\n");
 }
 
+TEST_CASE("logic evaluates truth tables and a combined expression",
+          "[e2e][fixture]")
+{
+  const testutil::StringRecorder recorder = runFixture("logic");
+
+  REQUIRE(recorder.text() == "0\n0\n0\n1\n"
+                             "0\n1\n1\n1\n"
+                             "0\n1\n1\n0\n"
+                             "1\n0\n"
+                             "0\n");
+}
+
 TEST_CASE("test1 prints its values and calls a two argument extern function",
           "[e2e][fixture]")
 {
