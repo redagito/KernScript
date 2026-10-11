@@ -7,7 +7,7 @@
 /**
 * \brief Represents an assembled script header.
 */
-struct SScriptHeader
+struct ScriptHeader
 {
   uint8_t
       identifier[4]; /**< Contains identifier for script validation. Should be
@@ -17,5 +17,5 @@ struct SScriptHeader
   std::string moduleName; /**< Script module name identifier. */
 };
 
-bool serialize(const SScriptHeader &header, std::ostream &stream);
-bool deserialize(SScriptHeader &header, std::istream &stream);
+bool serialize(const ScriptHeader &header, std::ostream &stream);
+bool deserialize(ScriptHeader &header, std::istream &stream);

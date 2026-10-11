@@ -15,25 +15,25 @@ Value::Value(Value &&value) { (*this) = value; }
 
 Value::Value(int32_t value)
 {
-  m_type = EType::Integer;
+  m_type = Type::Integer;
   m_integer = value;
 }
 
 Value::Value(uint32_t value)
 {
-  m_type = EType::UnsignedInteger;
+  m_type = Type::UnsignedInteger;
   m_unsignedInteger = value;
 }
 
 Value::Value(float value)
 {
-  m_type = EType::Float;
+  m_type = Type::Float;
   m_float = value;
 }
 
 Value::Value(const std::string &value)
 {
-  m_type = EType::String;
+  m_type = Type::String;
   m_string = new char[value.length() + 1];
   memcpy(m_string, value.data(), value.length());
   m_string[value.length()] = '\0';
@@ -41,7 +41,7 @@ Value::Value(const std::string &value)
 
 Value::~Value()
 {
-  if (m_type == EType::String && m_string != nullptr)
+  if (m_type == Type::String && m_string != nullptr)
   {
     delete[] m_string;
   }
@@ -51,16 +51,16 @@ bool Value::convert(int32_t &value) const
 {
   switch (m_type)
   {
-  case EType::Integer:
+  case Type::Integer:
     value = m_integer;
     return true;
-  case EType::UnsignedInteger:
+  case Type::UnsignedInteger:
     value = (int32_t)m_unsignedInteger;
     return true;
-  case EType::Float:
+  case Type::Float:
     value = (int32_t)m_float;
     return true;
-  case EType::String:
+  case Type::String:
     // String conversion TODO
     return false;
   default:
@@ -73,16 +73,16 @@ bool Value::convert(uint32_t &value) const
 {
   switch (m_type)
   {
-  case EType::Integer:
+  case Type::Integer:
     value = (uint32_t)m_integer;
     return true;
-  case EType::UnsignedInteger:
+  case Type::UnsignedInteger:
     value = m_unsignedInteger;
     return true;
-  case EType::Float:
+  case Type::Float:
     value = (uint32_t)m_float;
     return true;
-  case EType::String:
+  case Type::String:
     // String conversion TODO
     return false;
   default:
@@ -95,16 +95,16 @@ bool Value::convert(float &value) const
 {
   switch (m_type)
   {
-  case EType::Integer:
+  case Type::Integer:
     value = (float)m_integer;
     return true;
-  case EType::UnsignedInteger:
+  case Type::UnsignedInteger:
     value = (float)m_unsignedInteger;
     return true;
-  case EType::Float:
+  case Type::Float:
     value = m_float;
     return true;
-  case EType::String:
+  case Type::String:
     // String conversion TODO
     return false;
   default:
@@ -119,19 +119,19 @@ bool Value::convert(std::string &value) const
   std::stringstream ss;
   switch (m_type)
   {
-  case EType::Integer:
+  case Type::Integer:
     ss << m_integer;
     value = ss.str();
     return true;
-  case EType::UnsignedInteger:
+  case Type::UnsignedInteger:
     ss << m_unsignedInteger;
     value = ss.str();
     return true;
-  case EType::Float:
+  case Type::Float:
     ss << m_float;
     value = ss.str();
     return true;
-  case EType::String:
+  case Type::String:
     value = std::string(m_string);
     return true;
   default:
@@ -140,30 +140,30 @@ bool Value::convert(std::string &value) const
   }
 }
 
-Value::EType Value::getType() const { return m_type; }
+Value::Type Value::getType() const { return m_type; }
 
 std::string Value::toString() const
 {
   std::stringstream ss;
   switch (m_type)
   {
-  case Value::EType::Float:
+  case Value::Type::Float:
     ss << "Float";
     break;
 
-  case Value::EType::Integer:
+  case Value::Type::Integer:
     ss << "Integer";
     break;
 
-  case Value::EType::Invalid:
+  case Value::Type::Invalid:
     return "Invalid";
     break;
 
-  case Value::EType::String:
+  case Value::Type::String:
     ss << "String";
     break;
 
-  case Value::EType::UnsignedInteger:
+  case Value::Type::UnsignedInteger:
     ss << "UnsignedInteger";
     break;
   }
@@ -182,7 +182,7 @@ Value &Value::operator=(const Value &rhs)
   }
 
   // Clean up internal string memory
-  if (m_type == EType::String)
+  if (m_type == Type::String)
   {
     delete[] m_string;
     m_string = nullptr;
@@ -191,16 +191,16 @@ Value &Value::operator=(const Value &rhs)
   m_type = rhs.m_type;
   switch (m_type)
   {
-  case EType::Integer:
+  case Type::Integer:
     m_integer = rhs.m_integer;
     break;
-  case EType::UnsignedInteger:
+  case Type::UnsignedInteger:
     m_unsignedInteger = rhs.m_unsignedInteger;
     break;
-  case EType::Float:
+  case Type::Float:
     m_float = rhs.m_float;
     break;
-  case EType::String:
+  case Type::String:
   {
     size_t length = strlen(rhs.m_string) + 1;
     m_string = new char[length];
@@ -222,7 +222,7 @@ Value &Value::operator=(Value &&rhs)
     return *this;
   }
 
-  if (m_type == EType::String)
+  if (m_type == Type::String)
   {
     delete[] m_string;
     m_string = nullptr;
@@ -231,19 +231,19 @@ Value &Value::operator=(Value &&rhs)
   m_type = rhs.m_type;
   switch (m_type)
   {
-  case EType::Integer:
+  case Type::Integer:
     m_integer = rhs.m_integer;
     rhs.m_integer = 0;
     break;
-  case EType::UnsignedInteger:
+  case Type::UnsignedInteger:
     m_unsignedInteger = rhs.m_unsignedInteger;
     rhs.m_unsignedInteger = 0;
     break;
-  case EType::Float:
+  case Type::Float:
     m_float = rhs.m_float;
     rhs.m_float = 0.f;
     break;
-  case EType::String:
+  case Type::String:
   {
     m_string = rhs.m_string;
     rhs.m_string = nullptr;
@@ -253,26 +253,26 @@ Value &Value::operator=(Value &&rhs)
     // Invalid
     break;
   }
-  rhs.m_type = EType::Invalid;
+  rhs.m_type = Type::Invalid;
 
   return *this;
 }
 
 bool Value::isNumeric() const
 {
-  return m_type == EType::Integer || m_type == EType::UnsignedInteger ||
-         m_type == EType::Float;
+  return m_type == Type::Integer || m_type == Type::UnsignedInteger ||
+         m_type == Type::Float;
 }
 
 bool Value::isZero() const
 {
   switch (m_type)
   {
-  case EType::Integer:
+  case Type::Integer:
     return m_integer == 0;
-  case EType::UnsignedInteger:
+  case Type::UnsignedInteger:
     return m_unsignedInteger == 0;
-  case EType::Float:
+  case Type::Float:
     return m_float == 0.f;
   default:
     return false;
@@ -283,11 +283,11 @@ double Value::asDouble(const Value &value)
 {
   switch (value.m_type)
   {
-  case EType::Integer:
+  case Type::Integer:
     return static_cast<double>(value.m_integer);
-  case EType::UnsignedInteger:
+  case Type::UnsignedInteger:
     return static_cast<double>(value.m_unsignedInteger);
-  case EType::Float:
+  case Type::Float:
     return static_cast<double>(value.m_float);
   default:
     return 0.0;
@@ -298,29 +298,29 @@ bool Value::asBool(const Value &value)
 {
   switch (value.m_type)
   {
-  case EType::Integer:
+  case Type::Integer:
     return value.m_integer != 0;
-  case EType::UnsignedInteger:
+  case Type::UnsignedInteger:
     return value.m_unsignedInteger != 0;
-  case EType::Float:
+  case Type::Float:
     return value.m_float != 0.f;
   default:
     return false;
   }
 }
 
-void Value::store(EType type, double value)
+void Value::store(Type type, double value)
 {
   m_type = type;
   switch (type)
   {
-  case EType::Integer:
+  case Type::Integer:
     m_integer = static_cast<int32_t>(value);
     break;
-  case EType::UnsignedInteger:
+  case Type::UnsignedInteger:
     m_unsignedInteger = static_cast<uint32_t>(value);
     break;
-  case EType::Float:
+  case Type::Float:
     m_float = static_cast<float>(value);
     break;
   default:
@@ -338,18 +338,18 @@ namespace
 * Float wins over the integers, matching how the conversions widen. Two
 * unsigned integers stay unsigned, everything else becomes signed.
 */
-Value::EType widen(Value::EType lhs, Value::EType rhs)
+Value::Type widen(Value::Type lhs, Value::Type rhs)
 {
-  if (lhs == Value::EType::Float || rhs == Value::EType::Float)
+  if (lhs == Value::Type::Float || rhs == Value::Type::Float)
   {
-    return Value::EType::Float;
+    return Value::Type::Float;
   }
-  if (lhs == Value::EType::UnsignedInteger &&
-      rhs == Value::EType::UnsignedInteger)
+  if (lhs == Value::Type::UnsignedInteger &&
+      rhs == Value::Type::UnsignedInteger)
   {
-    return Value::EType::UnsignedInteger;
+    return Value::Type::UnsignedInteger;
   }
-  return Value::EType::Integer;
+  return Value::Type::Integer;
 }
 }
 
@@ -357,19 +357,19 @@ Value &Value::operator+=(const Value &rhs)
 {
   if (isNumeric() && rhs.isNumeric())
   {
-    const EType result = widen(m_type, rhs.m_type);
+    const Type result = widen(m_type, rhs.m_type);
 
     // Same-type operands stay exact. Mixed types go through double, which
     // narrows for integers beyond 2^53.
-    if (m_type == rhs.m_type && m_type == EType::Integer)
+    if (m_type == rhs.m_type && m_type == Type::Integer)
     {
       m_integer = static_cast<int32_t>(m_integer + rhs.m_integer);
     }
-    else if (m_type == rhs.m_type && m_type == EType::UnsignedInteger)
+    else if (m_type == rhs.m_type && m_type == Type::UnsignedInteger)
     {
       m_unsignedInteger += rhs.m_unsignedInteger;
     }
-    else if (m_type == rhs.m_type && m_type == EType::Float)
+    else if (m_type == rhs.m_type && m_type == Type::Float)
     {
       m_float += rhs.m_float;
     }
@@ -385,17 +385,17 @@ Value &Value::operator-=(const Value &rhs)
 {
   if (isNumeric() && rhs.isNumeric())
   {
-    const EType result = widen(m_type, rhs.m_type);
+    const Type result = widen(m_type, rhs.m_type);
 
-    if (m_type == rhs.m_type && m_type == EType::Integer)
+    if (m_type == rhs.m_type && m_type == Type::Integer)
     {
       m_integer = static_cast<int32_t>(m_integer - rhs.m_integer);
     }
-    else if (m_type == rhs.m_type && m_type == EType::UnsignedInteger)
+    else if (m_type == rhs.m_type && m_type == Type::UnsignedInteger)
     {
       m_unsignedInteger -= rhs.m_unsignedInteger;
     }
-    else if (m_type == rhs.m_type && m_type == EType::Float)
+    else if (m_type == rhs.m_type && m_type == Type::Float)
     {
       m_float -= rhs.m_float;
     }
@@ -411,17 +411,17 @@ Value &Value::operator*=(const Value &rhs)
 {
   if (isNumeric() && rhs.isNumeric())
   {
-    const EType result = widen(m_type, rhs.m_type);
+    const Type result = widen(m_type, rhs.m_type);
 
-    if (m_type == rhs.m_type && m_type == EType::Integer)
+    if (m_type == rhs.m_type && m_type == Type::Integer)
     {
       m_integer = static_cast<int32_t>(m_integer * rhs.m_integer);
     }
-    else if (m_type == rhs.m_type && m_type == EType::UnsignedInteger)
+    else if (m_type == rhs.m_type && m_type == Type::UnsignedInteger)
     {
       m_unsignedInteger *= rhs.m_unsignedInteger;
     }
-    else if (m_type == rhs.m_type && m_type == EType::Float)
+    else if (m_type == rhs.m_type && m_type == Type::Float)
     {
       m_float *= rhs.m_float;
     }
@@ -442,7 +442,7 @@ Value &Value::operator/=(const Value &rhs)
     return *this;
   }
 
-  if (m_type == rhs.m_type && m_type == EType::Integer)
+  if (m_type == rhs.m_type && m_type == Type::Integer)
   {
     if (rhs.m_integer == 0)
     {
@@ -451,7 +451,7 @@ Value &Value::operator/=(const Value &rhs)
     m_integer /= rhs.m_integer;
     return *this;
   }
-  if (m_type == rhs.m_type && m_type == EType::UnsignedInteger)
+  if (m_type == rhs.m_type && m_type == Type::UnsignedInteger)
   {
     if (rhs.m_unsignedInteger == 0)
     {
@@ -460,13 +460,13 @@ Value &Value::operator/=(const Value &rhs)
     m_unsignedInteger /= rhs.m_unsignedInteger;
     return *this;
   }
-  if (m_type == rhs.m_type && m_type == EType::Float)
+  if (m_type == rhs.m_type && m_type == Type::Float)
   {
     m_float /= rhs.m_float;
     return *this;
   }
 
-  const EType result = widen(m_type, rhs.m_type);
+  const Type result = widen(m_type, rhs.m_type);
   const double divisor = asDouble(rhs);
   if (divisor == 0.0)
   {
@@ -485,7 +485,7 @@ bool Value::operator==(const Value &rhs) const
     {
       return false;
     }
-    return m_type == EType::String ? strcmp(m_string, rhs.m_string) == 0
+    return m_type == Type::String ? strcmp(m_string, rhs.m_string) == 0
                                    : false;
   }
 
@@ -493,11 +493,11 @@ bool Value::operator==(const Value &rhs) const
   {
     switch (m_type)
     {
-    case EType::Integer:
+    case Type::Integer:
       return m_integer == rhs.m_integer;
-    case EType::UnsignedInteger:
+    case Type::UnsignedInteger:
       return m_unsignedInteger == rhs.m_unsignedInteger;
-    case EType::Float:
+    case Type::Float:
       return m_float == rhs.m_float;
     default:
       break;
@@ -514,15 +514,15 @@ int Value::compare(const Value &lhs, const Value &rhs)
   {
     switch (lhs.m_type)
     {
-    case EType::Integer:
+    case Type::Integer:
       return lhs.m_integer < rhs.m_integer
                  ? -1
                  : (lhs.m_integer > rhs.m_integer ? 1 : 0);
-    case EType::UnsignedInteger:
+    case Type::UnsignedInteger:
       return lhs.m_unsignedInteger < rhs.m_unsignedInteger
                  ? -1
                  : (lhs.m_unsignedInteger > rhs.m_unsignedInteger ? 1 : 0);
-    case EType::Float:
+    case Type::Float:
       return lhs.m_float < rhs.m_float ? -1
                                        : (lhs.m_float > rhs.m_float ? 1 : 0);
     default:

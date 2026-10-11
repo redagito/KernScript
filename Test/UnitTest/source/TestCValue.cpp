@@ -5,16 +5,16 @@
 TEST_CASE("Value carries the type it was constructed with", "[unit][Value]")
 {
   Value integer(static_cast<int32_t>(-7));
-  REQUIRE(integer.getType() == Value::EType::Integer);
+  REQUIRE(integer.getType() == Value::Type::Integer);
 
   Value unsignedInteger(static_cast<uint32_t>(7));
-  REQUIRE(unsignedInteger.getType() == Value::EType::UnsignedInteger);
+  REQUIRE(unsignedInteger.getType() == Value::Type::UnsignedInteger);
 
   Value floatValue(1.25f);
-  REQUIRE(floatValue.getType() == Value::EType::Float);
+  REQUIRE(floatValue.getType() == Value::Type::Float);
 
   Value stringValue(std::string("text"));
-  REQUIRE(stringValue.getType() == Value::EType::String);
+  REQUIRE(stringValue.getType() == Value::Type::String);
 }
 
 TEST_CASE("Value arithmetic widens to the wider type", "[unit][Value]")
@@ -24,7 +24,7 @@ TEST_CASE("Value arithmetic widens to the wider type", "[unit][Value]")
 
   integer += fraction;
 
-  REQUIRE(integer.getType() == Value::EType::Float);
+  REQUIRE(integer.getType() == Value::Type::Float);
   float result = 0.f;
   REQUIRE(integer.convert(result));
   REQUIRE(result == 3.5f);
@@ -65,7 +65,7 @@ TEST_CASE("Value multiplies floats", "[unit][Value]")
 
   value *= operand;
 
-  REQUIRE(value.getType() == Value::EType::Float);
+  REQUIRE(value.getType() == Value::Type::Float);
   float result = 0.f;
   REQUIRE(value.convert(result));
   REQUIRE(result == 10.f);
@@ -78,7 +78,7 @@ TEST_CASE("Value multiplies across types", "[unit][Value]")
 
   value *= operand;
 
-  REQUIRE(value.getType() == Value::EType::Float);
+  REQUIRE(value.getType() == Value::Type::Float);
   float result = 0.f;
   REQUIRE(value.convert(result));
   REQUIRE(result == 10.f);
@@ -104,7 +104,7 @@ TEST_CASE("Value divides floats", "[unit][Value]")
 
   value /= operand;
 
-  REQUIRE(value.getType() == Value::EType::Float);
+  REQUIRE(value.getType() == Value::Type::Float);
   float result = 0.f;
   REQUIRE(value.convert(result));
   REQUIRE(result == 0.25f);
@@ -256,7 +256,7 @@ TEST_CASE("Value unsigned arithmetic wraps", "[unit][Value]")
 
   value -= operand;
 
-  REQUIRE(value.getType() == Value::EType::UnsignedInteger);
+  REQUIRE(value.getType() == Value::Type::UnsignedInteger);
   uint32_t result = 0;
   REQUIRE(value.convert(result));
   REQUIRE(result == 4294967295u);
@@ -265,7 +265,7 @@ TEST_CASE("Value unsigned arithmetic wraps", "[unit][Value]")
 TEST_CASE("Default constructed Value is invalid", "[unit][Value]")
 {
   Value value;
-  REQUIRE(value.getType() == Value::EType::Invalid);
+  REQUIRE(value.getType() == Value::Type::Invalid);
 }
 
 TEST_CASE("Value converts integer to the other arithmetic types",

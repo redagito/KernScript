@@ -43,9 +43,9 @@ bool indexInRange(uint32_t base, int32_t rawIndex, size_t size)
 
 }
 
-VirtualMachine::SFunctionFrame::SFunctionFrame() {}
+VirtualMachine::FunctionFrame::FunctionFrame() {}
 
-VirtualMachine::SFunctionFrame::SFunctionFrame(uint32_t funcIndex,
+VirtualMachine::FunctionFrame::FunctionFrame(uint32_t funcIndex,
                                                  uint32_t instrIndex,
                                                  uint32_t stackBaseIndex)
 {
@@ -283,7 +283,7 @@ bool VirtualMachine::getFunctionIndexByName(const std::string &functionName,
 
 bool VirtualMachine::getFunctionByName(
     const std::string &functionName,
-    const VirtualMachine::SFunction *function_out) const
+    const VirtualMachine::Function *function_out) const
 {
   for (const auto &function : m_functions)
   {
@@ -299,11 +299,11 @@ bool VirtualMachine::getFunctionByName(
 bool VirtualMachine::execute()
 {
   // Cache current function
-  const SFunction &currentFunction = m_functions.at(m_currentFunctionIndex);
+  const Function &currentFunction = m_functions.at(m_currentFunctionIndex);
 
   // Default current instruction to implicit return
-  SInstruction instruction;
-  instruction.id = EInstruction::Ret;
+  Instruction instruction;
+  instruction.id = Opcode::Ret;
 
   // Check for out of bounds instruction index
   if (currentFunction.instructionSize > m_currentInstructionIndex)
@@ -314,22 +314,22 @@ bool VirtualMachine::execute()
 
   switch (instruction.id)
   {
-  case EInstruction::Nop:
+  case Opcode::Nop:
     ++m_currentInstructionIndex;
     break;
 
-  case EInstruction::Break:
+  case Opcode::Break:
     // Breakpoint, for debugging. There is no debugger attached, so this
     // intentionally does nothing and execution continues.
     ++m_currentInstructionIndex;
     break;
 
-  case EInstruction::Exit:
+  case Opcode::Exit:
     // Return false to signal end of script
     return false;
     break;
 
-  case EInstruction::Movv:
+  case Opcode::Movv:
     // Move variable to variable
     // Arg 0 is variable index of destination
     // Arg 1 is variable index of source
@@ -347,7 +347,7 @@ bool VirtualMachine::execute()
     ++m_currentInstructionIndex;
     break;
 
-  case EInstruction::Movi:
+  case Opcode::Movi:
     // Move integer to variable
     // Arg 0 is variable index of destination
     // Arg 1 is source integer value
@@ -361,7 +361,7 @@ bool VirtualMachine::execute()
     ++m_currentInstructionIndex;
     break;
 
-  case EInstruction::Movf:
+  case Opcode::Movf:
     // Move float to variable
     // Arg 0 is variable index of destination
     // Arg 1 is source float value
@@ -376,7 +376,7 @@ bool VirtualMachine::execute()
     ++m_currentInstructionIndex;
     break;
 
-  case EInstruction::Movs:
+  case Opcode::Movs:
     // Move string to variable
     // Arg 0 is variable index of destination
     // Arg 1 is source index of string
@@ -395,20 +395,20 @@ bool VirtualMachine::execute()
     ++m_currentInstructionIndex;
     break;
 
-  case EInstruction::Pushi:
+  case Opcode::Pushi:
     // Push signed 32 bit integer value to
     // Arg 0 is integer value
     pushValue(Value(instruction.args[0]));
     ++m_currentInstructionIndex;
     break;
 
-  case EInstruction::Pushu:
+  case Opcode::Pushu:
     // Arg 0 is an unsigned integer value
     pushValue(Value(*((uint32_t *)&instruction.args[0])));
     ++m_currentInstructionIndex;
     break;
 
-  case EInstruction::Pushs:
+  case Opcode::Pushs:
     // Arg 0 is string index
     if (!indexInRange(0, instruction.args[0], m_strings.size()))
     {
@@ -418,13 +418,13 @@ bool VirtualMachine::execute()
     ++m_currentInstructionIndex;
     break;
 
-  case EInstruction::Pushf:
+  case Opcode::Pushf:
     // Arg 0 is float value
     pushValue(Value(*((float *)&instruction.args[0])));
     ++m_currentInstructionIndex;
     break;
 
-  case EInstruction::Pushv:
+  case Opcode::Pushv:
     // Arg 0 is variable index
     if (!indexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0],
                       m_runtimeStack.size()))
@@ -436,7 +436,7 @@ bool VirtualMachine::execute()
     ++m_currentInstructionIndex;
     break;
 
-  case EInstruction::Pop:
+  case Opcode::Pop:
     // Remove top element from runtime stack
     if (m_runtimeStack.empty())
     {
@@ -446,7 +446,7 @@ bool VirtualMachine::execute()
     ++m_currentInstructionIndex;
     break;
 
-  case EInstruction::Popv:
+  case Opcode::Popv:
   {
     // Remove top of the stack and store it in variable
     // Arg 0 is variable index
@@ -466,7 +466,7 @@ bool VirtualMachine::execute()
   }
   break;
 
-  case EInstruction::Call:
+  case Opcode::Call:
   {
     // Arg 0 is function index of the called function
     const int32_t functionIndex = instruction.args[0];
@@ -475,7 +475,7 @@ bool VirtualMachine::execute()
     {
       throwRuntimeError(m_logger, "Call function index out of range.");
     }
-    const SFunction &newCurrentFunction =
+    const Function &newCurrentFunction =
         m_functions.at(static_cast<size_t>(functionIndex));
     const uint32_t runtimeStackSize =
         static_cast<uint32_t>(m_runtimeStack.size());
@@ -502,7 +502,7 @@ bool VirtualMachine::execute()
     // Push current function index, next instruction index and base stack index
     // for
     // return call.
-    m_callStack.push(SFunctionFrame(m_currentFunctionIndex,
+    m_callStack.push(FunctionFrame(m_currentFunctionIndex,
                                      m_currentInstructionIndex + 1,
                                      m_currentRuntimeStackBaseIndex));
     m_currentFunctionIndex = static_cast<uint32_t>(functionIndex);
@@ -517,7 +517,7 @@ bool VirtualMachine::execute()
     break;
   }
 
-  case EInstruction::Calle:
+  case Opcode::Calle:
   {
     // Call external, arg 0 is extern function index
     const int32_t externIndex = instruction.args[0];
@@ -526,7 +526,7 @@ bool VirtualMachine::execute()
     {
       throwRuntimeError(m_logger, "Calle extern function index out of range.");
     }
-    const SExternFunction &externFunction =
+    const ExternFunction &externFunction =
         m_externFunctions.at(static_cast<size_t>(externIndex));
 
     // Check if function exists
@@ -548,7 +548,7 @@ bool VirtualMachine::execute()
     ++m_currentInstructionIndex;
     break;
   }
-  case EInstruction::Ret:
+  case Opcode::Ret:
     // Return from script function
     if (m_callStack.empty())
     {
@@ -567,7 +567,7 @@ bool VirtualMachine::execute()
     m_callStack.pop();
     break;
 
-  case EInstruction::Retv:
+  case Opcode::Retv:
   {
     // Returns variable from script function
     if (m_callStack.empty())
@@ -611,7 +611,7 @@ bool VirtualMachine::execute()
     break;
   }
 
-  case EInstruction::Reti:
+  case Opcode::Reti:
   {
     // Returns variable from script function
     if (m_callStack.empty())
@@ -643,7 +643,7 @@ bool VirtualMachine::execute()
     break;
   }
 
-  case EInstruction::Retf:
+  case Opcode::Retf:
   {
     // Returns float from script function
     if (m_callStack.empty())
@@ -675,7 +675,7 @@ bool VirtualMachine::execute()
     break;
   }
 
-  case EInstruction::Rets:
+  case Opcode::Rets:
   {
     // Returns string from script function
     if (m_callStack.empty())
@@ -712,7 +712,7 @@ bool VirtualMachine::execute()
     break;
   }
 
-  case EInstruction::Add:
+  case Opcode::Add:
   {
     Value x;
     // 2 Values needed
@@ -725,7 +725,7 @@ bool VirtualMachine::execute()
   }
   break;
 
-  case EInstruction::Sub:
+  case Opcode::Sub:
   {
     Value x;
     // 2 Values needed
@@ -738,7 +738,7 @@ bool VirtualMachine::execute()
   }
   break;
 
-  case EInstruction::Mul:
+  case Opcode::Mul:
   {
     Value x;
     // 2 values needed
@@ -755,7 +755,7 @@ bool VirtualMachine::execute()
   }
   break;
 
-  case EInstruction::Div:
+  case Opcode::Div:
   {
     Value x;
     // 2 values needed
@@ -778,7 +778,7 @@ bool VirtualMachine::execute()
   }
   break;
 
-  case EInstruction::Inc:
+  case Opcode::Inc:
   {
     // Increments the top of the runtime stack in place.
     if (m_runtimeStack.empty())
@@ -795,7 +795,7 @@ bool VirtualMachine::execute()
   }
   break;
 
-  case EInstruction::Dec:
+  case Opcode::Dec:
   {
     // Decrements the top of the runtime stack in place.
     if (m_runtimeStack.empty())
@@ -812,7 +812,7 @@ bool VirtualMachine::execute()
   }
   break;
 
-  case EInstruction::And:
+  case Opcode::And:
   {
     Value x;
     Value y;
@@ -830,7 +830,7 @@ bool VirtualMachine::execute()
   }
   break;
 
-  case EInstruction::Or:
+  case Opcode::Or:
   {
     Value x;
     Value y;
@@ -847,7 +847,7 @@ bool VirtualMachine::execute()
   }
   break;
 
-  case EInstruction::Not:
+  case Opcode::Not:
   {
     if (m_runtimeStack.empty())
     {
@@ -862,7 +862,7 @@ bool VirtualMachine::execute()
     ++m_currentInstructionIndex;
   }
   break;
-  case EInstruction::Xor:
+  case Opcode::Xor:
   {
     Value x;
     Value y;
@@ -881,7 +881,7 @@ bool VirtualMachine::execute()
   }
   break;
 
-  case EInstruction::Jmp:
+  case Opcode::Jmp:
   {
     // Arg 0 is target instruction index for jump. The end of the function
     // itself is a legal target: the fetch treats it as an implicit return,
@@ -894,7 +894,7 @@ bool VirtualMachine::execute()
     m_currentInstructionIndex = jumpIndex;
   }
   break;
-  case EInstruction::Je:
+  case Opcode::Je:
   {
     // Compare top 2 values from stack, x == y
     Value y;
@@ -919,7 +919,7 @@ bool VirtualMachine::execute()
     }
   }
   break;
-  case EInstruction::Jne:
+  case Opcode::Jne:
   {
     // Compare top 2 values from stack, x != y
     Value y;
@@ -944,7 +944,7 @@ bool VirtualMachine::execute()
     }
   }
   break;
-  case EInstruction::Jle:
+  case Opcode::Jle:
   {
     // Compare top 2 values from stack, x <= y
     Value y;
@@ -969,7 +969,7 @@ bool VirtualMachine::execute()
     }
   }
   break;
-  case EInstruction::Jg:
+  case Opcode::Jg:
   {
     // Compare top 2 values from stack, x > y
     Value y;
@@ -994,7 +994,7 @@ bool VirtualMachine::execute()
     }
   }
   break;
-  case EInstruction::Jge:
+  case Opcode::Jge:
   {
     // Compare top 2 values from stack, x >= y
     Value y;
@@ -1019,7 +1019,7 @@ bool VirtualMachine::execute()
     }
   }
   break;
-  case EInstruction::Jl:
+  case Opcode::Jl:
   {
     // Compare top 2 values from stack, x < y
     Value y;
@@ -1056,7 +1056,7 @@ bool VirtualMachine::execute()
 
 void VirtualMachine::pushValue(const Value &val)
 {
-  assert(val.getType() != Value::EType::Invalid);
+  assert(val.getType() != Value::Type::Invalid);
   if (m_runtimeStack.size() >= m_maxStackSize)
   {
     throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
@@ -1071,7 +1071,7 @@ bool VirtualMachine::popValue(Value &val)
     return false;
   }
   val = std::move(m_runtimeStack.back());
-  assert(val.getType() != Value::EType::Invalid);
+  assert(val.getType() != Value::Type::Invalid);
   m_runtimeStack.pop_back();
   return true;
 }

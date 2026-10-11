@@ -8,7 +8,7 @@
 /**
 * \brief Represents an assembled extern function.
 */
-struct SExternFunction
+struct ExternFunction
 {
   std::string name;     /**< Extern function name. */
   uint8_t argCount = 0; /**< Expected argument count. */
@@ -17,9 +17,9 @@ struct SExternFunction
 /**
 * \brief Serializes extern function to stream.
 */
-bool serialize(const SExternFunction &externFunction, std::ostream &stream);
+bool serialize(const ExternFunction &externFunction, std::ostream &stream);
 
 /**
 * \brief Deserializes extern function from stream.
 */
-bool deserialize(std::istream &stream, SExternFunction &externFunction);
+bool deserialize(std::istream &stream, ExternFunction &externFunction);

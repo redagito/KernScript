@@ -1,4 +1,4 @@
-#include "SInstruction.h"
+#include "Instruction.h"
 
 namespace
 {
@@ -22,7 +22,7 @@ bool validId(uint16_t id)
 
 }
 
-bool serialize(const SInstruction &instruction, std::ostream &stream)
+bool serialize(const Instruction &instruction, std::ostream &stream)
 {
   const uint16_t id = static_cast<uint16_t>(instruction.id);
   if (!validId(id))
@@ -40,7 +40,7 @@ bool serialize(const SInstruction &instruction, std::ostream &stream)
   return stream.good();
 }
 
-bool deserialize(SInstruction &instruction, std::istream &stream)
+bool deserialize(Instruction &instruction, std::istream &stream)
 {
   // Read id
   uint16_t id = 0;
@@ -49,7 +49,7 @@ bool deserialize(SInstruction &instruction, std::istream &stream)
   {
     return false;
   }
-  instruction.id = (EInstruction)id;
+  instruction.id = (Opcode)id;
   // Number of arguments depends on instruction id
   for (unsigned int i = 0; i < instructions[id].argCount; ++i)
   {
@@ -59,7 +59,7 @@ bool deserialize(SInstruction &instruction, std::istream &stream)
   return stream.good();
 }
 
-std::string toString(const SInstruction &instruction)
+std::string toString(const Instruction &instruction)
 {
   const uint16_t id = static_cast<uint16_t>(instruction.id);
   if (!validId(id))

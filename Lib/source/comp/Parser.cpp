@@ -35,11 +35,11 @@ bool Parser::parse(std::istream &stream)
     // Process lexeme
     switch (m_lexer.getToken())
     {
-    case ELexerToken::NewLine:
+    case LexerToken::NewLine:
       ++m_currentLineNumber;
       m_currentLineIndex = 0;
       break;
-    case ELexerToken::Keyword:
+    case LexerToken::Keyword:
       if (m_lexer.getLexeme() == "func")
       {
         // Script function
@@ -62,13 +62,13 @@ bool Parser::parse(std::istream &stream)
         return false;
       }
       break;
-    case ELexerToken::Invalid:
+    case LexerToken::Invalid:
       return false;
     default:
       break;
     }
-  } while (m_lexer.getToken() != ELexerToken::End &&
-           m_lexer.getToken() != ELexerToken::Invalid);
+  } while (m_lexer.getToken() != LexerToken::End &&
+           m_lexer.getToken() != LexerToken::Invalid);
   return true;
 }
 
@@ -92,14 +92,14 @@ bool Parser::parseVariableDeclaration(std::istream &stream)
 bool Parser::parseFunction(std::istream &stream)
 {
   // Make sure the last token was 'func'
-  assert(m_lexer.getToken() == ELexerToken::Keyword);
+  assert(m_lexer.getToken() == LexerToken::Keyword);
   assert(m_lexer.getLexeme() == "func");
 
   // Next should be function name identifier
   m_currentLineIndex += m_lexer.lex(stream);
-  if (m_lexer.getToken() != ELexerToken::Identifier)
+  if (m_lexer.getToken() != LexerToken::Identifier)
   {
-    if (m_lexer.getToken() == ELexerToken::End)
+    if (m_lexer.getToken() == LexerToken::End)
     {
       m_logger->error("Unexpected end of stream encountered while expecting a "
                    "function name identifier.");
@@ -116,7 +116,7 @@ bool Parser::parseFunction(std::istream &stream)
 
   // Next token should be '('
   m_currentLineIndex += m_lexer.lex(stream);
-  if (m_lexer.getToken() != ELexerToken::OpenParenthesis)
+  if (m_lexer.getToken() != LexerToken::OpenParenthesis)
   {
     return false;
   }
@@ -125,7 +125,7 @@ bool Parser::parseFunction(std::istream &stream)
 
   // Next token should be ')'
   m_currentLineIndex += m_lexer.lex(stream);
-  if (m_lexer.getToken() != ELexerToken::CloseParenthesis)
+  if (m_lexer.getToken() != LexerToken::CloseParenthesis)
   {
     return false;
   }

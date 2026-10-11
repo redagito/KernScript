@@ -1,8 +1,8 @@
-#include "SExternFunction.h"
+#include "ExternFunction.h"
 
 #include "Deserialize.h"
 
-bool serialize(const SExternFunction &externFunction, std::ostream &stream)
+bool serialize(const ExternFunction &externFunction, std::ostream &stream)
 {
   // Sanity checks
   if (externFunction.name.empty())
@@ -23,7 +23,7 @@ bool serialize(const SExternFunction &externFunction, std::ostream &stream)
   return stream.good();
 }
 
-bool deserialize(std::istream &stream, SExternFunction &externFunction)
+bool deserialize(std::istream &stream, ExternFunction &externFunction)
 {
   // Function name
   std::string name;

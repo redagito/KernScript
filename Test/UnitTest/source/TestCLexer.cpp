@@ -10,11 +10,11 @@ TEST_CASE("Lexer scans integer and float literals", "[unit][Lexer]")
   Lexer lexer(nullptr);
 
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::Integer);
+  REQUIRE(lexer.getToken() == LexerToken::Integer);
   REQUIRE(lexer.getLexeme() == "42");
 
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::Float);
+  REQUIRE(lexer.getToken() == LexerToken::Float);
   REQUIRE(lexer.getLexeme() == "1.5");
 }
 
@@ -24,7 +24,7 @@ TEST_CASE("Lexer reports a malformed float as invalid", "[unit][Lexer]")
   Lexer lexer(nullptr);
 
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::Invalid);
+  REQUIRE(lexer.getToken() == LexerToken::Invalid);
 }
 
 TEST_CASE("Lexer separates identifiers from keywords", "[unit][Lexer]")
@@ -34,11 +34,11 @@ TEST_CASE("Lexer separates identifiers from keywords", "[unit][Lexer]")
   lexer.addKeyword("keyword");
 
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::Identifier);
+  REQUIRE(lexer.getToken() == LexerToken::Identifier);
   REQUIRE(lexer.getLexeme() == "name");
 
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::Keyword);
+  REQUIRE(lexer.getToken() == LexerToken::Keyword);
   REQUIRE(lexer.getLexeme() == "keyword");
 }
 
@@ -48,7 +48,7 @@ TEST_CASE("Lexer accepts underscores in identifiers", "[unit][Lexer]")
   Lexer lexer(nullptr);
 
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::Identifier);
+  REQUIRE(lexer.getToken() == LexerToken::Identifier);
   REQUIRE(lexer.getLexeme() == "a_b_1");
 }
 
@@ -60,7 +60,7 @@ TEST_CASE("Lexer removes a keyword again", "[unit][Lexer]")
   lexer.removeKeyword("keyword");
 
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::Identifier);
+  REQUIRE(lexer.getToken() == LexerToken::Identifier);
 }
 
 TEST_CASE("Lexer scans string literals without the quotes", "[unit][Lexer]")
@@ -69,7 +69,7 @@ TEST_CASE("Lexer scans string literals without the quotes", "[unit][Lexer]")
   Lexer lexer(nullptr);
 
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::String);
+  REQUIRE(lexer.getToken() == LexerToken::String);
   REQUIRE(lexer.getLexeme() == "hello");
 }
 
@@ -80,7 +80,7 @@ TEST_CASE("Lexer keeps backslash escapes inside string literals",
   Lexer lexer(nullptr);
 
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::String);
+  REQUIRE(lexer.getToken() == LexerToken::String);
   REQUIRE(lexer.getLexeme() == "a\\\"b");
 }
 
@@ -90,7 +90,7 @@ TEST_CASE("Lexer rejects an unterminated string", "[unit][Lexer]")
   Lexer lexer(nullptr);
 
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::Invalid);
+  REQUIRE(lexer.getToken() == LexerToken::Invalid);
 }
 
 TEST_CASE("Lexer skips line comments", "[unit][Lexer]")
@@ -99,7 +99,7 @@ TEST_CASE("Lexer skips line comments", "[unit][Lexer]")
   Lexer lexer(nullptr);
 
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::Comment);
+  REQUIRE(lexer.getToken() == LexerToken::Comment);
 }
 
 TEST_CASE("Lexer scans single character tokens", "[unit][Lexer]")
@@ -107,19 +107,19 @@ TEST_CASE("Lexer scans single character tokens", "[unit][Lexer]")
   std::istringstream stream(". ; , # @ ( ) { } [ ]");
   Lexer lexer(nullptr);
 
-  const ELexerToken expected[] = {ELexerToken::Dot,
-                                  ELexerToken::Semicolon,
-                                  ELexerToken::Comma,
-                                  ELexerToken::Pound,
-                                  ELexerToken::At,
-                                  ELexerToken::OpenParenthesis,
-                                  ELexerToken::CloseParenthesis,
-                                  ELexerToken::OpenBrace,
-                                  ELexerToken::CloseBrace,
-                                  ELexerToken::OpenBracket,
-                                  ELexerToken::CloseBracket};
+  const LexerToken expected[] = {LexerToken::Dot,
+                                  LexerToken::Semicolon,
+                                  LexerToken::Comma,
+                                  LexerToken::Pound,
+                                  LexerToken::At,
+                                  LexerToken::OpenParenthesis,
+                                  LexerToken::CloseParenthesis,
+                                  LexerToken::OpenBrace,
+                                  LexerToken::CloseBrace,
+                                  LexerToken::OpenBracket,
+                                  LexerToken::CloseBracket};
 
-  for (ELexerToken token : expected)
+  for (LexerToken token : expected)
   {
     lexer.lex(stream);
     REQUIRE(lexer.getToken() == token);
@@ -131,22 +131,22 @@ TEST_CASE("Lexer scans compound operator tokens", "[unit][Lexer]")
   std::istringstream stream(":: || && == != <= >= ++ -- += -= *= /= %=");
   Lexer lexer(nullptr);
 
-  const ELexerToken expected[] = {ELexerToken::DoubleColon,
-                                  ELexerToken::DoublePipe,
-                                  ELexerToken::DoubleAmpersand,
-                                  ELexerToken::Equal,
-                                  ELexerToken::NotEqual,
-                                  ELexerToken::LessOrEqual,
-                                  ELexerToken::GreaterOrEqual,
-                                  ELexerToken::Increment,
-                                  ELexerToken::Decrement,
-                                  ELexerToken::AddAssign,
-                                  ELexerToken::SubtractAssign,
-                                  ELexerToken::MultiplyAssign,
-                                  ELexerToken::DivideAssign,
-                                  ELexerToken::ModuloAssign};
+  const LexerToken expected[] = {LexerToken::DoubleColon,
+                                  LexerToken::DoublePipe,
+                                  LexerToken::DoubleAmpersand,
+                                  LexerToken::Equal,
+                                  LexerToken::NotEqual,
+                                  LexerToken::LessOrEqual,
+                                  LexerToken::GreaterOrEqual,
+                                  LexerToken::Increment,
+                                  LexerToken::Decrement,
+                                  LexerToken::AddAssign,
+                                  LexerToken::SubtractAssign,
+                                  LexerToken::MultiplyAssign,
+                                  LexerToken::DivideAssign,
+                                  LexerToken::ModuloAssign};
 
-  for (ELexerToken token : expected)
+  for (LexerToken token : expected)
   {
     lexer.lex(stream);
     REQUIRE(lexer.getToken() == token);
@@ -160,43 +160,43 @@ TEST_CASE("Lexer distinguishes the single character form of operators",
   Lexer lexer(nullptr);
 
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::Pipe);
+  REQUIRE(lexer.getToken() == LexerToken::Pipe);
 
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::Ampersand);
+  REQUIRE(lexer.getToken() == LexerToken::Ampersand);
 
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::Assign);
+  REQUIRE(lexer.getToken() == LexerToken::Assign);
 
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::ExclamationMark);
+  REQUIRE(lexer.getToken() == LexerToken::ExclamationMark);
 
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::Colon);
+  REQUIRE(lexer.getToken() == LexerToken::Colon);
 
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::LessThan);
+  REQUIRE(lexer.getToken() == LexerToken::LessThan);
 
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::GreaterThan);
+  REQUIRE(lexer.getToken() == LexerToken::GreaterThan);
 
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::Percent);
+  REQUIRE(lexer.getToken() == LexerToken::Percent);
 
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::Slash);
+  REQUIRE(lexer.getToken() == LexerToken::Slash);
 
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::BackSlash);
+  REQUIRE(lexer.getToken() == LexerToken::BackSlash);
 
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::Asterisk);
+  REQUIRE(lexer.getToken() == LexerToken::Asterisk);
 
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::Plus);
+  REQUIRE(lexer.getToken() == LexerToken::Plus);
 
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::Dash);
+  REQUIRE(lexer.getToken() == LexerToken::Dash);
 }
 
 TEST_CASE("Lexer reports newlines unless they are ignored", "[unit][Lexer]")
@@ -205,13 +205,13 @@ TEST_CASE("Lexer reports newlines unless they are ignored", "[unit][Lexer]")
 
   Lexer lexer(nullptr);
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::NewLine);
+  REQUIRE(lexer.getToken() == LexerToken::NewLine);
 
   std::istringstream ignoredStream("\nvar");
   Lexer ignoringLexer(nullptr);
   ignoringLexer.ignoreNewLine(true);
   ignoringLexer.lex(ignoredStream);
-  REQUIRE(ignoringLexer.getToken() == ELexerToken::Identifier);
+  REQUIRE(ignoringLexer.getToken() == LexerToken::Identifier);
   REQUIRE(ignoringLexer.getLexeme() == "var");
 }
 
@@ -230,7 +230,7 @@ TEST_CASE("Lexer signals end of stream", "[unit][Lexer]")
   Lexer lexer(nullptr);
 
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::End);
+  REQUIRE(lexer.getToken() == LexerToken::End);
 }
 
 TEST_CASE("Lexer keeps the current token when the next lex is ignored",
@@ -240,10 +240,10 @@ TEST_CASE("Lexer keeps the current token when the next lex is ignored",
   Lexer lexer(nullptr);
 
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::Identifier);
+  REQUIRE(lexer.getToken() == LexerToken::Identifier);
 
   lexer.ignoreNextLex();
   lexer.lex(stream);
-  REQUIRE(lexer.getToken() == ELexerToken::Identifier);
+  REQUIRE(lexer.getToken() == LexerToken::Identifier);
   REQUIRE(lexer.getLexeme() == "name");
 }

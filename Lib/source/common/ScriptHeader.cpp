@@ -1,6 +1,6 @@
-#include "SScriptHeader.h"
+#include "ScriptHeader.h"
 
-bool serialize(const SScriptHeader &header, std::ostream &stream)
+bool serialize(const ScriptHeader &header, std::ostream &stream)
 {
   // 4 byte identifier
   stream.write((char *)header.identifier, sizeof(header.identifier));
@@ -11,7 +11,7 @@ bool serialize(const SScriptHeader &header, std::ostream &stream)
   return stream.good();
 }
 
-bool deserialize(SScriptHeader &header, std::istream &stream)
+bool deserialize(ScriptHeader &header, std::istream &stream)
 {
   // 4 byte identifier
   stream.read((char *)header.identifier, sizeof(header.identifier));

@@ -92,7 +92,7 @@ bool Assembler::assemble(std::istream &asmCode, std::ostream &byteCode)
     // - comments, which are ignored
     switch (m_lexer.getToken())
     {
-    case ELexerToken::Keyword:
+    case LexerToken::Keyword:
       if (m_lexer.getLexeme() == "func")
       {
         // Script function
@@ -121,9 +121,9 @@ bool Assembler::assemble(std::istream &asmCode, std::ostream &byteCode)
         }
       }
       break;
-    case ELexerToken::Comment:
-    case ELexerToken::NewLine:
-    case ELexerToken::End:
+    case LexerToken::Comment:
+    case LexerToken::NewLine:
+    case LexerToken::End:
       // Ignore
       break;
     default:
@@ -131,7 +131,7 @@ bool Assembler::assemble(std::istream &asmCode, std::ostream &byteCode)
       m_logger->error("Invalid token: {}, {}", m_lexer.getLexeme(), (int)m_lexer.getToken());
       return false;
     }
-  } while (m_lexer.getToken() != ELexerToken::End);
+  } while (m_lexer.getToken() != LexerToken::End);
 
   // Serialize to byte code
   if (!serializeStrings(byteCode))
@@ -157,7 +157,7 @@ bool Assembler::parseFunction(std::istream &stream)
 {
   // 'func' keyword already parsed, next is identifier
   m_lexer.lex(stream);
-  if (m_lexer.getToken() != ELexerToken::Identifier)
+  if (m_lexer.getToken() != LexerToken::Identifier)
   {
     return false;
   }
@@ -171,36 +171,36 @@ bool Assembler::parseFunction(std::istream &stream)
   // Required stack size for passed parameters
   uint32_t parameterSize = 0;
   // Stores jump instructions to be resolved after end of pass
-  std::list<std::tuple<SInstruction *, std::string>> unresolvedJumps;
+  std::list<std::tuple<Instruction *, std::string>> unresolvedJumps;
 
   // Store function name
-  SFunction tempFunction;
+  Function tempFunction;
   tempFunction.name = m_lexer.getLexeme();
 
   // Store function to resolve recursive calls
   m_functions.push_back(tempFunction);
-  SFunction &function = m_functions.back();
+  Function &function = m_functions.back();
 
   // Next is '{'
   m_lexer.lex(stream);
-  if (m_lexer.getToken() != ELexerToken::OpenBrace)
+  if (m_lexer.getToken() != LexerToken::OpenBrace)
   {
     return false;
   }
 
   do
   {
-    SInstruction instruction;
+    Instruction instruction;
     m_lexer.lex(stream);
     switch (m_lexer.getToken())
     {
-    case ELexerToken::Keyword:
+    case LexerToken::Keyword:
       if (m_lexer.getLexeme() == "param")
       {
         // Parameter for function
         // Expects identifier
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Identifier)
+        if (m_lexer.getToken() != LexerToken::Identifier)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -221,7 +221,7 @@ bool Assembler::parseFunction(std::istream &stream)
         // Instruction index alias for jumps
         // Expects identifier for label name
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Identifier)
+        if (m_lexer.getToken() != LexerToken::Identifier)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -240,7 +240,7 @@ bool Assembler::parseFunction(std::istream &stream)
         // Variable declare
         // Expects identifier
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Identifier)
+        if (m_lexer.getToken() != LexerToken::Identifier)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -259,7 +259,7 @@ bool Assembler::parseFunction(std::istream &stream)
         // Variable array declare
         // Expects identifier
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Identifier)
+        if (m_lexer.getToken() != LexerToken::Identifier)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -269,7 +269,7 @@ bool Assembler::parseFunction(std::istream &stream)
 
         // Expect integer array size
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Integer)
+        if (m_lexer.getToken() != LexerToken::Integer)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -293,7 +293,7 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "nop")
       {
         // No operation
-        instruction.id = EInstruction::Nop;
+        instruction.id = Opcode::Nop;
 
         // Add assembled instruction
         function.instructions.push_back(instruction);
@@ -302,7 +302,7 @@ bool Assembler::parseFunction(std::istream &stream)
       {
         // Breakpoint, for debugging. There is no debugger attached, so this
         // intentionally does nothing and execution continues.
-        instruction.id = EInstruction::Break;
+        instruction.id = Opcode::Break;
 
         // Add assembled instruction
         function.instructions.push_back(instruction);
@@ -310,7 +310,7 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "exit")
       {
         // Exit script immediately
-        instruction.id = EInstruction::Exit;
+        instruction.id = Opcode::Exit;
 
         // Add assembled instruction
         function.instructions.push_back(instruction);
@@ -318,12 +318,12 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "movv")
       {
         // Move variable to variable instruction
-        instruction.id = EInstruction::Movv;
+        instruction.id = Opcode::Movv;
 
         // Expects 2 identifier as arguments, separated by ',' token
         // First identifier
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Identifier)
+        if (m_lexer.getToken() != LexerToken::Identifier)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -339,7 +339,7 @@ bool Assembler::parseFunction(std::istream &stream)
 
         // Expect ',' separator
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Comma)
+        if (m_lexer.getToken() != LexerToken::Comma)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -347,7 +347,7 @@ bool Assembler::parseFunction(std::istream &stream)
 
         // Second identifier
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Identifier)
+        if (m_lexer.getToken() != LexerToken::Identifier)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -372,13 +372,13 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "movi")
       {
         // Move integer to variable instruction
-        instruction.id = EInstruction::Movi;
+        instruction.id = Opcode::Movi;
 
         // Expects identifier and integer value as arguments, separated by ','
         // token
         // Expect identifier
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Identifier)
+        if (m_lexer.getToken() != LexerToken::Identifier)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -394,7 +394,7 @@ bool Assembler::parseFunction(std::istream &stream)
 
         // Expect ',' separator
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Comma)
+        if (m_lexer.getToken() != LexerToken::Comma)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -402,7 +402,7 @@ bool Assembler::parseFunction(std::istream &stream)
 
         // Expect integer
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Integer)
+        if (m_lexer.getToken() != LexerToken::Integer)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -423,13 +423,13 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "movf")
       {
         // Move float to variable instruction
-        instruction.id = EInstruction::Movf;
+        instruction.id = Opcode::Movf;
 
         // Expects identifier and float value as arguments, separated by ','
         // token
         // Expect identifier
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Identifier)
+        if (m_lexer.getToken() != LexerToken::Identifier)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -445,7 +445,7 @@ bool Assembler::parseFunction(std::istream &stream)
 
         // Expect ',' separator
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Comma)
+        if (m_lexer.getToken() != LexerToken::Comma)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -453,7 +453,7 @@ bool Assembler::parseFunction(std::istream &stream)
 
         // Expect float
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Float)
+        if (m_lexer.getToken() != LexerToken::Float)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -476,13 +476,13 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "movs")
       {
         // Move string to variable instruction
-        instruction.id = EInstruction::Movs;
+        instruction.id = Opcode::Movs;
 
         // Expects identifier and string value as arguments, separated by ','
         // token
         // Expect identifier
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Identifier)
+        if (m_lexer.getToken() != LexerToken::Identifier)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -498,7 +498,7 @@ bool Assembler::parseFunction(std::istream &stream)
 
         // Expect ',' separator
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Comma)
+        if (m_lexer.getToken() != LexerToken::Comma)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -506,7 +506,7 @@ bool Assembler::parseFunction(std::istream &stream)
 
         // Expect string
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::String)
+        if (m_lexer.getToken() != LexerToken::String)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -526,10 +526,10 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "pushv")
       {
         // Push variable instruction
-        instruction.id = EInstruction::Pushv;
+        instruction.id = Opcode::Pushv;
         // Expects one identifiet as argument
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Identifier)
+        if (m_lexer.getToken() != LexerToken::Identifier)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -552,10 +552,10 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "pushi")
       {
         // Push integer instruction
-        instruction.id = EInstruction::Pushi;
+        instruction.id = Opcode::Pushi;
         // Expects one integer constant as argument
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Integer)
+        if (m_lexer.getToken() != LexerToken::Integer)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -571,10 +571,10 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "pushu")
       {
         // Push unsigned integer instruction
-        instruction.id = EInstruction::Pushu;
+        instruction.id = Opcode::Pushu;
         // Expects one integer constant as argument
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Integer)
+        if (m_lexer.getToken() != LexerToken::Integer)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -593,10 +593,10 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "pushf")
       {
         // Push float instruction
-        instruction.id = EInstruction::Pushf;
+        instruction.id = Opcode::Pushf;
         // Expects one float constant as argument
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Float)
+        if (m_lexer.getToken() != LexerToken::Float)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -615,10 +615,10 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "pushs")
       {
         // Push string instruction
-        instruction.id = EInstruction::Pushs;
+        instruction.id = Opcode::Pushs;
         // Expects one string constant as argumment
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::String)
+        if (m_lexer.getToken() != LexerToken::String)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -634,7 +634,7 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "pop")
       {
         // Pop variable instruction
-        instruction.id = EInstruction::Pop;
+        instruction.id = Opcode::Pop;
 
         // Add assembled instruction
         function.instructions.push_back(instruction);
@@ -642,10 +642,10 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "popv")
       {
         // Pop variable instruction
-        instruction.id = EInstruction::Popv;
+        instruction.id = Opcode::Popv;
         // Expects one identifier as argument
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Identifier)
+        if (m_lexer.getToken() != LexerToken::Identifier)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -668,10 +668,10 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "call")
       {
         // Call script function instruction
-        instruction.id = EInstruction::Call;
+        instruction.id = Opcode::Call;
         // Expects one identifier
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Identifier)
+        if (m_lexer.getToken() != LexerToken::Identifier)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -689,10 +689,10 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "calle")
       {
         // Call extern function instruction
-        instruction.id = EInstruction::Calle;
+        instruction.id = Opcode::Calle;
         // Expects one identifier
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Identifier)
+        if (m_lexer.getToken() != LexerToken::Identifier)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -710,7 +710,7 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "ret")
       {
         // Return from function
-        instruction.id = EInstruction::Ret;
+        instruction.id = Opcode::Ret;
         // No arguments
 
         // Add assembled instruction
@@ -719,11 +719,11 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "retv")
       {
         // Return variable from function
-        instruction.id = EInstruction::Retv;
+        instruction.id = Opcode::Retv;
 
         // Expects one identifier as argument
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Identifier)
+        if (m_lexer.getToken() != LexerToken::Identifier)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -746,10 +746,10 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "reti")
       {
         // Return integer from function
-        instruction.id = EInstruction::Reti;
+        instruction.id = Opcode::Reti;
         // Expects one integer constant as argument
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Integer)
+        if (m_lexer.getToken() != LexerToken::Integer)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -765,10 +765,10 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "retf")
       {
         // Return float from function
-        instruction.id = EInstruction::Retf;
+        instruction.id = Opcode::Retf;
         // Expects one float constant as argument
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Float)
+        if (m_lexer.getToken() != LexerToken::Float)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -788,10 +788,10 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "rets")
       {
         // Return string from function
-        instruction.id = EInstruction::Rets;
+        instruction.id = Opcode::Rets;
         // Expects one string constant as argument
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::String)
+        if (m_lexer.getToken() != LexerToken::String)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -809,7 +809,7 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "add")
       {
         // Add top 2 parameters from stack and push result to stack
-        instruction.id = EInstruction::Add;
+        instruction.id = Opcode::Add;
         // No arguments
 
         // Add assembled instruction
@@ -818,7 +818,7 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "sub")
       {
         // Subtract top 2 parameters from stack and push result to stack
-        instruction.id = EInstruction::Sub;
+        instruction.id = Opcode::Sub;
         // No arguments
 
         // Add assembled instruction
@@ -827,10 +827,10 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "jmp")
       {
         // Unconditional jump to label
-        instruction.id = EInstruction::Jmp;
+        instruction.id = Opcode::Jmp;
         // Expects identifier for label name as argument
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Identifier)
+        if (m_lexer.getToken() != LexerToken::Identifier)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -846,10 +846,10 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "je")
       {
         // Compare top 2 parameters from stack and jump to label if equal
-        instruction.id = EInstruction::Je;
+        instruction.id = Opcode::Je;
         // Expects identifier for label name as argument
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Identifier)
+        if (m_lexer.getToken() != LexerToken::Identifier)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -865,10 +865,10 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "jne")
       {
         // Compare top 2 parameters from stack and jump to label if not equal
-        instruction.id = EInstruction::Jne;
+        instruction.id = Opcode::Jne;
         // Expects identifier for label name as argument
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Identifier)
+        if (m_lexer.getToken() != LexerToken::Identifier)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -884,10 +884,10 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "jg")
       {
         // Compare top 2 parameters from stack and jump to label if greater
-        instruction.id = EInstruction::Jg;
+        instruction.id = Opcode::Jg;
         // Expects identifier for label name as argument
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Identifier)
+        if (m_lexer.getToken() != LexerToken::Identifier)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -904,10 +904,10 @@ bool Assembler::parseFunction(std::istream &stream)
       {
         // Compare top 2 parameters from stack and jump to label if greater or
         // equal
-        instruction.id = EInstruction::Jge;
+        instruction.id = Opcode::Jge;
         // Expects identifier for label name as argument
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Identifier)
+        if (m_lexer.getToken() != LexerToken::Identifier)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -923,10 +923,10 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "jl")
       {
         // Compare top 2 parameters from stack and jump to label if less
-        instruction.id = EInstruction::Jl;
+        instruction.id = Opcode::Jl;
         // Expects identifier for label name as argument
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Identifier)
+        if (m_lexer.getToken() != LexerToken::Identifier)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -943,10 +943,10 @@ bool Assembler::parseFunction(std::istream &stream)
       {
         // Compare top 2 parameters from stack and jump to label if less or
         // equal
-        instruction.id = EInstruction::Jle;
+        instruction.id = Opcode::Jle;
         // Expects identifier for label name as argument
         m_lexer.lex(stream);
-        if (m_lexer.getToken() != ELexerToken::Identifier)
+        if (m_lexer.getToken() != LexerToken::Identifier)
         {
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
@@ -962,7 +962,7 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "mul")
       {
         // Multiply top 2 values from stack and push result to stack
-        instruction.id = EInstruction::Mul;
+        instruction.id = Opcode::Mul;
         // No arguments
 
         // Add assembled instruction
@@ -971,7 +971,7 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "div")
       {
         // Divide top 2 values from stack and push result to stack
-        instruction.id = EInstruction::Div;
+        instruction.id = Opcode::Div;
         // No arguments
 
         // Add assembled instruction
@@ -980,7 +980,7 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "inc")
       {
         // Increment top value of the stack in place
-        instruction.id = EInstruction::Inc;
+        instruction.id = Opcode::Inc;
         // No arguments
 
         // Add assembled instruction
@@ -989,7 +989,7 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "dec")
       {
         // Decrement top value of the stack in place
-        instruction.id = EInstruction::Dec;
+        instruction.id = Opcode::Dec;
         // No arguments
 
         // Add assembled instruction
@@ -998,7 +998,7 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "and")
       {
         // Logical AND of the top 2 values of the stack, result pushed back
-        instruction.id = EInstruction::And;
+        instruction.id = Opcode::And;
         // No arguments
 
         // Add assembled instruction
@@ -1007,7 +1007,7 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "or")
       {
         // Logical OR of the top 2 values of the stack, result pushed back
-        instruction.id = EInstruction::Or;
+        instruction.id = Opcode::Or;
         // No arguments
 
         // Add assembled instruction
@@ -1016,7 +1016,7 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "not")
       {
         // Logical NOT of the top value of the stack, result pushed back
-        instruction.id = EInstruction::Not;
+        instruction.id = Opcode::Not;
         // No arguments
 
         // Add assembled instruction
@@ -1025,7 +1025,7 @@ bool Assembler::parseFunction(std::istream &stream)
       else if (m_lexer.getLexeme() == "xor")
       {
         // Logical XOR of the top 2 values of the stack, result pushed back
-        instruction.id = EInstruction::Xor;
+        instruction.id = Opcode::Xor;
         // No arguments
 
         // Add assembled instruction
@@ -1040,16 +1040,16 @@ bool Assembler::parseFunction(std::istream &stream)
         return false;
       }
       break;
-    case ELexerToken::Comment:
-    case ELexerToken::NewLine:
-    case ELexerToken::CloseBrace:
+    case LexerToken::Comment:
+    case LexerToken::NewLine:
+    case LexerToken::CloseBrace:
       // Ignore
       break;
     default:
       m_logger->error("Invalid token: '{}', {}", m_lexer.getLexeme(), (int)m_lexer.getToken());
       return false;
     }
-  } while (m_lexer.getToken() != ELexerToken::CloseBrace);
+  } while (m_lexer.getToken() != LexerToken::CloseBrace);
 
   // Set stack size needed for local variables
   function.stackSize = stackSize;
@@ -1076,18 +1076,18 @@ bool Assembler::parseExternFunction(std::istream &stream)
 {
   // 'extern* keyword already parsed, next is identifier
   m_lexer.lex(stream);
-  if (m_lexer.getToken() != ELexerToken::Identifier)
+  if (m_lexer.getToken() != LexerToken::Identifier)
   {
     return false;
   }
 
   // Create extern function and store name
-  SExternFunction externFunction;
+  ExternFunction externFunction;
   externFunction.name = m_lexer.getLexeme();
 
   // Next is integer constant which denotes the number of expected arguments
   m_lexer.lex(stream);
-  if (m_lexer.getToken() != ELexerToken::Integer)
+  if (m_lexer.getToken() != LexerToken::Integer)
   {
     return false;
   }
@@ -1108,7 +1108,7 @@ bool Assembler::parseModule(std::istream &stream)
 {
   // 'module' keyword already parsed, next is identifier
   m_lexer.lex(stream);
-  if (m_lexer.getToken() != ELexerToken::Identifier)
+  if (m_lexer.getToken() != LexerToken::Identifier)
   {
     return false;
   }

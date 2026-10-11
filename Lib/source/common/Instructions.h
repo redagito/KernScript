@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 
-enum class EInstruction
+enum class Opcode
 {
   // System
   Nop = 0, /**< No operation. */
@@ -61,13 +61,13 @@ enum class EInstruction
 /**
 * \brief Provides instruction specific information for id based lookup.
 */
-struct SInstructionLookup
+struct InstructionLookup
 {
   std::string mnemonic;
   unsigned int argCount;
 };
 
-const SInstructionLookup instructions[] = {{"nop", 0},
+const InstructionLookup instructions[] = {{"nop", 0},
                                            {"break", 0},
                                            {"exit", 0},
 

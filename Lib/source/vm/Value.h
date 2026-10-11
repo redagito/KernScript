@@ -9,7 +9,7 @@
 class Value
 {
 public:
-  enum class EType
+  enum class Type
   {
     Integer,
     UnsignedInteger,
@@ -34,7 +34,7 @@ public:
   bool convert(float &value) const;
   bool convert(std::string &value) const;
 
-  EType getType() const;
+  Type getType() const;
 
   std::string toString() const;
 
@@ -88,7 +88,7 @@ private:
   /**
   * \brief Stores a computed value of the given type.
   */
-  void store(EType type, double value);
+  void store(Type type, double value);
 
   /**
   * \brief Converts to a bool, used by the logical operators.
@@ -102,5 +102,5 @@ private:
     float m_float;
     char *m_string = nullptr;
   };
-  EType m_type = EType::Invalid;
+  Type m_type = Type::Invalid;
 };

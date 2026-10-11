@@ -6,7 +6,7 @@
 
 #include <kern/ILogger.h>
 
-#include "ELexerToken.h"
+#include "LexerToken.h"
 
 /**
 * \brief Lexer class.
@@ -30,7 +30,7 @@ public:
   * \brief Returns the current lexeme, set by getNextToken().
   */
   const std::string &getLexeme() const;
-  ELexerToken getToken() const;
+  LexerToken getToken() const;
 
   void addKeyword(const std::string &keyword);
   void removeKeyword(const std::string &keyword);
@@ -44,14 +44,14 @@ public:
 protected:
   bool isKeyword(const std::string &text) const;
 
-  void lexSingleCharLexeme(std::istream &stream, ELexerToken tokenType);
+  void lexSingleCharLexeme(std::istream &stream, LexerToken tokenType);
   void lexSingleOrDoubleCharLexeme(std::istream &stream,
-                                   ELexerToken singleToken, char nextPossible,
-                                   ELexerToken doubleToken);
+                                   LexerToken singleToken, char nextPossible,
+                                   LexerToken doubleToken);
   void lexSingleOrDoubleCharLexeme(std::istream &stream,
-                                   ELexerToken singleToken, char nextPossible0,
-                                   ELexerToken doubleToken0, char nextPossible1,
-                                   ELexerToken doubleToken1);
+                                   LexerToken singleToken, char nextPossible0,
+                                   LexerToken doubleToken0, char nextPossible1,
+                                   LexerToken doubleToken1);
 
   void lexNumeric(std::istream &stream);
   void lexIdentifierOrKeyword(std::istream &stream);
@@ -61,7 +61,7 @@ protected:
 private:
   std::unordered_set<std::string> m_keywords; /**< Registered keywords. */
   std::string m_currentLexeme;                /**< Currently parsed lexeme. */
-  ELexerToken m_currentToken = ELexerToken::Invalid; /**< Current token. */
+  LexerToken m_currentToken = LexerToken::Invalid; /**< Current token. */
   bool m_ignoreNewLine = false;
   bool m_ignoreLex = false;
   unsigned int m_blankSkipped = 0;

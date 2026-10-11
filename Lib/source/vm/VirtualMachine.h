@@ -12,8 +12,8 @@
 #include "kern/VMConfig.h"
 
 #include "Value.h"
-#include "common/SInstruction.h"
-#include "common/SExternFunction.h"
+#include "common/Instruction.h"
+#include "common/ExternFunction.h"
 
 class VirtualMachine : public kern::IVirtualMachine
 {
@@ -76,13 +76,13 @@ private:
   /**
   * \brief Assembled function.
   */
-  struct SFunction
+  struct Function
   {
     std::string name; /**< Function name. */
     uint32_t stackSize =
         0; /**< Stack size needed for local variables and passed parameters. */
     uint32_t parameterSize = 0; /**< Stack size needed for parameters. */
-    std::vector<SInstruction> instructions; /**< Assembled instructions. */
+    std::vector<Instruction> instructions; /**< Assembled instructions. */
     uint32_t instructionSize = 0;           /**< Cached instruction size. */
   };
 
@@ -90,16 +90,16 @@ private:
    * Gets function by name.
    */
   bool getFunctionByName(const std::string &functionName,
-                         const SFunction *function) const;
+                         const Function *function) const;
 
   /**
   * \brief Represents function and instruction index to return to, after
   * instruction ret is executed.
   */
-  struct SFunctionFrame
+  struct FunctionFrame
   {
-    SFunctionFrame();
-    SFunctionFrame(uint32_t funcIndex, uint32_t instrIndex,
+    FunctionFrame();
+    FunctionFrame(uint32_t funcIndex, uint32_t instrIndex,
                    uint32_t stackBaseIndex);
     uint32_t functionIndex = 0;
     uint32_t instructionIndex = 0;
@@ -107,14 +107,14 @@ private:
   };
 
   std::vector<std::string> m_strings; /**< String constants. */
-  std::vector<SFunction> m_functions; /**< Assembled script functions. */
-  std::vector<SExternFunction> m_externFunctions;
+  std::vector<Function> m_functions; /**< Assembled script functions. */
+  std::vector<ExternFunction> m_externFunctions;
 
   std::unordered_map<std::string, std::unique_ptr<kern::IExternFunction>>
       m_externFunctionsMap; /**< Extern functions. */
 
   std::vector<Value> m_runtimeStack; /**< Active runtime stack. */
-  std::stack<SFunctionFrame>
+  std::stack<FunctionFrame>
       m_callStack; /**< Function call stack for instruction ret. */
 
   uint32_t m_currentRuntimeStackBaseIndex =

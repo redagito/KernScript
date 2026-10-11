@@ -7,9 +7,9 @@
 #include "kern/IAssembler.h"
 #include "common/Lexer.h"
 
-#include "common/SScriptHeader.h"
-#include "common/SExternFunction.h"
-#include "common/SInstruction.h"
+#include "common/ScriptHeader.h"
+#include "common/ExternFunction.h"
+#include "common/Instruction.h"
 
 class Assembler : public kern::IAssembler
 {
@@ -46,19 +46,19 @@ private:
   /**
   * \brief Represents an assembled script function.
   */
-  struct SFunction
+  struct Function
   {
     std::string name; /**< Function name. */
     uint32_t stackSize =
         0; /**< Stack size needed for local variables (includes passed
               parameters). */
     uint32_t parameterSize = 0; /**< Stack size needed for passed parameters. */
-    std::list<SInstruction> instructions; /**< Assembled instructions. */
+    std::list<Instruction> instructions; /**< Assembled instructions. */
   };
 
-  SScriptHeader m_header;           /**< Assembled script header data. */
-  std::list<SFunction> m_functions; /**< Assembled script functions. */
-  std::list<SExternFunction>
+  ScriptHeader m_header;           /**< Assembled script header data. */
+  std::list<Function> m_functions; /**< Assembled script functions. */
+  std::list<ExternFunction>
       m_externFunctions;            /**< Extern function declarations. */
   std::list<std::string> m_strings; /**< String constants. */
   Lexer m_lexer;                   /**< Internal lexer. */

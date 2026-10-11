@@ -5,7 +5,7 @@
 
 #include "testutil/TestSupport.hpp"
 
-#include "common/SInstruction.h"
+#include "common/Instruction.h"
 #include "vm/VirtualMachine.h"
 
 namespace
@@ -29,7 +29,7 @@ struct FakeFunction
   std::string name = "main";
   uint32_t stackSize = 0;
   uint32_t parameterSize = 0;
-  std::vector<SInstruction> instructions;
+  std::vector<Instruction> instructions;
 };
 
 template <typename T> void writeRaw(std::stringstream &stream, T value)
@@ -43,10 +43,10 @@ void writeString(std::stringstream &stream, const std::string &text)
   stream.write(text.data(), static_cast<std::streamsize>(text.size()));
 }
 
-SInstruction makeInstruction(EInstruction id, int32_t arg0 = 0,
+Instruction makeInstruction(Opcode id, int32_t arg0 = 0,
                              int32_t arg1 = 0)
 {
-  SInstruction instruction{};
+  Instruction instruction{};
   instruction.id = id;
   instruction.args[0] = arg0;
   instruction.args[1] = arg1;
@@ -1173,7 +1173,7 @@ TEST_CASE("Corrupt stack size is rejected, not bad_alloc",
           "[integration][vm][limits]")
 {
   FakeFunction main;
-  main.instructions = {makeInstruction(EInstruction::Call, 1)};
+  main.instructions = {makeInstruction(Opcode::Call, 1)};
   FakeFunction callee;
   callee.name = "callee";
   callee.stackSize = 0xFFFFFFFF;
@@ -1256,7 +1256,7 @@ TEST_CASE("Movv with a corrupt destination index throws",
           "[integration][vm][corrupt]")
 {
   FakeFunction main;
-  main.instructions = {makeInstruction(EInstruction::Movv, 5, 0)};
+  main.instructions = {makeInstruction(Opcode::Movv, 5, 0)};
   requireCorrupt({}, {main});
 }
 
@@ -1265,14 +1265,14 @@ TEST_CASE("Movv with a corrupt source index throws",
 {
   FakeFunction main;
   main.stackSize = 1;
-  main.instructions = {makeInstruction(EInstruction::Movv, 0, 7)};
+  main.instructions = {makeInstruction(Opcode::Movv, 0, 7)};
   requireCorrupt({}, {main});
 }
 
 TEST_CASE("Movv with a negative index throws", "[integration][vm][corrupt]")
 {
   FakeFunction main;
-  main.instructions = {makeInstruction(EInstruction::Movv, -1, 0)};
+  main.instructions = {makeInstruction(Opcode::Movv, -1, 0)};
   requireCorrupt({}, {main});
 }
 
@@ -1280,7 +1280,7 @@ TEST_CASE("Movi with a corrupt destination index throws",
           "[integration][vm][corrupt]")
 {
   FakeFunction main;
-  main.instructions = {makeInstruction(EInstruction::Movi, 4, 10)};
+  main.instructions = {makeInstruction(Opcode::Movi, 4, 10)};
   requireCorrupt({}, {main});
 }
 
@@ -1288,7 +1288,7 @@ TEST_CASE("Movf with a corrupt destination index throws",
           "[integration][vm][corrupt]")
 {
   FakeFunction main;
-  main.instructions = {makeInstruction(EInstruction::Movf, 4, 0)};
+  main.instructions = {makeInstruction(Opcode::Movf, 4, 0)};
   requireCorrupt({}, {main});
 }
 
@@ -1297,7 +1297,7 @@ TEST_CASE("Movs with a corrupt string index throws",
 {
   FakeFunction main;
   main.stackSize = 1;
-  main.instructions = {makeInstruction(EInstruction::Movs, 0, 4)};
+  main.instructions = {makeInstruction(Opcode::Movs, 0, 4)};
   requireCorrupt({}, {main});
 }
 
@@ -1305,7 +1305,7 @@ TEST_CASE("Pushv with a corrupt variable index throws",
           "[integration][vm][corrupt]")
 {
   FakeFunction main;
-  main.instructions = {makeInstruction(EInstruction::Pushv, 2)};
+  main.instructions = {makeInstruction(Opcode::Pushv, 2)};
   requireCorrupt({}, {main});
 }
 
@@ -1313,7 +1313,7 @@ TEST_CASE("Pushs with a corrupt string index throws",
           "[integration][vm][corrupt]")
 {
   FakeFunction main;
-  main.instructions = {makeInstruction(EInstruction::Pushs, 0)};
+  main.instructions = {makeInstruction(Opcode::Pushs, 0)};
   requireCorrupt({}, {main});
 }
 
@@ -1321,7 +1321,7 @@ TEST_CASE("Popv with a corrupt destination index throws",
           "[integration][vm][corrupt]")
 {
   FakeFunction main;
-  main.instructions = {makeInstruction(EInstruction::Popv, 3)};
+  main.instructions = {makeInstruction(Opcode::Popv, 3)};
   requireCorrupt({}, {main});
 }
 
@@ -1329,7 +1329,7 @@ TEST_CASE("Call with a corrupt function index throws",
           "[integration][vm][corrupt]")
 {
   FakeFunction main;
-  main.instructions = {makeInstruction(EInstruction::Call, 7)};
+  main.instructions = {makeInstruction(Opcode::Call, 7)};
   requireCorrupt({}, {main});
 }
 
@@ -1337,7 +1337,7 @@ TEST_CASE("Call with a negative function index throws",
           "[integration][vm][corrupt]")
 {
   FakeFunction main;
-  main.instructions = {makeInstruction(EInstruction::Call, -1)};
+  main.instructions = {makeInstruction(Opcode::Call, -1)};
   requireCorrupt({}, {main});
 }
 
@@ -1345,7 +1345,7 @@ TEST_CASE("Call with more parameters than pushed values throws",
           "[integration][vm][corrupt]")
 {
   FakeFunction main;
-  main.instructions = {makeInstruction(EInstruction::Call, 1)};
+  main.instructions = {makeInstruction(Opcode::Call, 1)};
   FakeFunction callee;
   callee.name = "callee";
   callee.stackSize = 1;
@@ -1357,7 +1357,7 @@ TEST_CASE("Calle with a corrupt extern index throws",
           "[integration][vm][corrupt]")
 {
   FakeFunction main;
-  main.instructions = {makeInstruction(EInstruction::Calle, 3)};
+  main.instructions = {makeInstruction(Opcode::Calle, 3)};
   requireCorrupt({}, {main});
 }
 
@@ -1365,7 +1365,7 @@ TEST_CASE("Calle with a negative extern index throws",
           "[integration][vm][corrupt]")
 {
   FakeFunction main;
-  main.instructions = {makeInstruction(EInstruction::Calle, -1)};
+  main.instructions = {makeInstruction(Opcode::Calle, -1)};
   requireCorrupt({}, {main});
 }
 
@@ -1373,13 +1373,13 @@ TEST_CASE("Retv with a corrupt variable index throws",
           "[integration][vm][corrupt]")
 {
   FakeFunction main;
-  main.instructions = {makeInstruction(EInstruction::Pushi, 0),
-                       makeInstruction(EInstruction::Call, 1),
-                       makeInstruction(EInstruction::Ret)};
+  main.instructions = {makeInstruction(Opcode::Pushi, 0),
+                       makeInstruction(Opcode::Call, 1),
+                       makeInstruction(Opcode::Ret)};
   FakeFunction callee;
   callee.name = "callee";
   callee.stackSize = 1;
-  callee.instructions = {makeInstruction(EInstruction::Retv, 9)};
+  callee.instructions = {makeInstruction(Opcode::Retv, 9)};
   requireCorrupt({}, {main, callee});
 }
 
@@ -1387,73 +1387,73 @@ TEST_CASE("Rets with a corrupt string index throws",
           "[integration][vm][corrupt]")
 {
   FakeFunction main;
-  main.instructions = {makeInstruction(EInstruction::Pushi, 0),
-                       makeInstruction(EInstruction::Call, 1),
-                       makeInstruction(EInstruction::Ret)};
+  main.instructions = {makeInstruction(Opcode::Pushi, 0),
+                       makeInstruction(Opcode::Call, 1),
+                       makeInstruction(Opcode::Ret)};
   FakeFunction callee;
   callee.name = "callee";
-  callee.instructions = {makeInstruction(EInstruction::Rets, 0)};
+  callee.instructions = {makeInstruction(Opcode::Rets, 0)};
   requireCorrupt({}, {main, callee});
 }
 
 TEST_CASE("Jmp past the end throws", "[integration][vm][corrupt]")
 {
   FakeFunction main;
-  main.instructions = {makeInstruction(EInstruction::Jmp, 99)};
+  main.instructions = {makeInstruction(Opcode::Jmp, 99)};
   requireCorrupt({}, {main});
 }
 
 TEST_CASE("Je past the end throws", "[integration][vm][corrupt]")
 {
   FakeFunction main;
-  main.instructions = {makeInstruction(EInstruction::Pushi, 1),
-                       makeInstruction(EInstruction::Pushi, 1),
-                       makeInstruction(EInstruction::Je, 99)};
+  main.instructions = {makeInstruction(Opcode::Pushi, 1),
+                       makeInstruction(Opcode::Pushi, 1),
+                       makeInstruction(Opcode::Je, 99)};
   requireCorrupt({}, {main});
 }
 
 TEST_CASE("Jne past the end throws", "[integration][vm][corrupt]")
 {
   FakeFunction main;
-  main.instructions = {makeInstruction(EInstruction::Pushi, 1),
-                       makeInstruction(EInstruction::Pushi, 2),
-                       makeInstruction(EInstruction::Jne, 99)};
+  main.instructions = {makeInstruction(Opcode::Pushi, 1),
+                       makeInstruction(Opcode::Pushi, 2),
+                       makeInstruction(Opcode::Jne, 99)};
   requireCorrupt({}, {main});
 }
 
 TEST_CASE("Jg past the end throws", "[integration][vm][corrupt]")
 {
   FakeFunction main;
-  main.instructions = {makeInstruction(EInstruction::Pushi, 2),
-                       makeInstruction(EInstruction::Pushi, 1),
-                       makeInstruction(EInstruction::Jg, 99)};
+  main.instructions = {makeInstruction(Opcode::Pushi, 2),
+                       makeInstruction(Opcode::Pushi, 1),
+                       makeInstruction(Opcode::Jg, 99)};
   requireCorrupt({}, {main});
 }
 
 TEST_CASE("Jge past the end throws", "[integration][vm][corrupt]")
 {
   FakeFunction main;
-  main.instructions = {makeInstruction(EInstruction::Pushi, 1),
-                       makeInstruction(EInstruction::Pushi, 1),
-                       makeInstruction(EInstruction::Jge, 99)};
+  main.instructions = {makeInstruction(Opcode::Pushi, 1),
+                       makeInstruction(Opcode::Pushi, 1),
+                       makeInstruction(Opcode::Jge, 99)};
   requireCorrupt({}, {main});
 }
 
 TEST_CASE("Jl past the end throws", "[integration][vm][corrupt]")
 {
   FakeFunction main;
-  main.instructions = {makeInstruction(EInstruction::Pushi, 1),
-                       makeInstruction(EInstruction::Pushi, 2),
-                       makeInstruction(EInstruction::Jl, 99)};
+  main.instructions = {makeInstruction(Opcode::Pushi, 1),
+                       makeInstruction(Opcode::Pushi, 2),
+                       makeInstruction(Opcode::Jl, 99)};
   requireCorrupt({}, {main});
 }
 
 TEST_CASE("Jle past the end throws", "[integration][vm][corrupt]")
 {
   FakeFunction main;
-  main.instructions = {makeInstruction(EInstruction::Pushi, 1),
-                       makeInstruction(EInstruction::Pushi, 1),
-                       makeInstruction(EInstruction::Jle, 99)};
+  main.instructions = {makeInstruction(Opcode::Pushi, 1),
+                       makeInstruction(Opcode::Pushi, 1),
+                       makeInstruction(Opcode::Jle, 99)};
   requireCorrupt({}, {main});
 }
 
@@ -1463,7 +1463,7 @@ TEST_CASE("Jmp to exactly the end returns cleanly",
   // A trailing label resolves to the instruction count itself, which the
   // fetch treats as an implicit return. That boundary stays legal.
   FakeFunction main;
-  main.instructions = {makeInstruction(EInstruction::Jmp, 1)};
+  main.instructions = {makeInstruction(Opcode::Jmp, 1)};
   std::stringstream byteCode = buildByteCode({}, {main});
   VirtualMachine vm(nullptr);
   REQUIRE(vm.load(byteCode));

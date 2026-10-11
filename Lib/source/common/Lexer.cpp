@@ -22,7 +22,7 @@ unsigned int Lexer::lex(std::istream &stream)
 
   // Reset lexeme and token
   m_currentLexeme.clear();
-  m_currentToken = ELexerToken::Invalid;
+  m_currentToken = LexerToken::Invalid;
 
   // Peek next char
   char next = stream.peek();
@@ -59,120 +59,120 @@ unsigned int Lexer::lex(std::istream &stream)
     switch (next)
     {
     case '.':
-      lexSingleCharLexeme(stream, ELexerToken::Dot);
+      lexSingleCharLexeme(stream, LexerToken::Dot);
       break;
     case ':':
       // Either ':' or '::'
-      lexSingleOrDoubleCharLexeme(stream, ELexerToken::Colon, ':',
-                                  ELexerToken::DoubleColon);
+      lexSingleOrDoubleCharLexeme(stream, LexerToken::Colon, ':',
+                                  LexerToken::DoubleColon);
       break;
     case ';':
-      lexSingleCharLexeme(stream, ELexerToken::Semicolon);
+      lexSingleCharLexeme(stream, LexerToken::Semicolon);
       break;
     case ',':
-      lexSingleCharLexeme(stream, ELexerToken::Comma);
+      lexSingleCharLexeme(stream, LexerToken::Comma);
       break;
     case '#':
-      lexSingleCharLexeme(stream, ELexerToken::Pound);
+      lexSingleCharLexeme(stream, LexerToken::Pound);
       break;
     case '@':
-      lexSingleCharLexeme(stream, ELexerToken::At);
+      lexSingleCharLexeme(stream, LexerToken::At);
       break;
     case '(':
-      lexSingleCharLexeme(stream, ELexerToken::OpenParenthesis);
+      lexSingleCharLexeme(stream, LexerToken::OpenParenthesis);
       break;
     case ')':
-      lexSingleCharLexeme(stream, ELexerToken::CloseParenthesis);
+      lexSingleCharLexeme(stream, LexerToken::CloseParenthesis);
       break;
     case '{':
-      lexSingleCharLexeme(stream, ELexerToken::OpenBrace);
+      lexSingleCharLexeme(stream, LexerToken::OpenBrace);
       break;
     case '}':
-      lexSingleCharLexeme(stream, ELexerToken::CloseBrace);
+      lexSingleCharLexeme(stream, LexerToken::CloseBrace);
       break;
     case '[':
-      lexSingleCharLexeme(stream, ELexerToken::OpenBracket);
+      lexSingleCharLexeme(stream, LexerToken::OpenBracket);
       break;
     case ']':
-      lexSingleCharLexeme(stream, ELexerToken::CloseBracket);
+      lexSingleCharLexeme(stream, LexerToken::CloseBracket);
       break;
     case '!':
       // Either just '!' or '!='
-      lexSingleOrDoubleCharLexeme(stream, ELexerToken::ExclamationMark, '=',
-                                  ELexerToken::NotEqual);
+      lexSingleOrDoubleCharLexeme(stream, LexerToken::ExclamationMark, '=',
+                                  LexerToken::NotEqual);
       break;
     case '?':
-      lexSingleCharLexeme(stream, ELexerToken::QuestionMark);
+      lexSingleCharLexeme(stream, LexerToken::QuestionMark);
       break;
     case '&':
       // Either '&' or '&&'
-      lexSingleOrDoubleCharLexeme(stream, ELexerToken::Ampersand, '&',
-                                  ELexerToken::DoubleAmpersand);
+      lexSingleOrDoubleCharLexeme(stream, LexerToken::Ampersand, '&',
+                                  LexerToken::DoubleAmpersand);
       break;
     case '|':
       // Either '|' or '||'
-      lexSingleOrDoubleCharLexeme(stream, ELexerToken::Pipe, '|',
-                                  ELexerToken::DoublePipe);
+      lexSingleOrDoubleCharLexeme(stream, LexerToken::Pipe, '|',
+                                  LexerToken::DoublePipe);
       break;
     case '<':
       // Either '<' or '<='
-      lexSingleOrDoubleCharLexeme(stream, ELexerToken::LessThan, '=',
-                                  ELexerToken::LessOrEqual);
+      lexSingleOrDoubleCharLexeme(stream, LexerToken::LessThan, '=',
+                                  LexerToken::LessOrEqual);
       break;
     case '>':
       // Either '>' or '>='
-      lexSingleOrDoubleCharLexeme(stream, ELexerToken::GreaterThan, '=',
-                                  ELexerToken::GreaterOrEqual);
+      lexSingleOrDoubleCharLexeme(stream, LexerToken::GreaterThan, '=',
+                                  LexerToken::GreaterOrEqual);
       break;
     case '%':
       // Either '%' or '%='
-      lexSingleOrDoubleCharLexeme(stream, ELexerToken::Percent, '=',
-                                  ELexerToken::ModuloAssign);
+      lexSingleOrDoubleCharLexeme(stream, LexerToken::Percent, '=',
+                                  LexerToken::ModuloAssign);
       break;
     case '/':
       // Might be comment "//" or divide and assign "/=" or slash
       // Multiline comments "/* ... */" currently not supported
-      lexSingleOrDoubleCharLexeme(stream, ELexerToken::Slash, '=',
-                                  ELexerToken::DivideAssign, '/',
-                                  ELexerToken::Comment);
-      if (m_currentToken == ELexerToken::Comment)
+      lexSingleOrDoubleCharLexeme(stream, LexerToken::Slash, '=',
+                                  LexerToken::DivideAssign, '/',
+                                  LexerToken::Comment);
+      if (m_currentToken == LexerToken::Comment)
       {
         lexComment(stream);
       }
       break;
     case '\\':
-      lexSingleCharLexeme(stream, ELexerToken::BackSlash);
+      lexSingleCharLexeme(stream, LexerToken::BackSlash);
       break;
     case '=':
       // Either '=' or '=='
-      lexSingleOrDoubleCharLexeme(stream, ELexerToken::Assign, '=',
-                                  ELexerToken::Equal);
+      lexSingleOrDoubleCharLexeme(stream, LexerToken::Assign, '=',
+                                  LexerToken::Equal);
       break;
     case '*':
       // Either '*' or '*='
-      lexSingleOrDoubleCharLexeme(stream, ELexerToken::Asterisk, '=',
-                                  ELexerToken::MultiplyAssign);
+      lexSingleOrDoubleCharLexeme(stream, LexerToken::Asterisk, '=',
+                                  LexerToken::MultiplyAssign);
       break;
     case '+':
       // Either '+' or '+=' or '++'
-      lexSingleOrDoubleCharLexeme(stream, ELexerToken::Plus, '=',
-                                  ELexerToken::AddAssign, '+',
-                                  ELexerToken::Increment);
+      lexSingleOrDoubleCharLexeme(stream, LexerToken::Plus, '=',
+                                  LexerToken::AddAssign, '+',
+                                  LexerToken::Increment);
       break;
     case '-':
       // Either '-' or '-=' or '--'
-      lexSingleOrDoubleCharLexeme(stream, ELexerToken::Dash, '=',
-                                  ELexerToken::SubtractAssign, '-',
-                                  ELexerToken::Decrement);
+      lexSingleOrDoubleCharLexeme(stream, LexerToken::Dash, '=',
+                                  LexerToken::SubtractAssign, '-',
+                                  LexerToken::Decrement);
       break;
     case '"':
       lexString(stream);
       break;
     case '\n':
-      lexSingleCharLexeme(stream, ELexerToken::NewLine);
+      lexSingleCharLexeme(stream, LexerToken::NewLine);
       break;
     case EOF:
-      m_currentToken = ELexerToken::End;
+      m_currentToken = LexerToken::End;
       break;
     default:
       // Error
@@ -185,7 +185,7 @@ unsigned int Lexer::lex(std::istream &stream)
 
 const std::string &Lexer::getLexeme() const { return m_currentLexeme; }
 
-ELexerToken Lexer::getToken() const { return m_currentToken; }
+LexerToken Lexer::getToken() const { return m_currentToken; }
 
 void Lexer::addKeyword(const std::string &keyword)
 {
@@ -206,7 +206,7 @@ bool Lexer::isKeyword(const std::string &text) const
   return m_keywords.find(text) != m_keywords.end();
 }
 
-void Lexer::lexSingleCharLexeme(std::istream &stream, ELexerToken tokenType)
+void Lexer::lexSingleCharLexeme(std::istream &stream, LexerToken tokenType)
 {
   // Retrieve next char
   char c;
@@ -218,9 +218,9 @@ void Lexer::lexSingleCharLexeme(std::istream &stream, ELexerToken tokenType)
 }
 
 void Lexer::lexSingleOrDoubleCharLexeme(std::istream &stream,
-                                         ELexerToken singleToken,
+                                         LexerToken singleToken,
                                          char nextPossible,
-                                         ELexerToken doubleToken)
+                                         LexerToken doubleToken)
 {
   // Retrieve char and store
   char c;
@@ -244,8 +244,8 @@ void Lexer::lexSingleOrDoubleCharLexeme(std::istream &stream,
 }
 
 void Lexer::lexSingleOrDoubleCharLexeme(
-    std::istream &stream, ELexerToken singleToken, char nextPossible0,
-    ELexerToken doubleToken0, char nextPossible1, ELexerToken doubleToken1)
+    std::istream &stream, LexerToken singleToken, char nextPossible0,
+    LexerToken doubleToken0, char nextPossible1, LexerToken doubleToken1)
 {
   // Retrieve char and store
   char c;
@@ -279,7 +279,7 @@ void Lexer::lexSingleOrDoubleCharLexeme(
 void Lexer::lexNumeric(std::istream &stream)
 {
   // Default is integer until proven otherwise
-  m_currentToken = ELexerToken::Integer;
+  m_currentToken = LexerToken::Integer;
 
   // Loop through chars until non-digit is found
   while (std::isdigit(stream.peek()))
@@ -298,7 +298,7 @@ void Lexer::lexNumeric(std::istream &stream)
 
   // After dot, at least one additional digit is required
   // Set token to invalid until at least one digit is read
-  m_currentToken = ELexerToken::Invalid;
+  m_currentToken = LexerToken::Invalid;
 
   char c;
   stream.get(c);
@@ -308,7 +308,7 @@ void Lexer::lexNumeric(std::istream &stream)
   while (std::isdigit(stream.peek()))
   {
     // Valid float found
-    m_currentToken = ELexerToken::Float;
+    m_currentToken = LexerToken::Float;
     char c;
     stream.get(c);
     m_currentLexeme.push_back(c);
@@ -328,11 +328,11 @@ void Lexer::lexIdentifierOrKeyword(std::istream &stream)
   }
 
   // Default to identifier
-  m_currentToken = ELexerToken::Identifier;
+  m_currentToken = LexerToken::Identifier;
   // Check if lexeme is keyword
   if (isKeyword(m_currentLexeme))
   {
-    m_currentToken = ELexerToken::Keyword;
+    m_currentToken = LexerToken::Keyword;
   }
 }
 
@@ -363,7 +363,7 @@ void Lexer::lexString(std::istream &stream)
     // stream signal
     if (stream.peek() == '\n' || stream.peek() == EOF)
     {
-      m_currentToken = ELexerToken::Invalid;
+      m_currentToken = LexerToken::Invalid;
       return;
     }
     m_currentLexeme.push_back(c);
@@ -371,7 +371,7 @@ void Lexer::lexString(std::istream &stream)
   // Throw away last quote
   assert(stream.peek() == '"');
   stream.get(c);
-  m_currentToken = ELexerToken::String;
+  m_currentToken = LexerToken::String;
 }
 
 void Lexer::lexComment(std::istream &stream)

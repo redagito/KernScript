@@ -1,6 +1,6 @@
 #pragma once
 
-enum class ELexerToken
+enum class LexerToken
 {
   // Value types
   Integer,

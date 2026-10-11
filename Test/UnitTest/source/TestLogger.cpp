@@ -83,7 +83,7 @@ TEST_CASE("Lexer takes a null logger without crashing", "[unit][logger]")
   std::stringstream stream("42");
 
   REQUIRE(lexer.lex(stream) == 0);
-  REQUIRE(lexer.getToken() == ELexerToken::Integer);
+  REQUIRE(lexer.getToken() == LexerToken::Integer);
   REQUIRE(lexer.getLexeme() == "42");
 }
 

@@ -4,9 +4,9 @@
 
 #include "common/Deserialize.h"
 #include "common/Instructions.h"
-#include "common/SExternFunction.h"
-#include "common/SInstruction.h"
-#include "common/SScriptHeader.h"
+#include "common/ExternFunction.h"
+#include "common/Instruction.h"
+#include "common/ScriptHeader.h"
 
 namespace
 {
@@ -20,9 +20,9 @@ template <typename T> void writeRaw(std::stringstream &stream, T value)
 TEST_CASE("Instructions table matches the instruction enum",
           "[unit][serialize]")
 {
-  REQUIRE(instructions[static_cast<unsigned int>(EInstruction::Nop)].mnemonic ==
+  REQUIRE(instructions[static_cast<unsigned int>(Opcode::Nop)].mnemonic ==
           "nop");
-  REQUIRE(instructions[static_cast<unsigned int>(EInstruction::Jle)].mnemonic ==
+  REQUIRE(instructions[static_cast<unsigned int>(Opcode::Jle)].mnemonic ==
           "jle");
 }
 
@@ -39,17 +39,17 @@ TEST_CASE("Every instruction has a mnemonic and an argument count",
   }
 }
 
-TEST_CASE("SInstruction survives serialization", "[unit][serialize]")
+TEST_CASE("Instruction survives serialization", "[unit][serialize]")
 {
-  SInstruction instruction;
-  instruction.id = EInstruction::Movi;
+  Instruction instruction;
+  instruction.id = Opcode::Movi;
   instruction.args[0] = 12;
   instruction.args[1] = 34;
 
   std::stringstream stream;
   REQUIRE(serialize(instruction, stream));
 
-  SInstruction result;
+  Instruction result;
   REQUIRE(deserialize(result, stream));
 
   REQUIRE(result.id == instruction.id);
@@ -57,11 +57,11 @@ TEST_CASE("SInstruction survives serialization", "[unit][serialize]")
   REQUIRE(result.args[1] == instruction.args[1]);
 }
 
-TEST_CASE("SInstruction serializes only the declared arguments",
+TEST_CASE("Instruction serializes only the declared arguments",
           "[unit][serialize]")
 {
-  SInstruction instruction;
-  instruction.id = EInstruction::Pushi;
+  Instruction instruction;
+  instruction.id = Opcode::Pushi;
   instruction.args[0] = 99;
 
   std::stringstream stream;
@@ -71,25 +71,25 @@ TEST_CASE("SInstruction serializes only the declared arguments",
   REQUIRE(static_cast<unsigned int>(stream.str().size()) == expectedSize);
 }
 
-TEST_CASE("SExternFunction survives serialization", "[unit][serialize]")
+TEST_CASE("ExternFunction survives serialization", "[unit][serialize]")
 {
-  SExternFunction externFunction;
+  ExternFunction externFunction;
   externFunction.name = "println";
   externFunction.argCount = 1;
 
   std::stringstream stream;
   REQUIRE(serialize(externFunction, stream));
 
-  SExternFunction result;
+  ExternFunction result;
   REQUIRE(deserialize(stream, result));
 
   REQUIRE(result.name == "println");
   REQUIRE(result.argCount == 1);
 }
 
-TEST_CASE("SScriptHeader survives serialization", "[unit][serialize]")
+TEST_CASE("ScriptHeader survives serialization", "[unit][serialize]")
 {
-  SScriptHeader header;
+  ScriptHeader header;
   header.identifier[0] = 'K';
   header.identifier[1] = 'E';
   header.identifier[2] = 'R';
@@ -101,7 +101,7 @@ TEST_CASE("SScriptHeader survives serialization", "[unit][serialize]")
   std::stringstream stream;
   REQUIRE(serialize(header, stream));
 
-  SScriptHeader result;
+  ScriptHeader result;
   REQUIRE(deserialize(result, stream));
 
   REQUIRE(result.identifier[0] == 'K');
@@ -199,8 +199,8 @@ TEST_CASE("Deserialize reports failure on a truncated stream",
 
 TEST_CASE("Serialize refuses an unknown instruction id", "[unit][serialize]")
 {
-  SInstruction instruction;
-  instruction.id = static_cast<EInstruction>(999);
+  Instruction instruction;
+  instruction.id = static_cast<Opcode>(999);
 
   std::stringstream stream;
   REQUIRE_FALSE(serialize(instruction, stream));
@@ -213,14 +213,14 @@ TEST_CASE("Deserialize refuses an unknown instruction id",
   std::stringstream stream;
   writeRaw<uint16_t>(stream, 999);
 
-  SInstruction result;
+  Instruction result;
   REQUIRE_FALSE(deserialize(result, stream));
 }
 
 TEST_CASE("toString names an unknown instruction id", "[unit][serialize]")
 {
-  SInstruction instruction;
-  instruction.id = static_cast<EInstruction>(999);
+  Instruction instruction;
+  instruction.id = static_cast<Opcode>(999);
 
   REQUIRE(toString(instruction) == "<invalid>");
 }
