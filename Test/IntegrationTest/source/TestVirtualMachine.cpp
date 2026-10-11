@@ -165,14 +165,16 @@ TEST_CASE("Dec on a float keeps the value a float", "[integration][vm]")
 
 TEST_CASE("Inc leaves the rest of the stack alone", "[integration][vm]")
 {
-  // 100 stays underneath, 1 becomes 2, then 100 is pushed again and added.
-  const std::string source = wrap("pushi 100\npushi 1\ninc\ncalle println\n"
-                                  "pushi 100\nadd\ncalle println\nret");
+  // 100 stays underneath while 1 becomes 2; log takes both, then 100 is
+  // pushed again and added.
+  const std::string source =
+      "extern log 2\nextern println 1\n\nfunc main\n{\npushi 100\npushi 1\n"
+      "inc\ncalle log\npushi 100\npushi 100\nadd\ncalle println\nret\n}\n";
 
   testutil::StringRecorder recorder;
   REQUIRE(testutil::runScript(source, "main", recorder));
 
-  REQUIRE(recorder.text() == "2\n200\n");
+  REQUIRE(recorder.text() == "[100]: 2\n200\n");
 }
 
 TEST_CASE("Inc and dec can be chained", "[integration][vm]")
@@ -429,11 +431,14 @@ TEST_CASE("Add and sub operate on the runtime stack", "[integration][vm]")
 TEST_CASE("Pushf and pushi both push onto the runtime stack",
           "[integration][vm]")
 {
+  // Each call takes exactly one pushed value, so print between the pushes.
   const std::string source =
-      wrap("pushi 1\npushf 2.5\ncalle println\ncalle println\nret");
+      wrap("pushi 1\ncalle println\npushf 2.5\ncalle println\nret");
 
-  testutil::DiscardRecorder recorder;
+  testutil::StringRecorder recorder;
   REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "1\n2.5\n");
 }
 
 TEST_CASE("Jump if less or equal is taken", "[integration][vm]")
@@ -1202,6 +1207,39 @@ TEST_CASE("load accepts a newer minor version", "[integration][vm][m4]")
   REQUIRE(vm.load(stream));
 }
 
+TEST_CASE("Calle with too few pushed values is refused",
+          "[integration][vm][m5]")
+{
+  // Nothing is pushed for the call; the local must not be mistaken for an
+  // argument.
+  const std::string source = "extern println 1\n\nfunc main\n{\nvar a\n"
+                             "movi a, 5\ncalle println\nret\n}\n";
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
+}
+
+TEST_CASE("Calle with too many pushed values is refused",
+          "[integration][vm][m5]")
+{
+  const std::string source = wrap("pushi 1\npushi 2\ncalle println\nret");
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
+}
+
 TEST_CASE("Movs advances the instruction pointer", "[integration][vm]")
 {
   const std::string source = "extern println 1\n\nfunc main\n{\nvar x\n"
@@ -1461,9 +1499,10 @@ TEST_CASE("Stack limit allows pushes within budget",
 {
   const size_t slots = 4;
   const kern::VMConfig config{slots * sizeof(Value), 1024};
+  // Four pushes fill the budget exactly; the pops unwind to the single value
+  // the call below takes.
   const std::string source = wrap("pushi 1\npushi 2\npushi 3\npushi 4\n"
-                                  "calle println\ncalle println\n"
-                                  "calle println\ncalle println\nret");
+                                  "pop\npop\npop\ncalle println\nret");
 
   std::stringstream byteCode;
   REQUIRE(testutil::assemble(source, byteCode));
@@ -1474,7 +1513,7 @@ TEST_CASE("Stack limit allows pushes within budget",
   REQUIRE(vm.load(byteCode));
   REQUIRE(vm.callFunction("main"));
 
-  REQUIRE(recorder.text() == "4\n3\n2\n1\n");
+  REQUIRE(recorder.text() == "1\n");
 }
 
 TEST_CASE("Stack limit throws past budget", "[integration][vm][limits]")

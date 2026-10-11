@@ -612,8 +612,25 @@ bool VirtualMachine::execute()
     const ExternFunction &externFunction =
         m_externFunctions.at(static_cast<size_t>(externIndex));
 
+    // Arguments are the values pushed above the current frame, whose slots
+    // run from the base index for stackSize entries. Anything else on the
+    // stack belongs to locals or parameters, not to this call.
+    const uint64_t frameEnd =
+        static_cast<uint64_t>(m_currentRuntimeStackBaseIndex) +
+        static_cast<uint64_t>(currentFunction.stackSize);
+    const uint64_t stackSizeNow =
+        static_cast<uint64_t>(m_runtimeStack.size());
+    const uint64_t pushed =
+        stackSizeNow > frameEnd ? stackSizeNow - frameEnd : 0;
+    if (pushed != externFunction.argCount)
+    {
+      throwRuntimeError(m_logger,
+                        "The extern function '{}' expects {} arguments, but "
+                        "{} were pushed.",
+                        externFunction.name, externFunction.argCount, pushed);
+    }
+
     // Check if function exists
-    // TODO Check if arg count ok
     auto entry = m_externFunctionsMap.find(externFunction.name);
     if (entry == m_externFunctionsMap.end())
     {
