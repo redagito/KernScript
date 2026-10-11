@@ -1060,6 +1060,22 @@ TEST_CASE("A huge instruction count is rejected", "[integration][vm][c7]")
   REQUIRE_THROWS_AS(vm.load(stream), kern::RuntimeError);
 }
 
+TEST_CASE("Retv on an empty frame is refused", "[integration][vm][corrupt][m1]")
+{
+  // The callee has no parameters or locals, so its frame is empty and slot
+  // zero does not exist. Returning it must throw instead of planting an
+  // Invalid value on the caller stack.
+  FakeFunction main;
+  main.instructions = {makeInstruction(Opcode::Pushi, 0),
+                       makeInstruction(Opcode::Call, 1),
+                       makeInstruction(Opcode::Ret)};
+  FakeFunction callee;
+  callee.name = "callee";
+  callee.stackSize = 0;
+  callee.instructions = {makeInstruction(Opcode::Retv, 0)};
+  requireCorrupt({}, {main, callee});
+}
+
 TEST_CASE("Movs advances the instruction pointer", "[integration][vm]")
 {
   const std::string source = "extern println 1\n\nfunc main\n{\nvar x\n"

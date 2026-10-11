@@ -646,6 +646,13 @@ bool VirtualMachine::execute()
     // value from once the frame is dropped, so the return value goes there.
     uint32_t varIndex = 0;
     memcpy(&varIndex, &instruction.args[0], sizeof(varIndex));
+    if (varIndex == 0 &&
+        m_currentRuntimeStackBaseIndex >= m_runtimeStack.size())
+    {
+      // The frame is empty, so the return slot does not exist. Growing the
+      // stack below would plant an Invalid value as the return value.
+      throwRuntimeError(m_logger, "Retv variable index out of range.");
+    }
     if (varIndex != 0)
     {
       if (!indexInRange(m_currentRuntimeStackBaseIndex,
