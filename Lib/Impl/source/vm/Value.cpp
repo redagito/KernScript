@@ -252,7 +252,15 @@ std::string Value::toString() const
     break;
   }
   std::string val;
-  assert(convert(val));
+  // Convert runs unconditionally: assert alone would discard the call in
+  // release builds, leaving the value empty. Invalid returns above, so a
+  // false here is defensive only.
+  const bool converted = convert(val);
+  assert(converted);
+  if (!converted)
+  {
+    return ss.str();
+  }
   ss << " : " << val;
   return ss.str();
 }

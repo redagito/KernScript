@@ -447,6 +447,16 @@ TEST_CASE("Value converts unsigned at the signed boundary",
   REQUIRE(asUnsigned == 0u);
 }
 
+TEST_CASE("Value toString prints every type", "[unit][Value][tostring]")
+{
+  REQUIRE(Value(static_cast<int32_t>(-7)).toString() == "Integer : -7");
+  REQUIRE(Value(static_cast<uint32_t>(7)).toString() ==
+          "UnsignedInteger : 7");
+  REQUIRE(Value(1.25f).toString() == "Float : 1.25");
+  REQUIRE(Value(std::string("text")).toString() == "String : text");
+  REQUIRE(Value().toString() == "Invalid");
+}
+
 TEST_CASE("Invalid Value does not convert", "[unit][Value]")
 {
   Value value;
