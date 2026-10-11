@@ -46,7 +46,12 @@ public:
   virtual bool callFunction(const std::string &functionName) = 0;
 
   /**
-  * \brief Extern function management.
+  * \brief Registers an extern function by name.
+  * \param functionName Name scripts use in calle instructions.
+  * \param function Implementation of the extern function. Ownership passes to
+  *        the virtual machine, which deletes it on removeFunction or on
+  *        destruction, so the caller must not delete it. Anything the
+  *        function refers to must outlive the virtual machine.
   */
   virtual void addFunction(const ::std::string &functionName,
                            IExternFunction *function) = 0;
