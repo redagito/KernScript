@@ -275,6 +275,7 @@ bool CVirtualMachine::execute()
                    *((uint32_t *)&instruction.args[0])] =
         m_runtimeStack.at(m_currentRuntimeStackBaseIndex +
                           *((uint32_t *)&instruction.args[1]));
+    ++m_currentInstructionIndex;
     break;
 
   case EInstruction::Movi:
@@ -283,6 +284,7 @@ bool CVirtualMachine::execute()
     // Arg 1 is source integer value
     m_runtimeStack[m_currentRuntimeStackBaseIndex +
                    *((uint32_t *)&instruction.args[0])] = instruction.args[1];
+    ++m_currentInstructionIndex;
     break;
 
   case EInstruction::Movf:
@@ -292,6 +294,7 @@ bool CVirtualMachine::execute()
     m_runtimeStack[m_currentRuntimeStackBaseIndex +
                    *((uint32_t *)&instruction.args[0])] =
         *((float *)&instruction.args[1]);
+    ++m_currentInstructionIndex;
     break;
 
   case EInstruction::Movs:
