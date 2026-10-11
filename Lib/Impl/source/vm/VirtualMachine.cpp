@@ -40,6 +40,38 @@ bool indexInRange(uint32_t base, int32_t rawIndex, size_t size) {
 }
 
 /**
+ * \brief Refuses a host call made outside an extern dispatch.
+ *
+ * popParameter and setReturnValue are the extern function interface: they
+ * only make sense while a script calle runs, like the other mutators that
+ * check m_running.
+ */
+void requireDispatch(kern::ILogger *logger, bool running, const char *what) {
+  if (!running) {
+    throwRuntimeError(logger, "{} outside an extern call.", what);
+  }
+}
+
+/**
+ * \brief Checks a popParameter call before it touches the stack.
+ *
+ * Besides the dispatch and empty checks, popping must stop at the frame
+ * floor: the frame holds base + frameSize slots, so a stack at or below that
+ * end has no argument left to take.
+ */
+void checkPopAllowed(kern::ILogger *logger, bool running, const std::vector<Value> &stack, uint32_t base,
+                     uint32_t frameSize) {
+  requireDispatch(logger, running, "popParameter");
+  if (stack.empty()) {
+    throwRuntimeError(logger, "popParameter needs a value on the runtime stack.");
+  }
+  if (static_cast<uint64_t>(stack.size()) <=
+      static_cast<uint64_t>(base) + static_cast<uint64_t>(frameSize)) {
+    throwRuntimeError(logger, "popParameter would go below the frame.");
+  }
+}
+
+/**
  * \brief Holds the callFunction reentrancy guard for the duration of a call.
  *
  * Resetting in the destructor covers both normal return and unwinding through
@@ -222,45 +254,40 @@ void VirtualMachine::removeFunction(const ::std::string &functionName) {
 }
 
 bool VirtualMachine::popParameter(int &value) {
-  if (m_runtimeStack.empty()) {
-    throwRuntimeError(m_logger, "popParameter needs a value on the runtime stack.");
-  }
+  checkPopAllowed(m_logger, m_running, m_runtimeStack, m_currentRuntimeStackBaseIndex,
+                  m_functions.at(m_currentFunctionIndex).stackSize);
   bool ret = m_runtimeStack.back().convert(value);
   m_runtimeStack.pop_back();
   return ret;
 }
 
 bool VirtualMachine::popParameter(float &value) {
-  if (m_runtimeStack.empty()) {
-    throwRuntimeError(m_logger, "popParameter needs a value on the runtime stack.");
-  }
+  checkPopAllowed(m_logger, m_running, m_runtimeStack, m_currentRuntimeStackBaseIndex,
+                  m_functions.at(m_currentFunctionIndex).stackSize);
   bool ret = m_runtimeStack.back().convert(value);
   m_runtimeStack.pop_back();
   return ret;
 }
 
 bool VirtualMachine::popParameter(::std::string &value) {
-  if (m_runtimeStack.empty()) {
-    throwRuntimeError(m_logger, "popParameter needs a value on the runtime stack.");
-  }
+  checkPopAllowed(m_logger, m_running, m_runtimeStack, m_currentRuntimeStackBaseIndex,
+                  m_functions.at(m_currentFunctionIndex).stackSize);
   bool ret = m_runtimeStack.back().convert(value);
   m_runtimeStack.pop_back();
   return ret;
 }
 
 bool VirtualMachine::popParameter(double &value) {
-  if (m_runtimeStack.empty()) {
-    throwRuntimeError(m_logger, "popParameter needs a value on the runtime stack.");
-  }
+  checkPopAllowed(m_logger, m_running, m_runtimeStack, m_currentRuntimeStackBaseIndex,
+                  m_functions.at(m_currentFunctionIndex).stackSize);
   bool ret = m_runtimeStack.back().convert(value);
   m_runtimeStack.pop_back();
   return ret;
 }
 
 bool VirtualMachine::popParameter(unsigned int &value) {
-  if (m_runtimeStack.empty()) {
-    throwRuntimeError(m_logger, "popParameter needs a value on the runtime stack.");
-  }
+  checkPopAllowed(m_logger, m_running, m_runtimeStack, m_currentRuntimeStackBaseIndex,
+                  m_functions.at(m_currentFunctionIndex).stackSize);
   uint32_t raw = 0;
   bool ret = m_runtimeStack.back().convert(raw);
   value = static_cast<unsigned int>(raw);
@@ -269,30 +296,46 @@ bool VirtualMachine::popParameter(unsigned int &value) {
 }
 
 bool VirtualMachine::popParameter(bool &value) {
-  if (m_runtimeStack.empty()) {
-    throwRuntimeError(m_logger, "popParameter needs a value on the runtime stack.");
-  }
+  checkPopAllowed(m_logger, m_running, m_runtimeStack, m_currentRuntimeStackBaseIndex,
+                  m_functions.at(m_currentFunctionIndex).stackSize);
   bool ret = m_runtimeStack.back().convert(value);
   m_runtimeStack.pop_back();
   return ret;
 }
 
-void VirtualMachine::setReturnValue() { return; }
+void VirtualMachine::setReturnValue() {
+  requireDispatch(m_logger, m_running, "setReturnValue");
+  return;
+}
 
-void VirtualMachine::setReturnValue(int value) { pushValue(Value(value)); }
+void VirtualMachine::setReturnValue(int value) {
+  requireDispatch(m_logger, m_running, "setReturnValue");
+  pushValue(Value(value));
+}
 
-void VirtualMachine::setReturnValue(float value) { pushValue(Value(value)); }
+void VirtualMachine::setReturnValue(float value) {
+  requireDispatch(m_logger, m_running, "setReturnValue");
+  pushValue(Value(value));
+}
 
-void VirtualMachine::setReturnValue(const std::string &value) { pushValue(Value(value)); }
+void VirtualMachine::setReturnValue(const std::string &value) {
+  requireDispatch(m_logger, m_running, "setReturnValue");
+  pushValue(Value(value));
+}
 
 void VirtualMachine::setReturnValue(double value) {
+  requireDispatch(m_logger, m_running, "setReturnValue");
   // The runtime model stores floats, so doubles narrow here.
   pushValue(Value(static_cast<float>(value)));
 }
 
-void VirtualMachine::setReturnValue(unsigned int value) { pushValue(Value(static_cast<uint32_t>(value))); }
+void VirtualMachine::setReturnValue(unsigned int value) {
+  requireDispatch(m_logger, m_running, "setReturnValue");
+  pushValue(Value(static_cast<uint32_t>(value)));
+}
 
 void VirtualMachine::setReturnValue(bool value) {
+  requireDispatch(m_logger, m_running, "setReturnValue");
   // Stored as 1 or 0, matching what the logical operators produce.
   pushValue(Value(static_cast<int32_t>(value)));
 }

@@ -1154,7 +1154,7 @@ TEST_CASE("Calling a function with a huge frame is refused", "[integration][vm][
   REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
 }
 
-TEST_CASE("A refused jump leaves the stack intact", "[integration][vm][corrupt][m4]") {
+TEST_CASE("A refused jump aborts without wedging the VM", "[integration][vm][corrupt][m4]") {
   FakeFunction main;
   main.instructions = {makeInstruction(Opcode::Pushi, 1), makeInstruction(Opcode::Pushi, 1),
                        makeInstruction(Opcode::Je, 99)};
@@ -1164,13 +1164,14 @@ TEST_CASE("A refused jump leaves the stack intact", "[integration][vm][corrupt][
   REQUIRE(vm.load(byteCode));
   REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
 
-  // The target is validated before the operands pop, so both survive.
-  int top = 0;
-  int next = 0;
-  REQUIRE(vm.popParameter(top));
-  REQUIRE(vm.popParameter(next));
-  REQUIRE(top == 1);
-  REQUIRE(next == 1);
+  // The target is validated before the operands pop. The leftovers are no
+  // longer observable: popParameter outside an extern call throws, so the
+  // contract now is that the VM stays usable. A fresh script runs cleanly.
+  FakeFunction fresh;
+  fresh.instructions = {makeInstruction(Opcode::Ret)};
+  std::stringstream recovery = buildByteCode({}, {fresh});
+  REQUIRE(vm.load(recovery));
+  REQUIRE(vm.callFunction("main"));
 }
 
 TEST_CASE("Falling past the last instruction returns", "[integration][vm][m5]") {
@@ -2259,6 +2260,78 @@ TEST_CASE("addFunction refuses a null function", "[integration][vm]") {
   REQUIRE(testutil::assemble(source, byteCode));
   REQUIRE(vm.load(byteCode));
   REQUIRE(vm.callFunction("main"));
+}
+
+TEST_CASE("popParameter outside dispatch throws", "[integration][vm]") {
+  // The script leaves a value behind, so the stack is non-empty and only the
+  // dispatch guard can refuse these pops.
+  const std::string source = wrap("pushi 42\nret");
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+  REQUIRE(vm.callFunction("main"));
+
+  int asInt = 0;
+  float asFloat = 0.0f;
+  std::string asString;
+  double asDouble = 0.0;
+  unsigned int asUnsigned = 0;
+  bool asBool = false;
+  REQUIRE_THROWS_AS(vm.popParameter(asInt), kern::RuntimeError);
+  REQUIRE_THROWS_AS(vm.popParameter(asFloat), kern::RuntimeError);
+  REQUIRE_THROWS_AS(vm.popParameter(asString), kern::RuntimeError);
+  REQUIRE_THROWS_AS(vm.popParameter(asDouble), kern::RuntimeError);
+  REQUIRE_THROWS_AS(vm.popParameter(asUnsigned), kern::RuntimeError);
+  REQUIRE_THROWS_AS(vm.popParameter(asBool), kern::RuntimeError);
+}
+
+TEST_CASE("setReturnValue outside dispatch throws", "[integration][vm]") {
+  VirtualMachine vm(nullptr);
+  REQUIRE_THROWS_AS(vm.setReturnValue(), kern::RuntimeError);
+  REQUIRE_THROWS_AS(vm.setReturnValue(1), kern::RuntimeError);
+  REQUIRE_THROWS_AS(vm.setReturnValue(1.0f), kern::RuntimeError);
+  REQUIRE_THROWS_AS(vm.setReturnValue(std::string("x")), kern::RuntimeError);
+  REQUIRE_THROWS_AS(vm.setReturnValue(1.0), kern::RuntimeError);
+  REQUIRE_THROWS_AS(vm.setReturnValue(1u), kern::RuntimeError);
+  REQUIRE_THROWS_AS(vm.setReturnValue(true), kern::RuntimeError);
+}
+
+TEST_CASE("popParameter below the frame throws", "[integration][vm]") {
+  // One argument is pushed above a one-local frame. Popping twice would eat
+  // the local, so the second pop must throw instead of succeeding.
+  class DoublePopper : public kern::IExternFunction {
+  public:
+    bool call(kern::IVirtualMachine &vm) override {
+      int first = 0;
+      int second = 0;
+      if (!vm.popParameter(first)) {
+        return false;
+      }
+      if (!vm.popParameter(second)) {
+        return false;
+      }
+      return true;
+    }
+
+    unsigned int getArgumentCount() const override { return 1; }
+  };
+
+  const std::string source = "extern gobble 1\n\nfunc main\n{\nvar a\n"
+                             "movi a, 5\npushi 3\ncalle gobble\nret\n}\n";
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  vm.addFunction("gobble", new DoublePopper());
+  REQUIRE(vm.load(byteCode));
+
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
 }
 
 TEST_CASE("A corrupt string length with an absurd limit fails cleanly", "[integration][vm][limits]") {

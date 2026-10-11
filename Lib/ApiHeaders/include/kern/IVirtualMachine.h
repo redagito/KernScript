@@ -72,6 +72,9 @@ public:
    * converted to a numeric type; a throw leaves the value on the stack.
    * Returns false only when conversion is inapplicable (an invalid value);
    * out-of-range numeric conversions throw instead of returning false.
+   * Calling popParameter outside an extern call throws, as does popping at
+   * or below the current frame: only values pushed above the frame (the
+   * call's arguments and earlier return values) may be taken.
    *
    * Extern call discipline: a script calle takes exactly the declared number
    * of argument values from above the current frame. Return values a previous
@@ -98,6 +101,9 @@ public:
 
   /**
    * \brief Sets empty return value for functions without return type.
+   *
+   * Calling any setReturnValue overload outside an extern call throws
+   * kern::RuntimeError.
    */
   virtual void setReturnValue() = 0;
   virtual void setReturnValue(int value) = 0;
