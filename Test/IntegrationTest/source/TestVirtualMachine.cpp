@@ -1192,8 +1192,44 @@ TEST_CASE("An absurd stack budget throws instead of bad_alloc", "[integration][v
   REQUIRE_THROWS_AS(VirtualMachine(nullptr, config), kern::RuntimeError);
 }
 
-TEST_CASE("A huge table count with a huge limit throws typed", "[integration][vm][limits]") {
-  // The limit check passes, so the resize itself must fail as a typed error
+TEST_CASE("A frame beyond an enlarged budget is refused typed", "[integration][vm][limits]") {
+  // 64MB reserves cleanly, but a 0xFFFFFFFF frame exceeds it. The budget
+  // check refuses before the entry resize runs, so this throws
+  // kern::RuntimeError and never bad_alloc. It pins the entry-resize failure
+  // contract: no frame growth may let bad_alloc escape.
+  kern::VMConfig config;
+  config.maxStackBytes = 64 * 1024 * 1024;
+  const std::string source = wrap("vara a 4294967295\nret");
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr, config);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
+}
+
+TEST_CASE("A call beyond an enlarged budget is refused typed", "[integration][vm][limits]") {
+  // Same contract for the Call resize: the callee frame exceeds the enlarged
+  // budget, so the call throws kern::RuntimeError instead of bad_alloc.
+  kern::VMConfig config;
+  config.maxStackBytes = 64 * 1024 * 1024;
+  FakeFunction main;
+  main.instructions = {makeInstruction(Opcode::Call, 1), makeInstruction(Opcode::Ret)};
+  FakeFunction callee;
+  callee.name = "callee";
+  callee.stackSize = 0xFFFFFFFF;
+  std::stringstream byteCode = buildByteCode({}, {main, callee});
+
+  VirtualMachine vm(nullptr, config);
+  REQUIRE(vm.load(byteCode));
+
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
+}
+
+TEST_CASE("A huge table count with a huge limit throws typed", "[integration][vm][limits]") {  // The limit check passes, so the resize itself must fail as a typed error
   // instead of bad_alloc.
   kern::VMConfig config;
   config.maxTableEntries = 0xFFFFFFFF;

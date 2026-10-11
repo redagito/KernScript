@@ -235,7 +235,16 @@ bool VirtualMachine::callFunction(const std::string &functionName) {
   if (stackSize > m_maxStackSize) {
     throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
   }
-  m_runtimeStack.resize(stackSize);
+  // The budget check passes when the configured budget itself is absurd, so
+  // a failing allocation must still surface as a typed error instead of
+  // bad_alloc, matching the deserialize pattern.
+  try {
+    m_runtimeStack.resize(stackSize);
+  } catch (const std::bad_alloc &) {
+    throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
+  } catch (const std::length_error &) {
+    throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
+  }
 
   // Execute function
   bool running = true;
@@ -747,8 +756,17 @@ bool VirtualMachine::execute() {
     // Set new runtime stack base index for the called function, modified by
     // the function parameter size
     m_currentRuntimeStackBaseIndex = runtimeStackSize - newCurrentFunction.parameterSize;
-    // Resize runtime stack with local stack size of called function
-    m_runtimeStack.resize(static_cast<size_t>(newSize));
+    // Resize runtime stack with local stack size of called function. The
+    // budget check passes when the configured budget itself is absurd, so a
+    // failing allocation must still surface as a typed error instead of
+    // bad_alloc, matching the deserialize pattern.
+    try {
+      m_runtimeStack.resize(static_cast<size_t>(newSize));
+    } catch (const std::bad_alloc &) {
+      throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
+    } catch (const std::length_error &) {
+      throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
+    }
     break;
   }
 
