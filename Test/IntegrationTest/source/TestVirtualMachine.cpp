@@ -876,6 +876,38 @@ TEST_CASE("Arithmetic on a string operand is refused", "[integration][vm]")
   REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
 }
 
+TEST_CASE("Add on string operands is refused", "[integration][vm][c1]")
+{
+  const std::string source =
+      wrap("pushs \"text\"\npushi 1\nadd\ncalle println\nret");
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
+}
+
+TEST_CASE("Sub on string operands is refused", "[integration][vm][c1]")
+{
+  const std::string source =
+      wrap("pushi 1\npushs \"text\"\nsub\ncalle println\nret");
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
+}
+
 TEST_CASE("Movs advances the instruction pointer", "[integration][vm]")
 {
   const std::string source = "extern println 1\n\nfunc main\n{\nvar x\n"

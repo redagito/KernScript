@@ -705,6 +705,10 @@ bool VirtualMachine::execute()
     {
       throwRuntimeError(m_logger, "Add needs two values on the runtime stack.");
     }
+    if (!m_runtimeStack.back().isNumeric() || !x.isNumeric())
+    {
+      throwRuntimeError(m_logger, "Add needs numeric operands.");
+    }
     m_runtimeStack.back() += x;
     ++m_currentInstructionIndex;
   }
@@ -717,6 +721,10 @@ bool VirtualMachine::execute()
     if (!popValue(x) || m_runtimeStack.empty())
     {
       throwRuntimeError(m_logger, "Sub needs two values on the runtime stack.");
+    }
+    if (!m_runtimeStack.back().isNumeric() || !x.isNumeric())
+    {
+      throwRuntimeError(m_logger, "Sub needs numeric operands.");
     }
     m_runtimeStack.back() -= x;
     ++m_currentInstructionIndex;
