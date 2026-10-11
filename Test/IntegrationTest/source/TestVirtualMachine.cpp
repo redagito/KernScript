@@ -592,6 +592,24 @@ TEST_CASE("reti from a function without parameters or locals",
   REQUIRE(recorder.text() == "5\n");
 }
 
+TEST_CASE("Pop on an empty stack stops the script", "[integration][vm]")
+{
+  const std::string source = wrap("pop\npushi 1\ncalle println\nret");
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  testutil::RecordingLogger logger;
+  CVirtualMachine vm(&logger);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  vm.callFunction("main");
+
+  REQUIRE(logger.loggedContaining("Pop needs a value"));
+}
+
 TEST_CASE("A script function receives its parameter", "[integration][vm]")
 {
   const std::string source = "extern println 1\n\nfunc print\n{\nparam a\n"

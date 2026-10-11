@@ -339,6 +339,11 @@ bool CVirtualMachine::execute()
 
   case EInstruction::Pop:
     // Remove top element from runtime stack
+    if (m_runtimeStack.empty())
+    {
+      m_logger->error("Pop needs a value on the runtime stack.");
+      return false;
+    }
     m_runtimeStack.pop_back();
     ++m_currentInstructionIndex;
     break;
