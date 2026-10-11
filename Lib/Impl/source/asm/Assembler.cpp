@@ -1139,7 +1139,14 @@ bool Assembler::parseExternFunction(std::istream &stream)
                     m_lexer.getLexeme());
     return false;
   }
-  externFunction.argCount = temp;
+  // argCount serializes as a single byte, so only 0..255 survives the trip.
+  if (temp < 0 || temp > 255)
+  {
+    m_logger->error("Extern argument count out of range: {}",
+                    m_lexer.getLexeme());
+    return false;
+  }
+  externFunction.argCount = static_cast<uint8_t>(temp);
 
   // Add extern function
   m_externFunctions.push_back(externFunction);

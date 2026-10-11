@@ -69,6 +69,33 @@ TEST_CASE("Assembler rejects an overflowing extern argument count",
   REQUIRE_FALSE(testutil::assemble(source, byteCode));
 }
 
+TEST_CASE("Assembler rejects an extern argument count above 255",
+          "[integration][assembler][c5]")
+{
+  const std::string source = "extern foo 256\n\nfunc main\n{\nret\n}\n";
+  std::stringstream byteCode;
+
+  REQUIRE_FALSE(testutil::assemble(source, byteCode));
+}
+
+TEST_CASE("Assembler accepts an extern argument count of 255",
+          "[integration][assembler][c5]")
+{
+  const std::string source = "extern foo 255\n\nfunc main\n{\nret\n}\n";
+  std::stringstream byteCode;
+
+  REQUIRE(testutil::assemble(source, byteCode));
+}
+
+TEST_CASE("Assembler rejects a negative extern argument count",
+          "[integration][assembler][c5]")
+{
+  const std::string source = "extern foo -1\n\nfunc main\n{\nret\n}\n";
+  std::stringstream byteCode;
+
+  REQUIRE_FALSE(testutil::assemble(source, byteCode));
+}
+
 TEST_CASE("Assembler rejects an unresolved jump target",
           "[integration][assembler]")
 {
