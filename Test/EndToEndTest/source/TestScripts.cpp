@@ -75,6 +75,14 @@ TEST_CASE("gcd computes gcd(48, 18) by subtraction", "[e2e][fixture]")
   REQUIRE(recorder.text() == "6\n");
 }
 
+TEST_CASE("collatz prints the sequence from 7", "[e2e][fixture]")
+{
+  const testutil::StringRecorder recorder = runFixture("collatz");
+
+  REQUIRE(recorder.text() == "7\n22\n11\n34\n17\n52\n26\n13\n40\n20\n10\n5\n"
+                             "16\n8\n4\n2\n1\n");
+}
+
 TEST_CASE("test1 prints its values and calls a two argument extern function",
           "[e2e][fixture]")
 {

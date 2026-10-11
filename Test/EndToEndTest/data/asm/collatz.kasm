@@ -1,0 +1,41 @@
+// Collatz sequence from 7. Evenness is tested by roundtripping through
+// integer division: (n / 2) * 2 equals n only for even n.
+extern println 1
+
+func main
+{
+  var n
+  var t
+  pushi 7
+  popv n
+  label loop
+  pushv n
+  calle println
+  pushv n
+  pushi 1
+  je done
+  pushv n
+  pushi 2
+  div
+  pushi 2
+  mul
+  popv t
+  pushv t
+  pushv n
+  je even
+  pushv n
+  pushi 3
+  mul
+  pushi 1
+  add
+  popv n
+  jmp loop
+  label even
+  pushv n
+  pushi 2
+  div
+  popv n
+  jmp loop
+  label done
+  ret
+}
