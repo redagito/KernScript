@@ -2090,3 +2090,35 @@ TEST_CASE("Truncated function name fails to load", "[integration][vm][trunc]")
   VirtualMachine vm(nullptr);
   REQUIRE_FALSE(vm.load(stream));
 }
+
+TEST_CASE("Stale extern returns count toward the next call",
+          "[integration][vm]")
+{
+  // get_value leaves 35 on the stack; pushing one more value leaves two
+  // values above the frame, so println (one argument) refuses instead of
+  // silently taking the top. Scripts must consume returns they do not need.
+  const std::string source =
+      "extern get_value 0\nextern println 1\n\nfunc main\n{\ncalle get_value\n"
+      "pushi 1\ncalle println\nret\n}\n";
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
+}
+
+TEST_CASE("Popping a stale extern return clears the next call",
+          "[integration][vm]")
+{
+  const std::string source =
+      "extern get_value 0\nextern println 1\n\nfunc main\n{\ncalle get_value\n"
+      "pop\npushi 1\ncalle println\nret\n}\n";
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+  REQUIRE(recorder.text() == "1\n");
+}

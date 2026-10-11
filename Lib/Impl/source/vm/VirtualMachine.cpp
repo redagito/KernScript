@@ -761,6 +761,15 @@ bool VirtualMachine::execute()
     // Arguments are the values pushed above the current frame, whose slots
     // run from the base index for stackSize entries. Anything else on the
     // stack belongs to locals or parameters, not to this call.
+    //
+    // Pop discipline: return values a previous extern call left on the stack
+    // count toward the next call, so scripts must consume or pop values they
+    // do not need before pushing the next call's arguments. Counting only
+    // script pushes since the last calle cannot distinguish such a stale
+    // return from a legitimate return flowing directly into the next call
+    // (calle get_value followed by calle println), which the stack-contents
+    // count accepts; keeping the strict count is what makes both the
+    // too-few/too-many refusals and the return-chaining pattern work.
     const uint64_t frameEnd =
         static_cast<uint64_t>(m_currentRuntimeStackBaseIndex) +
         static_cast<uint64_t>(currentFunction.stackSize);

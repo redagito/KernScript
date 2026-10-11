@@ -66,6 +66,12 @@ public:
   * converted to a numeric type; a throw leaves the value on the stack.
   * Returns false only when conversion is inapplicable (an invalid value);
   * out-of-range numeric conversions throw instead of returning false.
+  *
+  * Extern call discipline: a script calle takes exactly the declared number
+  * of argument values from above the current frame. Return values a previous
+  * extern call left on the stack count toward the next call, so scripts must
+  * consume or pop values they do not need before pushing the next call's
+  * arguments.
   */
   virtual bool popParameter(int &value) = 0;
   virtual bool popParameter(float &value) = 0;
