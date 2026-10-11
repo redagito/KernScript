@@ -5,12 +5,12 @@
 #include <cstdint>
 
 /**
-* \brief Deserialize 16 bit integer value.
+* \brief Deserialize 8 bit integer value.
 */
 bool deserialize(std::istream &stream, int8_t &value);
 
 /**
-* \brief Deserialize 16 bit unsigned integer value.
+* \brief Deserialize 8 bit unsigned integer value.
 */
 bool deserialize(std::istream &stream, uint8_t &value);
 
