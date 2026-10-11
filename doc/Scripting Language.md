@@ -61,9 +61,12 @@ with NaN hold only for `!=`.
 ## Calls
 
 Arguments evaluate left to right. A call with the wrong number of
-arguments is a compile error. `return expr;` returns one value; bare
-`return;` or falling off the end returns none — using that as a value
-fails the run. Recursion is allowed.
+arguments is a compile error. A function is valued if it contains
+`return expr;`, void otherwise; mixing both forms in one function is a
+compile error. Using a void call as a value is a compile error; a valued
+call used as a statement discards its value. Each extern must be used
+consistently - either always for its value or always as a statement.
+Recursion is allowed.
 
 `extern name(params);` declares a host function; calls look like script
 calls. A call needs exactly the declared argument count pushed; values
@@ -73,7 +76,8 @@ consume what you do not need.
 ## Errors
 
 Compile errors: duplicate or undeclared names, wrong argument count,
-bad literals, `return` outside a function. Runtime failures (wrong
+mixed valued/void returns, void call used as a value, inconsistent extern
+use, bad literals, `return` outside a function. Runtime failures (wrong
 operand types, division by zero, overflow, reading a never-assigned
 variable, missing host function, runaway execution past its bounded
 instruction count) fail the run.
