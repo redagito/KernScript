@@ -531,6 +531,43 @@ TEST_CASE("Jump if less is not taken on equal values", "[integration][vm]")
   REQUIRE(recorder.text() == "20\n10\n");
 }
 
+TEST_CASE("retf returns the float to the caller", "[integration][vm]")
+{
+  const std::string source = "extern println 1\n\nfunc f\n{\nretf 2.5\n}\n"
+                             "\nfunc main\n{\ncall f\n"
+                             "calle println\nret\n}\n";
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "2.5\n");
+}
+
+TEST_CASE("rets returns the string to the caller", "[integration][vm]")
+{
+  const std::string source =
+      "extern println 1\n\nfunc f\n{\nrets \"returned\"\n}\n"
+      "\nfunc main\n{\ncall f\n"
+      "calle println\nret\n}\n";
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "returned\n");
+}
+
+TEST_CASE("rets returns an empty string to the caller", "[integration][vm]")
+{
+  const std::string source = "extern println 1\n\nfunc f\n{\nrets \"\"\n}\n"
+                             "\nfunc main\n{\ncall f\n"
+                             "calle println\nret\n}\n";
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "\n");
+}
+
 TEST_CASE("A script function receives its parameter", "[integration][vm]")
 {
   const std::string source = "extern println 1\n\nfunc print\n{\nparam a\n"

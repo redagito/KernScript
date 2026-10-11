@@ -479,6 +479,60 @@ bool CVirtualMachine::execute()
     break;
   }
 
+  case EInstruction::Retf:
+  {
+    // Returns float from script function
+    if (m_callStack.empty())
+    {
+      // Empty stack indicates either error state or end of script
+      return false;
+    }
+    // Arg 0 is float constant
+    // The caller's stack ends at the runtime stack base index, so slot base
+    // is the slot the caller reads the return value from. A function without
+    // parameters or locals leaves the frame empty, so the slot is grown
+    // first rather than assumed to exist.
+    m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
+    m_runtimeStack[m_currentRuntimeStackBaseIndex] =
+        *((float *)&instruction.args[0]);
+
+    // Retrieve function index of previous function
+    m_currentFunctionIndex = m_callStack.top().functionIndex;
+    // Restore active function index
+    m_currentInstructionIndex = m_callStack.top().instructionIndex;
+    // Restore runtime stack base index for the active function
+    m_currentRuntimeStackBaseIndex = m_callStack.top().runtimeStackBaseIndex;
+    m_callStack.pop();
+    break;
+  }
+
+  case EInstruction::Rets:
+  {
+    // Returns string from script function
+    if (m_callStack.empty())
+    {
+      // Empty stack indicates either error state or end of script
+      return false;
+    }
+    // Arg 0 is index of string
+    // The caller's stack ends at the runtime stack base index, so slot base
+    // is the slot the caller reads the return value from. A function without
+    // parameters or locals leaves the frame empty, so the slot is grown
+    // first rather than assumed to exist.
+    m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
+    m_runtimeStack[m_currentRuntimeStackBaseIndex] =
+        m_strings.at(*((uint32_t *)&instruction.args[0]));
+
+    // Retrieve function index of previous function
+    m_currentFunctionIndex = m_callStack.top().functionIndex;
+    // Restore active function index
+    m_currentInstructionIndex = m_callStack.top().instructionIndex;
+    // Restore runtime stack base index for the active function
+    m_currentRuntimeStackBaseIndex = m_callStack.top().runtimeStackBaseIndex;
+    m_callStack.pop();
+    break;
+  }
+
   case EInstruction::Add:
   {
     CValue x;

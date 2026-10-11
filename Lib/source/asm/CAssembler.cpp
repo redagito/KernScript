@@ -45,6 +45,8 @@ CAssembler::CAssembler(kern::ILogger *logger)
   m_lexer.addKeyword("ret");
   m_lexer.addKeyword("retv");
   m_lexer.addKeyword("reti");
+  m_lexer.addKeyword("retf");
+  m_lexer.addKeyword("rets");
 
   m_lexer.addKeyword("add");
   m_lexer.addKeyword("sub");
@@ -746,6 +748,50 @@ bool CAssembler::parseFunction(std::istream &stream)
         std::stringstream ss;
         ss << m_lexer.getLexeme();
         ss >> instruction.args[0];
+
+        // Add assembled instruction
+        function.instructions.push_back(instruction);
+      }
+      else if (m_lexer.getLexeme() == "retf")
+      {
+        // Return float from function
+        instruction.id = EInstruction::Retf;
+        // Expects one float constant as argument
+        m_lexer.lex(stream);
+        if (m_lexer.getToken() != ELexerToken::Float)
+        {
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
+          return false;
+        }
+        // Convert to float
+        // TODO Slow!!
+        float value;
+        std::stringstream ss(m_lexer.getLexeme());
+        ss >> value;
+
+        // Set arg 0 to float value
+        instruction.args[0] = *((int32_t *)&value);
+
+        // Add assembled instruction
+        function.instructions.push_back(instruction);
+      }
+      else if (m_lexer.getLexeme() == "rets")
+      {
+        // Return string from function
+        instruction.id = EInstruction::Rets;
+        // Expects one string constant as argument
+        m_lexer.lex(stream);
+        if (m_lexer.getToken() != ELexerToken::String)
+        {
+          m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
+          return false;
+        }
+
+        // Add string to string table
+        uint32_t strIndex = addString(m_lexer.getLexeme());
+
+        // Set arg 0 to string index
+        instruction.args[0] = *((int32_t *)&strIndex);
 
         // Add assembled instruction
         function.instructions.push_back(instruction);
