@@ -270,3 +270,35 @@ TEST_CASE("Assembler parses a label and a jump", "[integration][assembler]")
   REQUIRE(testutil::assemble(source, byteCode));
   REQUIRE_FALSE(byteCode.str().empty());
 }
+
+TEST_CASE("Assembler rejects an out-of-range movf literal",
+          "[integration][assembler][float]")
+{
+  const std::string source =
+      "extern println 1\n\nfunc main\n{\nvar a\n"
+      "movf a, 99999999999999999999999999999999999999999.0\nret\n}\n";
+  std::stringstream byteCode;
+
+  REQUIRE_FALSE(testutil::assemble(source, byteCode));
+}
+
+TEST_CASE("Assembler rejects an out-of-range pushf literal",
+          "[integration][assembler][float]")
+{
+  const std::string source =
+      wrap("pushf 99999999999999999999999999999999999999999.0\nret");
+  std::stringstream byteCode;
+
+  REQUIRE_FALSE(testutil::assemble(source, byteCode));
+}
+
+TEST_CASE("Assembler rejects an out-of-range retf literal",
+          "[integration][assembler][float]")
+{
+  const std::string source = "extern println 1\n\nfunc f\n{\n"
+                             "retf 99999999999999999999999999999999999999999.0\n"
+                             "}\n\nfunc main\n{\nret\n}\n";
+  std::stringstream byteCode;
+
+  REQUIRE_FALSE(testutil::assemble(source, byteCode));
+}

@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <tuple>
 #include <cstring>
+#include <limits>
 
 #include "logging/Logger.h"
 
@@ -25,6 +26,30 @@ template <typename T> bool parseInteger(const std::string &text, T &value)
   std::stringstream stream(text);
   stream >> value;
   return !stream.fail() && stream.eof();
+}
+
+/**
+* \brief Parses an assembler float magnitude with full validation.
+*
+* The magnitude widens through double so that an out-of-range literal fails
+* the range check instead of leaving an indeterminate float behind. The sign
+* is folded in by the caller, whose magnitude is symmetric around zero.
+*/
+bool parseFloat(const std::string &text, float &value)
+{
+  std::stringstream stream(text);
+  double magnitude = 0.0;
+  stream >> magnitude;
+  if (stream.fail() || !stream.eof())
+  {
+    return false;
+  }
+  if (magnitude > static_cast<double>(std::numeric_limits<float>::max()))
+  {
+    return false;
+  }
+  value = static_cast<float>(magnitude);
+  return true;
 }
 
 }
@@ -600,10 +625,12 @@ bool Assembler::parseFunction(std::istream &stream)
         }
 
         // Convert to float
-        // TODO Slow!!
-        float value;
-        std::stringstream ss(m_lexer.getLexeme());
-        ss >> value;
+        float value = 0.f;
+        if (!parseFloat(m_lexer.getLexeme(), value))
+        {
+          m_logger->error("Invalid float literal: {}", m_lexer.getLexeme());
+          return false;
+        }
         if (movfNegative)
         {
           value = -value;
@@ -778,10 +805,12 @@ bool Assembler::parseFunction(std::istream &stream)
           return false;
         }
         // TODO Slow!!!
-        std::stringstream ss;
-        ss << m_lexer.getLexeme();
-        float temp;
-        ss >> temp;
+        float temp = 0.f;
+        if (!parseFloat(m_lexer.getLexeme(), temp))
+        {
+          m_logger->error("Invalid float literal: {}", m_lexer.getLexeme());
+          return false;
+        }
         if (pushfNegative)
         {
           temp = -temp;
@@ -976,10 +1005,12 @@ bool Assembler::parseFunction(std::istream &stream)
           return false;
         }
         // Convert to float
-        // TODO Slow!!
-        float value;
-        std::stringstream ss(m_lexer.getLexeme());
-        ss >> value;
+        float value = 0.f;
+        if (!parseFloat(m_lexer.getLexeme(), value))
+        {
+          m_logger->error("Invalid float literal: {}", m_lexer.getLexeme());
+          return false;
+        }
         if (retfNegative)
         {
           value = -value;
