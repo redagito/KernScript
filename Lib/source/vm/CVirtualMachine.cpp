@@ -506,14 +506,50 @@ bool CVirtualMachine::execute()
   break;
 
   case EInstruction::Mul:
-    // Not implemented
-    return false;
-    break;
+  {
+    CValue x;
+    // 2 values needed
+    if (!popValue(x) || m_runtimeStack.empty())
+    {
+      m_logger->error("Mul needs two values on the runtime stack.");
+      return false;
+    }
+    if (!m_runtimeStack.back().isNumeric() || !x.isNumeric())
+    {
+      m_logger->error("Mul needs numeric operands.");
+      return false;
+    }
+    m_runtimeStack.back() *= x;
+    ++m_currentInstructionIndex;
+  }
+  break;
 
   case EInstruction::Div:
-    // Not implemented
-    return false;
-    break;
+  {
+    CValue x;
+    // 2 values needed
+    if (!popValue(x) || m_runtimeStack.empty())
+    {
+      m_logger->error("Div needs two values on the runtime stack.");
+      return false;
+    }
+    if (!m_runtimeStack.back().isNumeric() || !x.isNumeric())
+    {
+      m_logger->error("Div needs numeric operands.");
+      return false;
+    }
+    // CValue leaves the operand unchanged on a zero divisor instead of
+    // dividing, so the check belongs to the caller.
+    if (x.isZero())
+    {
+      m_logger->error("Div by zero.");
+      return false;
+    }
+    m_runtimeStack.back() /= x;
+    ++m_currentInstructionIndex;
+  }
+  break;
+
   case EInstruction::Inc:
     // Not implemented
     return false;

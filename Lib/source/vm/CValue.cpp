@@ -264,6 +264,21 @@ bool CValue::isNumeric() const
          m_type == EType::Float;
 }
 
+bool CValue::isZero() const
+{
+  switch (m_type)
+  {
+  case EType::Integer:
+    return m_integer == 0;
+  case EType::UnsignedInteger:
+    return m_unsignedInteger == 0;
+  case EType::Float:
+    return m_float == 0.f;
+  default:
+    return false;
+  }
+}
+
 double CValue::asDouble(const CValue &value)
 {
   switch (value.m_type)

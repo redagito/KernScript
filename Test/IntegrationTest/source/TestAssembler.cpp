@@ -91,6 +91,28 @@ TEST_CASE("Assembler rejects a function without a name",
   REQUIRE_FALSE(testutil::assemble(source, byteCode));
 }
 
+TEST_CASE("Assembler rejects a keyword it does not know",
+          "[integration][assembler]")
+{
+  // Every registered keyword has to have a branch in the parser. Without one
+  // the token falls through to the break at the end of the keyword case and
+  // the instruction is silently dropped, which produces bytecode that runs
+  // with wrong semantics rather than an error.
+  const std::string source = wrap("mul");
+  std::stringstream byteCode;
+
+  REQUIRE_FALSE(testutil::assemble(source, byteCode));
+}
+
+TEST_CASE("Assembler rejects an unknown standalone keyword",
+          "[integration][assembler]")
+{
+  const std::string source = "func main\n{\nret\n}\nbogus\n";
+  std::stringstream byteCode;
+
+  REQUIRE_FALSE(testutil::assemble(source, byteCode));
+}
+
 TEST_CASE("Assembler parses a label and a jump", "[integration][assembler]")
 {
   const std::string source = wrap("pushi 1\njle end\npushi 2\ncalle println\n"

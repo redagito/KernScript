@@ -48,7 +48,17 @@ CAssembler::CAssembler(kern::ILogger *logger)
 
   m_lexer.addKeyword("add");
   m_lexer.addKeyword("sub");
+  m_lexer.addKeyword("mul");
+  m_lexer.addKeyword("div");
+  m_lexer.addKeyword("inc");
+  m_lexer.addKeyword("dec");
 
+  m_lexer.addKeyword("jmp");
+  m_lexer.addKeyword("je");
+  m_lexer.addKeyword("jne");
+  m_lexer.addKeyword("jg");
+  m_lexer.addKeyword("jge");
+  m_lexer.addKeyword("jl");
   m_lexer.addKeyword("jle");
 
   // Disable emitting of newline token
@@ -772,6 +782,14 @@ bool CAssembler::parseFunction(std::istream &stream)
         // Add instruction to unresolved jumps
         unresolvedJumps.push_back(std::make_tuple(&function.instructions.back(),
                                                   m_lexer.getLexeme()));
+      }
+      else
+      {
+        // A keyword with no branch here would otherwise fall through to the
+        // break below and be dropped without a diagnostic, producing bytecode
+        // that runs with wrong semantics.
+        m_logger->error("Unhandled keyword: '{}'.", m_lexer.getLexeme());
+        return false;
       }
       break;
     case ELexerToken::Comment:

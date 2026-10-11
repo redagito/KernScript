@@ -47,6 +47,13 @@ public:
   */
   bool isNumeric() const;
 
+  /**
+  * \brief Returns true for a numeric value that equals zero.
+  *
+  * Non numeric values report false, they never reach a divisor check.
+  */
+  bool isZero() const;
+
   CValue &operator=(const CValue &rhs);
   CValue &operator=(CValue &&rhs);
 
