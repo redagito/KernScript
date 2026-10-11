@@ -908,6 +908,26 @@ TEST_CASE("Sub on string operands is refused", "[integration][vm][c1]")
   REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
 }
 
+TEST_CASE("Pushf keeps the exact float bit pattern", "[integration][vm][c3]")
+{
+  const std::string source = wrap("pushf 3.125\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "3.125\n");
+}
+
+TEST_CASE("Pushu keeps the maximum unsigned value", "[integration][vm][c3]")
+{
+  const std::string source = wrap("pushu 4294967295\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "4294967295\n");
+}
+
 TEST_CASE("Movs advances the instruction pointer", "[integration][vm]")
 {
   const std::string source = "extern println 1\n\nfunc main\n{\nvar x\n"

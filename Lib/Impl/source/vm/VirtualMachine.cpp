@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cstring>
 
 #include "VirtualMachine.h"
 
@@ -315,6 +316,7 @@ bool VirtualMachine::execute()
     break;
 
   case Opcode::Movv:
+  {
     // Move variable to variable
     // Arg 0 is variable index of destination
     // Arg 1 is variable index of source
@@ -325,14 +327,19 @@ bool VirtualMachine::execute()
     {
       throwRuntimeError(m_logger, "Movv variable index out of range.");
     }
-    m_runtimeStack[m_currentRuntimeStackBaseIndex +
-                   *((uint32_t *)&instruction.args[0])] =
-        m_runtimeStack.at(m_currentRuntimeStackBaseIndex +
-                          *((uint32_t *)&instruction.args[1]));
+    // Args hold raw bits, so copy them out instead of punning the pointer.
+    uint32_t destIndex = 0;
+    uint32_t srcIndex = 0;
+    memcpy(&destIndex, &instruction.args[0], sizeof(destIndex));
+    memcpy(&srcIndex, &instruction.args[1], sizeof(srcIndex));
+    m_runtimeStack[m_currentRuntimeStackBaseIndex + destIndex] =
+        m_runtimeStack.at(m_currentRuntimeStackBaseIndex + srcIndex);
     ++m_currentInstructionIndex;
     break;
+  }
 
   case Opcode::Movi:
+  {
     // Move integer to variable
     // Arg 0 is variable index of destination
     // Arg 1 is source integer value
@@ -341,12 +348,16 @@ bool VirtualMachine::execute()
     {
       throwRuntimeError(m_logger, "Movi variable index out of range.");
     }
-    m_runtimeStack[m_currentRuntimeStackBaseIndex +
-                   *((uint32_t *)&instruction.args[0])] = instruction.args[1];
+    uint32_t destIndex = 0;
+    memcpy(&destIndex, &instruction.args[0], sizeof(destIndex));
+    m_runtimeStack[m_currentRuntimeStackBaseIndex + destIndex] =
+        instruction.args[1];
     ++m_currentInstructionIndex;
     break;
+  }
 
   case Opcode::Movf:
+  {
     // Move float to variable
     // Arg 0 is variable index of destination
     // Arg 1 is source float value
@@ -355,13 +366,17 @@ bool VirtualMachine::execute()
     {
       throwRuntimeError(m_logger, "Movf variable index out of range.");
     }
-    m_runtimeStack[m_currentRuntimeStackBaseIndex +
-                   *((uint32_t *)&instruction.args[0])] =
-        *((float *)&instruction.args[1]);
+    uint32_t destIndex = 0;
+    float value = 0.f;
+    memcpy(&destIndex, &instruction.args[0], sizeof(destIndex));
+    memcpy(&value, &instruction.args[1], sizeof(value));
+    m_runtimeStack[m_currentRuntimeStackBaseIndex + destIndex] = value;
     ++m_currentInstructionIndex;
     break;
+  }
 
   case Opcode::Movs:
+  {
     // Move string to variable
     // Arg 0 is variable index of destination
     // Arg 1 is source index of string
@@ -374,11 +389,15 @@ bool VirtualMachine::execute()
     {
       throwRuntimeError(m_logger, "Movs string index out of range.");
     }
-    m_runtimeStack[m_currentRuntimeStackBaseIndex +
-                   *((uint32_t *)&instruction.args[0])] =
-        m_strings.at(*((uint32_t *)&instruction.args[1]));
+    uint32_t destIndex = 0;
+    uint32_t stringIndex = 0;
+    memcpy(&destIndex, &instruction.args[0], sizeof(destIndex));
+    memcpy(&stringIndex, &instruction.args[1], sizeof(stringIndex));
+    m_runtimeStack[m_currentRuntimeStackBaseIndex + destIndex] =
+        m_strings.at(stringIndex);
     ++m_currentInstructionIndex;
     break;
+  }
 
   case Opcode::Pushi:
     // Push signed 32 bit integer value to
@@ -388,38 +407,53 @@ bool VirtualMachine::execute()
     break;
 
   case Opcode::Pushu:
+  {
     // Arg 0 is an unsigned integer value
-    pushValue(Value(*((uint32_t *)&instruction.args[0])));
+    uint32_t value = 0;
+    memcpy(&value, &instruction.args[0], sizeof(value));
+    pushValue(Value(value));
     ++m_currentInstructionIndex;
-    break;
+  }
+  break;
 
   case Opcode::Pushs:
+  {
     // Arg 0 is string index
+    uint32_t stringIndex = 0;
+    memcpy(&stringIndex, &instruction.args[0], sizeof(stringIndex));
     if (!indexInRange(0, instruction.args[0], m_strings.size()))
     {
       throwRuntimeError(m_logger, "Pushs string index out of range.");
     }
-    pushValue(m_strings.at(*((uint32_t *)&instruction.args[0])));
+    pushValue(m_strings.at(stringIndex));
     ++m_currentInstructionIndex;
-    break;
+  }
+  break;
 
   case Opcode::Pushf:
+  {
     // Arg 0 is float value
-    pushValue(Value(*((float *)&instruction.args[0])));
+    float value = 0.f;
+    memcpy(&value, &instruction.args[0], sizeof(value));
+    pushValue(Value(value));
     ++m_currentInstructionIndex;
-    break;
+  }
+  break;
 
   case Opcode::Pushv:
+  {
     // Arg 0 is variable index
+    uint32_t varIndex = 0;
+    memcpy(&varIndex, &instruction.args[0], sizeof(varIndex));
     if (!indexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0],
                       m_runtimeStack.size()))
     {
       throwRuntimeError(m_logger, "Pushv variable index out of range.");
     }
-    pushValue(m_runtimeStack.at(m_currentRuntimeStackBaseIndex +
-                                *((uint32_t *)&instruction.args[0])));
+    pushValue(m_runtimeStack.at(m_currentRuntimeStackBaseIndex + varIndex));
     ++m_currentInstructionIndex;
-    break;
+  }
+  break;
 
   case Opcode::Pop:
     // Remove top element from runtime stack
@@ -444,8 +478,10 @@ bool VirtualMachine::execute()
     {
       throwRuntimeError(m_logger, "Popv variable index out of range.");
     }
-    m_runtimeStack[m_currentRuntimeStackBaseIndex +
-                   *((uint32_t *)&instruction.args[0])] = m_runtimeStack.back();
+    uint32_t destIndex = 0;
+    memcpy(&destIndex, &instruction.args[0], sizeof(destIndex));
+    m_runtimeStack[m_currentRuntimeStackBaseIndex + destIndex] =
+        m_runtimeStack.back();
     m_runtimeStack.pop_back();
     ++m_currentInstructionIndex;
   }
@@ -564,7 +600,8 @@ bool VirtualMachine::execute()
     // The caller's stack ends at the runtime stack base index, so slot base
     // holds the first argument. It is the slot the caller reads the return
     // value from once the frame is dropped, so the return value goes there.
-    uint32_t varIndex = *((uint32_t *)&instruction.args[0]);
+    uint32_t varIndex = 0;
+    memcpy(&varIndex, &instruction.args[0], sizeof(varIndex));
     if (varIndex != 0)
     {
       if (!indexInRange(m_currentRuntimeStackBaseIndex,
@@ -615,8 +652,9 @@ bool VirtualMachine::execute()
       throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
     }
     m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
-    m_runtimeStack[m_currentRuntimeStackBaseIndex] =
-        *((int32_t *)&instruction.args[0]);
+    int32_t intValue = 0;
+    memcpy(&intValue, &instruction.args[0], sizeof(intValue));
+    m_runtimeStack[m_currentRuntimeStackBaseIndex] = intValue;
 
     // Retrieve function index of previous function
     m_currentFunctionIndex = m_callStack.top().functionIndex;
@@ -647,8 +685,9 @@ bool VirtualMachine::execute()
       throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
     }
     m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
-    m_runtimeStack[m_currentRuntimeStackBaseIndex] =
-        *((float *)&instruction.args[0]);
+    float floatValue = 0.f;
+    memcpy(&floatValue, &instruction.args[0], sizeof(floatValue));
+    m_runtimeStack[m_currentRuntimeStackBaseIndex] = floatValue;
 
     // Retrieve function index of previous function
     m_currentFunctionIndex = m_callStack.top().functionIndex;
@@ -684,8 +723,10 @@ bool VirtualMachine::execute()
       throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
     }
     m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
+    uint32_t stringIndex = 0;
+    memcpy(&stringIndex, &instruction.args[0], sizeof(stringIndex));
     m_runtimeStack[m_currentRuntimeStackBaseIndex] =
-        m_strings.at(*((uint32_t *)&instruction.args[0]));
+        m_strings.at(stringIndex);
 
     // Retrieve function index of previous function
     m_currentFunctionIndex = m_callStack.top().functionIndex;
@@ -879,7 +920,8 @@ bool VirtualMachine::execute()
     // Arg 0 is target instruction index for jump. The end of the function
     // itself is a legal target: the fetch treats it as an implicit return,
     // which is how trailing labels resolve.
-    const uint32_t jumpIndex = *((uint32_t *)&instruction.args[0]);
+    uint32_t jumpIndex = 0;
+    memcpy(&jumpIndex, &instruction.args[0], sizeof(jumpIndex));
     if (jumpIndex > currentFunction.instructionSize)
     {
       throwRuntimeError(m_logger, "Jmp target out of range.");
@@ -899,7 +941,8 @@ bool VirtualMachine::execute()
     if (x == y)
     {
       // Arg 0 is target instruction index for jump
-      const uint32_t jumpIndex = *((uint32_t *)&instruction.args[0]);
+      uint32_t jumpIndex = 0;
+      memcpy(&jumpIndex, &instruction.args[0], sizeof(jumpIndex));
       if (jumpIndex > currentFunction.instructionSize)
       {
         throwRuntimeError(m_logger, "Je target out of range.");
@@ -924,7 +967,8 @@ bool VirtualMachine::execute()
     if (x != y)
     {
       // Arg 0 is target instruction index for jump
-      const uint32_t jumpIndex = *((uint32_t *)&instruction.args[0]);
+      uint32_t jumpIndex = 0;
+      memcpy(&jumpIndex, &instruction.args[0], sizeof(jumpIndex));
       if (jumpIndex > currentFunction.instructionSize)
       {
         throwRuntimeError(m_logger, "Jne target out of range.");
@@ -949,7 +993,8 @@ bool VirtualMachine::execute()
     if (x <= y)
     {
       // Arg 0 is target instruction index for jump
-      const uint32_t jumpIndex = *((uint32_t *)&instruction.args[0]);
+      uint32_t jumpIndex = 0;
+      memcpy(&jumpIndex, &instruction.args[0], sizeof(jumpIndex));
       if (jumpIndex > currentFunction.instructionSize)
       {
         throwRuntimeError(m_logger, "Jle target out of range.");
@@ -974,7 +1019,8 @@ bool VirtualMachine::execute()
     if (x > y)
     {
       // Arg 0 is target instruction index for jump
-      const uint32_t jumpIndex = *((uint32_t *)&instruction.args[0]);
+      uint32_t jumpIndex = 0;
+      memcpy(&jumpIndex, &instruction.args[0], sizeof(jumpIndex));
       if (jumpIndex > currentFunction.instructionSize)
       {
         throwRuntimeError(m_logger, "Jg target out of range.");
@@ -999,7 +1045,8 @@ bool VirtualMachine::execute()
     if (x >= y)
     {
       // Arg 0 is target instruction index for jump
-      const uint32_t jumpIndex = *((uint32_t *)&instruction.args[0]);
+      uint32_t jumpIndex = 0;
+      memcpy(&jumpIndex, &instruction.args[0], sizeof(jumpIndex));
       if (jumpIndex > currentFunction.instructionSize)
       {
         throwRuntimeError(m_logger, "Jge target out of range.");
@@ -1024,7 +1071,8 @@ bool VirtualMachine::execute()
     if (x < y)
     {
       // Arg 0 is target instruction index for jump
-      const uint32_t jumpIndex = *((uint32_t *)&instruction.args[0]);
+      uint32_t jumpIndex = 0;
+      memcpy(&jumpIndex, &instruction.args[0], sizeof(jumpIndex));
       if (jumpIndex > currentFunction.instructionSize)
       {
         throwRuntimeError(m_logger, "Jl target out of range.");

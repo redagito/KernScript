@@ -362,9 +362,11 @@ bool Assembler::parseFunction(std::istream &stream)
         }
 
         // Set arg 0 to relative variable stack index of var1
-        instruction.args[0] = *((int32_t *)&entry1->second);
+        memcpy(&instruction.args[0], &entry1->second,
+               sizeof(instruction.args[0]));
         // Set arg 1 to relative variable stack index of var2
-        instruction.args[1] = *((int32_t *)&entry2->second);
+        memcpy(&instruction.args[1], &entry2->second,
+               sizeof(instruction.args[1]));
 
         // Add assembled instruction
         function.instructions.push_back(instruction);
@@ -413,7 +415,8 @@ bool Assembler::parseFunction(std::istream &stream)
         ss >> value;
 
         // Set arg 0 to relative variable stack index of var1
-        instruction.args[0] = *((int32_t *)&entry1->second);
+        memcpy(&instruction.args[0], &entry1->second,
+               sizeof(instruction.args[0]));
         // Set arg 1 to integer value
         instruction.args[1] = value;
 
@@ -466,9 +469,10 @@ bool Assembler::parseFunction(std::istream &stream)
         ss >> value;
 
         // Set arg 0 to relative variable stack index of var1
-        instruction.args[0] = *((int32_t *)&entry1->second);
+        memcpy(&instruction.args[0], &entry1->second,
+               sizeof(instruction.args[0]));
         // Set arg 1 to float value
-        instruction.args[1] = *((int32_t *)&value);
+        memcpy(&instruction.args[1], &value, sizeof(value));
 
         // Add assembled instruction
         function.instructions.push_back(instruction);
@@ -516,9 +520,11 @@ bool Assembler::parseFunction(std::istream &stream)
         uint32_t strIndex = addString(m_lexer.getLexeme());
 
         // Set arg 0 to relative variable stack index of var1
-        instruction.args[0] = *((int32_t *)&entry1->second);
+        memcpy(&instruction.args[0], &entry1->second,
+               sizeof(instruction.args[0]));
         // Set arg 1 to string index
-        instruction.args[1] = *((int32_t *)&strIndex);
+        memcpy(&instruction.args[1], &strIndex,
+               sizeof(instruction.args[1]));
 
         // Add assembled instruction
         function.instructions.push_back(instruction);
@@ -544,7 +550,8 @@ bool Assembler::parseFunction(std::istream &stream)
         }
 
         // Set arg 0 to relative variable stack index
-        instruction.args[0] = *((int32_t *)&entry->second);
+        memcpy(&instruction.args[0], &entry->second,
+               sizeof(instruction.args[0]));
 
         // Add assembled instruction
         function.instructions.push_back(instruction);
@@ -626,7 +633,8 @@ bool Assembler::parseFunction(std::istream &stream)
         // Add string to string table
         uint32_t strIndex = addString(m_lexer.getLexeme());
         // Set arg 0 to string index
-        instruction.args[0] = *((int32_t *)&strIndex);
+        memcpy(&instruction.args[0], &strIndex,
+               sizeof(instruction.args[0]));
 
         // Add assembled instruction
         function.instructions.push_back(instruction);
@@ -660,7 +668,8 @@ bool Assembler::parseFunction(std::istream &stream)
         }
 
         // Set arg 0 to relative variable stack index
-        instruction.args[0] = *((int32_t *)&entry->second);
+        memcpy(&instruction.args[0], &entry->second,
+               sizeof(instruction.args[0]));
 
         // Add assembled instruction
         function.instructions.push_back(instruction);
@@ -738,7 +747,8 @@ bool Assembler::parseFunction(std::istream &stream)
         }
 
         // Set arg 0 to relative variable stack index
-        instruction.args[0] = *((int32_t *)&entry->second);
+        memcpy(&instruction.args[0], &entry->second,
+               sizeof(instruction.args[0]));
 
         // Add assembled instruction
         function.instructions.push_back(instruction);
@@ -780,7 +790,7 @@ bool Assembler::parseFunction(std::istream &stream)
         ss >> value;
 
         // Set arg 0 to float value
-        instruction.args[0] = *((int32_t *)&value);
+        memcpy(&instruction.args[0], &value, sizeof(value));
 
         // Add assembled instruction
         function.instructions.push_back(instruction);
@@ -801,7 +811,8 @@ bool Assembler::parseFunction(std::istream &stream)
         uint32_t strIndex = addString(m_lexer.getLexeme());
 
         // Set arg 0 to string index
-        instruction.args[0] = *((int32_t *)&strIndex);
+        memcpy(&instruction.args[0], &strIndex,
+               sizeof(instruction.args[0]));
 
         // Add assembled instruction
         function.instructions.push_back(instruction);
