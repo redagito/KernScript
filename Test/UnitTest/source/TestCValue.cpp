@@ -17,6 +17,251 @@ TEST_CASE("CValue carries the type it was constructed with", "[unit][CValue]")
   REQUIRE(stringValue.getType() == CValue::EType::String);
 }
 
+TEST_CASE("CValue arithmetic widens to the wider type", "[unit][CValue]")
+{
+  CValue integer(static_cast<int32_t>(1));
+  CValue fraction(2.5f);
+
+  integer += fraction;
+
+  REQUIRE(integer.getType() == CValue::EType::Float);
+  float result = 0.f;
+  REQUIRE(integer.convert(result));
+  REQUIRE(result == 3.5f);
+}
+
+TEST_CASE("CValue arithmetic keeps integers exact", "[unit][CValue]")
+{
+  CValue value(static_cast<int32_t>(2000000000));
+  CValue operand(static_cast<int32_t>(2000000000));
+
+  value += operand;
+
+  // Would not fit in a float.
+  double expected = 4000000000.0;
+
+  int32_t result = 0;
+  REQUIRE(value.convert(result));
+  REQUIRE(static_cast<double>(result + 2147483648.0) ==
+          expected - 2147483648.0);
+}
+
+TEST_CASE("CValue multiplies", "[unit][CValue]")
+{
+  CValue value(static_cast<int32_t>(3));
+  CValue operand(static_cast<int32_t>(4));
+
+  value *= operand;
+
+  int32_t result = 0;
+  REQUIRE(value.convert(result));
+  REQUIRE(result == 12);
+}
+
+TEST_CASE("CValue multiplies floats", "[unit][CValue]")
+{
+  CValue value(2.5f);
+  CValue operand(4.f);
+
+  value *= operand;
+
+  REQUIRE(value.getType() == CValue::EType::Float);
+  float result = 0.f;
+  REQUIRE(value.convert(result));
+  REQUIRE(result == 10.f);
+}
+
+TEST_CASE("CValue multiplies across types", "[unit][CValue]")
+{
+  CValue value(2.5f);
+  CValue operand(static_cast<int32_t>(4));
+
+  value *= operand;
+
+  REQUIRE(value.getType() == CValue::EType::Float);
+  float result = 0.f;
+  REQUIRE(value.convert(result));
+  REQUIRE(result == 10.f);
+}
+
+TEST_CASE("CValue divides integers", "[unit][CValue]")
+{
+  CValue value(static_cast<int32_t>(17));
+  CValue operand(static_cast<int32_t>(5));
+
+  value /= operand;
+
+  // Integer division truncates.
+  int32_t result = 0;
+  REQUIRE(value.convert(result));
+  REQUIRE(result == 3);
+}
+
+TEST_CASE("CValue divides floats", "[unit][CValue]")
+{
+  CValue value(1.f);
+  CValue operand(4.f);
+
+  value /= operand;
+
+  REQUIRE(value.getType() == CValue::EType::Float);
+  float result = 0.f;
+  REQUIRE(value.convert(result));
+  REQUIRE(result == 0.25f);
+}
+
+TEST_CASE("CValue division by zero leaves the value unchanged",
+          "[unit][CValue]")
+{
+  CValue value(static_cast<int32_t>(10));
+  CValue zero(static_cast<int32_t>(0));
+
+  value /= zero;
+
+  int32_t result = 0;
+  REQUIRE(value.convert(result));
+  REQUIRE(result == 10);
+}
+
+TEST_CASE("CValue float division by zero does not trap", "[unit][CValue]")
+{
+  CValue value(1.f);
+  CValue zero(0.f);
+
+  value /= zero;
+
+  float result = 0.f;
+  REQUIRE(value.convert(result));
+  // IEEE infinity, which is what float division produces.
+  REQUIRE(result > 1e30f);
+}
+
+TEST_CASE("CValue arithmetic ignores non numeric operands",
+          "[unit][CValue]")
+{
+  CValue value(static_cast<int32_t>(7));
+  CValue text(std::string("seven"));
+
+  value += text;
+  value *= text;
+
+  int32_t result = 0;
+  REQUIRE(value.convert(result));
+  REQUIRE(result == 7);
+}
+
+TEST_CASE("CValue compares across types", "[unit][CValue]")
+{
+  CValue integer(static_cast<int32_t>(2));
+  CValue fraction(2.5f);
+
+  REQUIRE(integer < fraction);
+  REQUIRE(integer <= fraction);
+  REQUIRE_FALSE(integer == fraction);
+  REQUIRE(integer != fraction);
+  REQUIRE(fraction > integer);
+  REQUIRE(fraction >= integer);
+}
+
+TEST_CASE("CValue orders equal values", "[unit][CValue]")
+{
+  CValue value(static_cast<int32_t>(5));
+
+  REQUIRE(value <= value);
+  REQUIRE(value >= value);
+  REQUIRE(value == value);
+  REQUIRE_FALSE(value < value);
+  REQUIRE_FALSE(value > value);
+}
+
+TEST_CASE("CValue compares strings by value", "[unit][CValue]")
+{
+  CValue left(std::string("same"));
+  CValue right(std::string("same"));
+  CValue other(std::string("different"));
+
+  REQUIRE(left == right);
+  REQUIRE(left != other);
+}
+
+TEST_CASE("CValue compares strings of different types as unequal",
+          "[unit][CValue]")
+{
+  CValue text(std::string("7"));
+  CValue number(static_cast<int32_t>(7));
+
+  REQUIRE(text != number);
+  REQUIRE_FALSE(text == number);
+}
+
+TEST_CASE("CValue does not assert on comparisons", "[unit][CValue]")
+{
+  // These used to reach assert(false) and abort the process.
+  CValue floatValue(1.5f);
+  CValue otherFloat(2.5f);
+
+  REQUIRE_FALSE(floatValue == otherFloat);
+  REQUIRE(floatValue <= otherFloat);
+
+  CValue integer(static_cast<int32_t>(1));
+  REQUIRE_FALSE(floatValue == integer);
+  REQUIRE(floatValue >= integer);
+
+  CValue invalid;
+  REQUIRE_FALSE(invalid == floatValue);
+  REQUIRE_FALSE(floatValue == invalid);
+}
+
+TEST_CASE("CValue adds floats", "[unit][CValue]")
+{
+  CValue value(1.5f);
+  CValue operand(2.25f);
+
+  value += operand;
+
+  float result = 0.f;
+  REQUIRE(value.convert(result));
+  REQUIRE(result == 3.75f);
+}
+
+TEST_CASE("CValue subtracts floats", "[unit][CValue]")
+{
+  CValue value(2.5f);
+  CValue operand(0.5f);
+
+  value -= operand;
+
+  float result = 0.f;
+  REQUIRE(value.convert(result));
+  REQUIRE(result == 2.f);
+}
+
+TEST_CASE("CValue reports whether it is numeric", "[unit][CValue]")
+{
+  REQUIRE(CValue(static_cast<int32_t>(1)).isNumeric());
+  REQUIRE(CValue(static_cast<uint32_t>(1)).isNumeric());
+  REQUIRE(CValue(1.5f).isNumeric());
+
+  CValue text(std::string("text"));
+  REQUIRE_FALSE(text.isNumeric());
+
+  CValue invalid;
+  REQUIRE_FALSE(invalid.isNumeric());
+}
+
+TEST_CASE("CValue unsigned arithmetic wraps", "[unit][CValue]")
+{
+  CValue value(static_cast<uint32_t>(0));
+  CValue operand(static_cast<uint32_t>(1));
+
+  value -= operand;
+
+  REQUIRE(value.getType() == CValue::EType::UnsignedInteger);
+  uint32_t result = 0;
+  REQUIRE(value.convert(result));
+  REQUIRE(result == 4294967295u);
+}
+
 TEST_CASE("Default constructed CValue is invalid", "[unit][CValue]")
 {
   CValue value;
