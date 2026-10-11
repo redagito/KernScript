@@ -98,6 +98,12 @@ void VirtualMachine::clearScripts()
   m_strings.clear();
   m_externFunctions.clear();
   m_functions.clear();
+  // Drop any values and frames a previous call left behind.
+  m_runtimeStack.clear();
+  while (!m_callStack.empty())
+  {
+    m_callStack.pop();
+  }
 }
 
 bool VirtualMachine::callFunction(const std::string &functionName)
@@ -107,6 +113,16 @@ bool VirtualMachine::callFunction(const std::string &functionName)
   {
     return false;
   }
+  // Start from a clean slate: a previous call may have thrown out of nested
+  // frames, leaving stale values, frames and a base index behind. Clearing
+  // first also keeps locals from leaking values a previous call left in the
+  // reused slots; the resize below then value-initializes the whole frame.
+  m_runtimeStack.clear();
+  while (!m_callStack.empty())
+  {
+    m_callStack.pop();
+  }
+  m_currentRuntimeStackBaseIndex = 0;
   m_currentInstructionIndex = 0;
   const uint32_t stackSize =
       m_functions.at(m_currentFunctionIndex).stackSize;

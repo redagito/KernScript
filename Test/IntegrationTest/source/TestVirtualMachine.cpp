@@ -928,6 +928,71 @@ TEST_CASE("Pushu keeps the maximum unsigned value", "[integration][vm][c3]")
   REQUIRE(recorder.text() == "4294967295\n");
 }
 
+TEST_CASE("Locals do not leak across calls", "[integration][vm][c6]")
+{
+  const std::string source =
+      "extern println 1\n\nfunc prime\n{\nvar v\nmovi v, 99\nret\n}\n"
+      "\nfunc reader\n{\nvar w\ninc\ncalle println\nret\n}\n";
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+  REQUIRE(vm.callFunction("prime"));
+
+  // reader never writes w, so inc meets a non-numeric slot and stops the
+  // script instead of printing prime's leftover 100.
+  REQUIRE_THROWS_AS(vm.callFunction("reader"), kern::RuntimeError);
+}
+
+TEST_CASE("State is clean after a throw from a nested call",
+          "[integration][vm][c6]")
+{
+  const std::string source =
+      "extern println 1\n\nfunc inner\n{\npushi 1\npushi 0\ndiv\nret\n}\n"
+      "\nfunc outer\n{\ncall inner\npushi 1\npushi 0\ndiv\nret\n}\n"
+      "\nfunc clean\n{\npushi 42\ncalle println\nret\n}\n";
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr);
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+  REQUIRE_THROWS_AS(vm.callFunction("outer"), kern::RuntimeError);
+
+  // A stale call frame would resume outer past its call after clean returns
+  // and divide by zero there. A clean slate ends cleanly instead.
+  REQUIRE(vm.callFunction("clean"));
+  REQUIRE(recorder.text() == "42\n");
+}
+
+TEST_CASE("clearScripts drops the runtime and call stacks",
+          "[integration][vm][c6]")
+{
+  const std::string source =
+      "extern println 1\n\nfunc prime\n{\nvar v\nmovi v, 99\nret\n}\n"
+      "\nfunc reader\n{\nvar w\ninc\ncalle println\nret\n}\n";
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+  REQUIRE(vm.callFunction("prime"));
+
+  vm.clearScripts();
+
+  byteCode.clear();
+  byteCode.seekg(0);
+  REQUIRE(vm.load(byteCode));
+
+  REQUIRE_THROWS_AS(vm.callFunction("reader"), kern::RuntimeError);
+}
+
 TEST_CASE("Movs advances the instruction pointer", "[integration][vm]")
 {
   const std::string source = "extern println 1\n\nfunc main\n{\nvar x\n"
