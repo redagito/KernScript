@@ -1,12 +1,15 @@
 cmake_minimum_required (VERSION 4.4.3)
-project (KernScript)
 
+project (KernScript LANGUAGES CXX)
+
+# Build settings that apply to every project below. Everything project
+# specific lives in the project's own CMakeLists.txt.
 set (CMAKE_CXX_STANDARD 17)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set (KERNSCRIPT_LIB_NAME ${PROJECT_NAME}Lib)
-add_subdirectory (Lib)
-
+# Required once at the top level so that projects added below can register
+# their tests with add_test.
 enable_testing ()
-set (KERNSCRIPT_TEST_NAME ${PROJECT_NAME}Test)
+
+add_subdirectory (Lib)
 add_subdirectory (Test)
