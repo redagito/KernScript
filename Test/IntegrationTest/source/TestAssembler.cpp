@@ -96,6 +96,63 @@ TEST_CASE("Assembler rejects a negative extern argument count",
   REQUIRE_FALSE(testutil::assemble(source, byteCode));
 }
 
+TEST_CASE("Assembler rejects a duplicate function", "[integration][assembler][m3]")
+{
+  const std::string source = "func main\n{\nret\n}\nfunc main\n{\nret\n}\n";
+  std::stringstream byteCode;
+
+  REQUIRE_FALSE(testutil::assemble(source, byteCode));
+}
+
+TEST_CASE("Assembler rejects a duplicate extern function",
+          "[integration][assembler][m3]")
+{
+  const std::string source =
+      "extern foo 1\nextern foo 1\n\nfunc main\n{\nret\n}\n";
+  std::stringstream byteCode;
+
+  REQUIRE_FALSE(testutil::assemble(source, byteCode));
+}
+
+TEST_CASE("Assembler rejects a duplicate parameter",
+          "[integration][assembler][m3]")
+{
+  const std::string source =
+      "extern println 1\n\nfunc f\n{\nparam a\nparam a\nret\n}\n"
+      "\nfunc main\n{\nret\n}\n";
+  std::stringstream byteCode;
+
+  REQUIRE_FALSE(testutil::assemble(source, byteCode));
+}
+
+TEST_CASE("Assembler rejects a duplicate variable",
+          "[integration][assembler][m3]")
+{
+  const std::string source = wrap("var a\nvar a\nret");
+  std::stringstream byteCode;
+
+  REQUIRE_FALSE(testutil::assemble(source, byteCode));
+}
+
+TEST_CASE("Assembler rejects a duplicate array variable",
+          "[integration][assembler][m3]")
+{
+  const std::string source = wrap("vara a 2\nvara a 3\nret");
+  std::stringstream byteCode;
+
+  REQUIRE_FALSE(testutil::assemble(source, byteCode));
+}
+
+TEST_CASE("Assembler rejects a variable shadowing a parameter",
+          "[integration][assembler][m3]")
+{
+  const std::string source = "extern println 1\n\nfunc f\n{\nparam a\nvar a\n"
+                             "ret\n}\n\nfunc main\n{\nret\n}\n";
+  std::stringstream byteCode;
+
+  REQUIRE_FALSE(testutil::assemble(source, byteCode));
+}
+
 TEST_CASE("Assembler rejects an unresolved jump target",
           "[integration][assembler]")
 {

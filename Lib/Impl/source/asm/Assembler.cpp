@@ -221,6 +221,13 @@ bool Assembler::parseFunction(std::istream &stream)
   Function tempFunction;
   tempFunction.name = m_lexer.getLexeme();
 
+  // A function may call itself, but redefining one only shadows the first.
+  if (isFunction(tempFunction.name))
+  {
+    m_logger->error("The function '{}' already exists.", tempFunction.name);
+    return false;
+  }
+
   // Store function to resolve recursive calls
   m_functions.push_back(tempFunction);
   Function &function = m_functions.back();
@@ -251,6 +258,14 @@ bool Assembler::parseFunction(std::istream &stream)
         }
         // Parameter name
         std::string paramName = m_lexer.getLexeme();
+
+        // Parameters share the variable namespace, so redeclaring one only
+        // shadows the first slot.
+        if (variables.find(paramName) != variables.end())
+        {
+          m_logger->error("The variable '{}' already exists.", paramName);
+          return false;
+        }
 
         // Set parameter offset to current stack size
         variables[paramName] = stackSize;
@@ -292,6 +307,12 @@ bool Assembler::parseFunction(std::istream &stream)
         // Variable name
         std::string varName = m_lexer.getLexeme();
 
+        if (variables.find(varName) != variables.end())
+        {
+          m_logger->error("The variable '{}' already exists.", varName);
+          return false;
+        }
+
         // Set variable offset to current stack size
         variables[varName] = stackSize;
 
@@ -310,6 +331,12 @@ bool Assembler::parseFunction(std::istream &stream)
         }
         // Variable name
         std::string varName = m_lexer.getLexeme();
+
+        if (variables.find(varName) != variables.end())
+        {
+          m_logger->error("The variable '{}' already exists.", varName);
+          return false;
+        }
 
         // Expect integer array size
         m_lexer.lex(stream);
@@ -1142,6 +1169,14 @@ bool Assembler::parseExternFunction(std::istream &stream)
   // Create extern function and store name
   ExternFunction externFunction;
   externFunction.name = m_lexer.getLexeme();
+
+  // Redeclaring an extern only shadows the first declaration.
+  if (isExternFunction(externFunction.name))
+  {
+    m_logger->error("The extern function '{}' already exists.",
+                    externFunction.name);
+    return false;
+  }
 
   // Next is integer constant which denotes the number of expected arguments
   m_lexer.lex(stream);
