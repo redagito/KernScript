@@ -1,0 +1,36 @@
+// Nested calls: main calls double, which calls add2. Return values flow
+// through two frames back to the caller.
+extern println 1
+
+func add2
+{
+  param a
+  param b
+  var r
+  pushv a
+  pushv b
+  add
+  popv r
+  retv r
+}
+
+func double
+{
+  param v
+  var r
+  pushv v
+  pushi 2
+  mul
+  popv r
+  retv r
+}
+
+func main
+{
+  pushi 3
+  pushi 4
+  call add2
+  call double
+  calle println
+  ret
+}

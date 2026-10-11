@@ -83,6 +83,14 @@ TEST_CASE("collatz prints the sequence from 7", "[e2e][fixture]")
                              "16\n8\n4\n2\n1\n");
 }
 
+TEST_CASE("nested calls double the sum of two values", "[e2e][fixture]")
+{
+  const testutil::StringRecorder recorder = runFixture("nested");
+
+  // (3 + 4) * 2.
+  REQUIRE(recorder.text() == "14\n");
+}
+
 TEST_CASE("test1 prints its values and calls a two argument extern function",
           "[e2e][fixture]")
 {
