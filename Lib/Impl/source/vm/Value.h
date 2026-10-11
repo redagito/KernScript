@@ -4,13 +4,11 @@
 #include <string>
 
 /**
-* \brief Stores a value of any of the supported types.
-*/
-class Value
-{
+ * \brief Stores a value of any of the supported types.
+ */
+class Value {
 public:
-  enum class Type
-  {
+  enum class Type {
     Integer,
     UnsignedInteger,
     Float,
@@ -41,21 +39,21 @@ public:
   std::string toString() const;
 
   /**
-  * \brief Returns true for the types arithmetic and comparison operate on.
-  *
-  * Strings and invalid values are not numeric. Arithmetic with a non-numeric
-  * operand leaves the value unchanged, so callers that must not silently
-  * drop an operand check this first. Numeric failures throw
-  * kern::RuntimeError instead: integer overflow and out-of-range conversions
-  * never wrap or narrow silently.
-  */
+   * \brief Returns true for the types arithmetic and comparison operate on.
+   *
+   * Strings and invalid values are not numeric. Arithmetic with a non-numeric
+   * operand leaves the value unchanged, so callers that must not silently
+   * drop an operand check this first. Numeric failures throw
+   * kern::RuntimeError instead: integer overflow and out-of-range conversions
+   * never wrap or narrow silently.
+   */
   bool isNumeric() const;
 
   /**
-  * \brief Returns true for a numeric value that equals zero.
-  *
-  * Non numeric values report false, they never reach a divisor check.
-  */
+   * \brief Returns true for a numeric value that equals zero.
+   *
+   * Non numeric values report false, they never reach a divisor check.
+   */
   bool isZero() const;
 
   Value &operator=(const Value &rhs);
@@ -79,38 +77,37 @@ public:
 
 private:
   /**
-  * \brief Converts to a double, used when the operand types differ.
-  */
+   * \brief Converts to a double, used when the operand types differ.
+   */
   static double asDouble(const Value &value);
 
   /**
-  * \brief Compares two numeric values.
-  * \return Negative, zero or positive as lhs is less, equal or greater.
-  */
+   * \brief Compares two numeric values.
+   * \return Negative, zero or positive as lhs is less, equal or greater.
+   */
   static int compare(const Value &lhs, const Value &rhs);
 
   /**
-  * \brief Stores a computed value of the given type.
-  */
+   * \brief Stores a computed value of the given type.
+   */
   void store(Type type, double value);
 
   /**
-  * \brief Stores a mixed signed/unsigned integer result exactly.
-  *
-  * Negative results become Integer, non-negative results become
-  * UnsignedInteger, so a large unsigned value plus a small signed one keeps
-  * its unsigned range instead of failing the signed check. Out-of-range
-  * results throw kern::RuntimeError instead of wrapping.
-  */
+   * \brief Stores a mixed signed/unsigned integer result exactly.
+   *
+   * Negative results become Integer, non-negative results become
+   * UnsignedInteger, so a large unsigned value plus a small signed one keeps
+   * its unsigned range instead of failing the signed check. Out-of-range
+   * results throw kern::RuntimeError instead of wrapping.
+   */
   void storeMixedInteger(int64_t value);
 
   /**
-  * \brief Converts to a bool, used by the logical operators.
-  */
+   * \brief Converts to a bool, used by the logical operators.
+   */
   static bool asBool(const Value &value);
 
-  union
-  {
+  union {
     int32_t m_integer;
     uint32_t m_unsignedInteger;
     float m_float;

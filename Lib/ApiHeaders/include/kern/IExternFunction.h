@@ -1,28 +1,26 @@
 #pragma once
 
-namespace kern
-{
+namespace kern {
 
 class IVirtualMachine;
 
 /**
-* \brief Extern function interface class.
-*
-* Provides a function interface for calling native functions from scripts.
-*/
-class IExternFunction
-{
+ * \brief Extern function interface class.
+ *
+ * Provides a function interface for calling native functions from scripts.
+ */
+class IExternFunction {
 public:
   virtual ~IExternFunction() = default;
 
   /**
-  * \brief Returns number of expected function arguments.
-  */
+   * \brief Returns number of expected function arguments.
+   */
   virtual unsigned int getArgumentCount() const = 0;
 
   /**
-  * \brief Call function from script.
-  */
+   * \brief Call function from script.
+   */
   virtual bool call(IVirtualMachine &vm) = 0;
 };
-}
+} // namespace kern

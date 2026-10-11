@@ -10,10 +10,9 @@
 typedef int32_t ArgumentType;
 
 /**
-* \brief Represents an assembled instruction.
-*/
-struct Instruction
-{
+ * \brief Represents an assembled instruction.
+ */
+struct Instruction {
   Opcode id = Opcode::Nop; /**< Instruction id. */
   // Zero-initialized: instructions with fewer operands leave the remaining
   // slots untouched, and unset slots must not carry garbage.

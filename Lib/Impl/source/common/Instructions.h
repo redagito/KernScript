@@ -3,8 +3,7 @@
 #include <cstdint>
 #include <string>
 
-enum class Opcode
-{
+enum class Opcode {
   // System
   Nop = 0, /**< No operation. */
   Break,   /**< Breakpoint, for debugging. */
@@ -59,58 +58,30 @@ enum class Opcode
 };
 
 /**
-* \brief Provides instruction specific information for id based lookup.
-*/
-struct InstructionLookup
-{
+ * \brief Provides instruction specific information for id based lookup.
+ */
+struct InstructionLookup {
   std::string mnemonic;
   unsigned int argCount;
 };
 
-const InstructionLookup instructions[] = {{"nop", 0},
-                                           {"break", 0},
-                                           {"exit", 0},
+const InstructionLookup instructions[] = {{"nop", 0},   {"break", 0}, {"exit", 0},
 
-                                           {"movv", 2},
-                                           {"movi", 2},
-                                           {"movf", 2},
-                                           {"movs", 2},
+                                          {"movv", 2},  {"movi", 2},  {"movf", 2},  {"movs", 2},
 
-                                           {"pushv", 1},
-                                           {"pushi", 1},
-                                           {"pushu", 1},
-                                           {"pushf", 1},
-                                           {"pushs", 1},
+                                          {"pushv", 1}, {"pushi", 1}, {"pushu", 1}, {"pushf", 1}, {"pushs", 1},
 
-                                           {"pop", 0},
-                                           {"popv", 1},
+                                          {"pop", 0},   {"popv", 1},
 
-                                           {"call", 1},
-                                           {"calle", 1},
+                                          {"call", 1},  {"calle", 1},
 
-                                           {"ret", 0},
-                                           {"retv", 1},
-                                           {"reti", 1},
-                                           {"retf", 1},
-                                           {"rets", 1},
+                                          {"ret", 0},   {"retv", 1},  {"reti", 1},  {"retf", 1},  {"rets", 1},
 
-                                           {"add", 0},
-                                           {"sub", 0},
-                                           {"mul", 0},
-                                           {"div", 0},
+                                          {"add", 0},   {"sub", 0},   {"mul", 0},   {"div", 0},
 
-                                           {"inc", 0},
-                                           {"dec", 0},
+                                          {"inc", 0},   {"dec", 0},
 
-                                           {"and", 0},
-                                           {"or", 0},
-                                           {"not", 0},
-                                           {"xor", 0},
+                                          {"and", 0},   {"or", 0},    {"not", 0},   {"xor", 0},
 
-                                           {"jmp", 1},
-                                           {"je", 1},
-                                           {"jne", 1},
-                                           {"jg", 1},
-                                           {"jge", 1},
-                                           {"jl", 1},
-                                           {"jle", 1}};
+                                          {"jmp", 1},   {"je", 1},    {"jne", 1},   {"jg", 1},    {"jge", 1},
+                                          {"jl", 1},    {"jle", 1}};

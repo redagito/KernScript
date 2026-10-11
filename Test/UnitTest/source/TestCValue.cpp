@@ -3,8 +3,7 @@
 #include "kern/RuntimeError.h"
 #include "vm/Value.h"
 
-TEST_CASE("Value carries the type it was constructed with", "[unit][Value]")
-{
+TEST_CASE("Value carries the type it was constructed with", "[unit][Value]") {
   Value integer(static_cast<int32_t>(-7));
   REQUIRE(integer.getType() == Value::Type::Integer);
 
@@ -18,8 +17,7 @@ TEST_CASE("Value carries the type it was constructed with", "[unit][Value]")
   REQUIRE(stringValue.getType() == Value::Type::String);
 }
 
-TEST_CASE("Value arithmetic widens to the wider type", "[unit][Value]")
-{
+TEST_CASE("Value arithmetic widens to the wider type", "[unit][Value]") {
   Value integer(static_cast<int32_t>(1));
   Value fraction(2.5f);
 
@@ -31,33 +29,28 @@ TEST_CASE("Value arithmetic widens to the wider type", "[unit][Value]")
   REQUIRE(result == 3.5f);
 }
 
-TEST_CASE("Value addition overflow throws", "[unit][Value][c2]")
-{
+TEST_CASE("Value addition overflow throws", "[unit][Value][c2]") {
   Value value(static_cast<int32_t>(2147483647));
   Value operand(static_cast<int32_t>(1));
 
   REQUIRE_THROWS_AS(value += operand, kern::RuntimeError);
 }
 
-TEST_CASE("Value division of INT_MIN by minus one throws", "[unit][Value][c2]")
-{
+TEST_CASE("Value division of INT_MIN by minus one throws", "[unit][Value][c2]") {
   Value value(static_cast<int32_t>(-2147483647 - 1));
   Value operand(static_cast<int32_t>(-1));
 
   REQUIRE_THROWS_AS(value /= operand, kern::RuntimeError);
 }
 
-TEST_CASE("Value huge float to int conversion throws", "[unit][Value][c2]")
-{
+TEST_CASE("Value huge float to int conversion throws", "[unit][Value][c2]") {
   Value value(1e30f);
 
   int32_t asInteger = 0;
   REQUIRE_THROWS_AS(value.convert(asInteger), kern::RuntimeError);
 }
 
-TEST_CASE("Value out of range addition throws instead of wrapping",
-          "[unit][Value]")
-{
+TEST_CASE("Value out of range addition throws instead of wrapping", "[unit][Value]") {
   Value value(static_cast<int32_t>(2000000000));
   Value operand(static_cast<int32_t>(2000000000));
 
@@ -66,8 +59,7 @@ TEST_CASE("Value out of range addition throws instead of wrapping",
   REQUIRE_THROWS_AS(value += operand, kern::RuntimeError);
 }
 
-TEST_CASE("Value multiplies", "[unit][Value]")
-{
+TEST_CASE("Value multiplies", "[unit][Value]") {
   Value value(static_cast<int32_t>(3));
   Value operand(static_cast<int32_t>(4));
 
@@ -78,8 +70,7 @@ TEST_CASE("Value multiplies", "[unit][Value]")
   REQUIRE(result == 12);
 }
 
-TEST_CASE("Value multiplies floats", "[unit][Value]")
-{
+TEST_CASE("Value multiplies floats", "[unit][Value]") {
   Value value(2.5f);
   Value operand(4.f);
 
@@ -91,8 +82,7 @@ TEST_CASE("Value multiplies floats", "[unit][Value]")
   REQUIRE(result == 10.f);
 }
 
-TEST_CASE("Value multiplies across types", "[unit][Value]")
-{
+TEST_CASE("Value multiplies across types", "[unit][Value]") {
   Value value(2.5f);
   Value operand(static_cast<int32_t>(4));
 
@@ -104,8 +94,7 @@ TEST_CASE("Value multiplies across types", "[unit][Value]")
   REQUIRE(result == 10.f);
 }
 
-TEST_CASE("Value divides integers", "[unit][Value]")
-{
+TEST_CASE("Value divides integers", "[unit][Value]") {
   Value value(static_cast<int32_t>(17));
   Value operand(static_cast<int32_t>(5));
 
@@ -117,8 +106,7 @@ TEST_CASE("Value divides integers", "[unit][Value]")
   REQUIRE(result == 3);
 }
 
-TEST_CASE("Value divides floats", "[unit][Value]")
-{
+TEST_CASE("Value divides floats", "[unit][Value]") {
   Value value(1.f);
   Value operand(4.f);
 
@@ -130,9 +118,7 @@ TEST_CASE("Value divides floats", "[unit][Value]")
   REQUIRE(result == 0.25f);
 }
 
-TEST_CASE("Value division by zero leaves the value unchanged",
-          "[unit][Value]")
-{
+TEST_CASE("Value division by zero leaves the value unchanged", "[unit][Value]") {
   Value value(static_cast<int32_t>(10));
   Value zero(static_cast<int32_t>(0));
 
@@ -143,8 +129,7 @@ TEST_CASE("Value division by zero leaves the value unchanged",
   REQUIRE(result == 10);
 }
 
-TEST_CASE("Value float division by zero does not trap", "[unit][Value]")
-{
+TEST_CASE("Value float division by zero does not trap", "[unit][Value]") {
   Value value(1.f);
   Value zero(0.f);
 
@@ -156,9 +141,7 @@ TEST_CASE("Value float division by zero does not trap", "[unit][Value]")
   REQUIRE(result > 1e30f);
 }
 
-TEST_CASE("Value arithmetic ignores non numeric operands",
-          "[unit][Value]")
-{
+TEST_CASE("Value arithmetic ignores non numeric operands", "[unit][Value]") {
   Value value(static_cast<int32_t>(7));
   Value text(std::string("seven"));
 
@@ -170,8 +153,7 @@ TEST_CASE("Value arithmetic ignores non numeric operands",
   REQUIRE(result == 7);
 }
 
-TEST_CASE("Value compares across types", "[unit][Value]")
-{
+TEST_CASE("Value compares across types", "[unit][Value]") {
   Value integer(static_cast<int32_t>(2));
   Value fraction(2.5f);
 
@@ -183,8 +165,7 @@ TEST_CASE("Value compares across types", "[unit][Value]")
   REQUIRE(fraction >= integer);
 }
 
-TEST_CASE("Value orders equal values", "[unit][Value]")
-{
+TEST_CASE("Value orders equal values", "[unit][Value]") {
   Value value(static_cast<int32_t>(5));
 
   REQUIRE(value <= value);
@@ -194,8 +175,7 @@ TEST_CASE("Value orders equal values", "[unit][Value]")
   REQUIRE_FALSE(value > value);
 }
 
-TEST_CASE("Value compares strings by value", "[unit][Value]")
-{
+TEST_CASE("Value compares strings by value", "[unit][Value]") {
   Value left(std::string("same"));
   Value right(std::string("same"));
   Value other(std::string("different"));
@@ -204,9 +184,7 @@ TEST_CASE("Value compares strings by value", "[unit][Value]")
   REQUIRE(left != other);
 }
 
-TEST_CASE("Value compares strings of different types as unequal",
-          "[unit][Value]")
-{
+TEST_CASE("Value compares strings of different types as unequal", "[unit][Value]") {
   Value text(std::string("7"));
   Value number(static_cast<int32_t>(7));
 
@@ -214,8 +192,7 @@ TEST_CASE("Value compares strings of different types as unequal",
   REQUIRE_FALSE(text == number);
 }
 
-TEST_CASE("Value does not assert on comparisons", "[unit][Value]")
-{
+TEST_CASE("Value does not assert on comparisons", "[unit][Value]") {
   // These used to reach assert(false) and abort the process.
   Value floatValue(1.5f);
   Value otherFloat(2.5f);
@@ -232,8 +209,7 @@ TEST_CASE("Value does not assert on comparisons", "[unit][Value]")
   REQUIRE_FALSE(floatValue == invalid);
 }
 
-TEST_CASE("Value adds floats", "[unit][Value]")
-{
+TEST_CASE("Value adds floats", "[unit][Value]") {
   Value value(1.5f);
   Value operand(2.25f);
 
@@ -244,8 +220,7 @@ TEST_CASE("Value adds floats", "[unit][Value]")
   REQUIRE(result == 3.75f);
 }
 
-TEST_CASE("Value subtracts floats", "[unit][Value]")
-{
+TEST_CASE("Value subtracts floats", "[unit][Value]") {
   Value value(2.5f);
   Value operand(0.5f);
 
@@ -256,8 +231,7 @@ TEST_CASE("Value subtracts floats", "[unit][Value]")
   REQUIRE(result == 2.f);
 }
 
-TEST_CASE("Value reports whether it is numeric", "[unit][Value]")
-{
+TEST_CASE("Value reports whether it is numeric", "[unit][Value]") {
   REQUIRE(Value(static_cast<int32_t>(1)).isNumeric());
   REQUIRE(Value(static_cast<uint32_t>(1)).isNumeric());
   REQUIRE(Value(1.5f).isNumeric());
@@ -269,40 +243,35 @@ TEST_CASE("Value reports whether it is numeric", "[unit][Value]")
   REQUIRE_FALSE(invalid.isNumeric());
 }
 
-TEST_CASE("Value unsigned addition overflow throws", "[unit][Value][uint]")
-{
+TEST_CASE("Value unsigned addition overflow throws", "[unit][Value][uint]") {
   Value value(static_cast<uint32_t>(4294967295u));
   Value operand(static_cast<uint32_t>(1));
 
   REQUIRE_THROWS_AS(value += operand, kern::RuntimeError);
 }
 
-TEST_CASE("Value unsigned subtraction underflow throws", "[unit][Value][uint]")
-{
+TEST_CASE("Value unsigned subtraction underflow throws", "[unit][Value][uint]") {
   Value value(static_cast<uint32_t>(0));
   Value operand(static_cast<uint32_t>(1));
 
   REQUIRE_THROWS_AS(value -= operand, kern::RuntimeError);
 }
 
-TEST_CASE("Value unsigned multiplication overflow throws", "[unit][Value][uint]")
-{
+TEST_CASE("Value unsigned multiplication overflow throws", "[unit][Value][uint]") {
   Value value(static_cast<uint32_t>(3000000000u));
   Value operand(static_cast<uint32_t>(2));
 
   REQUIRE_THROWS_AS(value *= operand, kern::RuntimeError);
 }
 
-TEST_CASE("Value increment on unsigned maximum throws", "[unit][Value][uint]")
-{
+TEST_CASE("Value increment on unsigned maximum throws", "[unit][Value][uint]") {
   Value value(static_cast<uint32_t>(4294967295u));
   Value one(static_cast<int32_t>(1));
 
   REQUIRE_THROWS_AS(value += one, kern::RuntimeError);
 }
 
-TEST_CASE("Value unsigned division stays in range", "[unit][Value][uint]")
-{
+TEST_CASE("Value unsigned division stays in range", "[unit][Value][uint]") {
   Value value(static_cast<uint32_t>(4294967295u));
   Value half(static_cast<uint32_t>(2));
 
@@ -313,9 +282,7 @@ TEST_CASE("Value unsigned division stays in range", "[unit][Value][uint]")
   REQUIRE(result == 2147483647u);
 }
 
-TEST_CASE("Value unsigned division by zero leaves the value unchanged",
-          "[unit][Value][uint]")
-{
+TEST_CASE("Value unsigned division by zero leaves the value unchanged", "[unit][Value][uint]") {
   Value value(static_cast<uint32_t>(10));
   Value zero(static_cast<uint32_t>(0));
 
@@ -326,23 +293,19 @@ TEST_CASE("Value unsigned division by zero leaves the value unchanged",
   REQUIRE(result == 10u);
 }
 
-TEST_CASE("Value unsigned arithmetic underflow throws", "[unit][Value]")
-{
+TEST_CASE("Value unsigned arithmetic underflow throws", "[unit][Value]") {
   Value value(static_cast<uint32_t>(0));
   Value operand(static_cast<uint32_t>(1));
 
   REQUIRE_THROWS_AS(value -= operand, kern::RuntimeError);
 }
 
-TEST_CASE("Default constructed Value is invalid", "[unit][Value]")
-{
+TEST_CASE("Default constructed Value is invalid", "[unit][Value]") {
   Value value;
   REQUIRE(value.getType() == Value::Type::Invalid);
 }
 
-TEST_CASE("Value converts integer to the other arithmetic types",
-          "[unit][Value]")
-{
+TEST_CASE("Value converts integer to the other arithmetic types", "[unit][Value]") {
   Value value(static_cast<int32_t>(42));
 
   int32_t asInteger = 0;
@@ -362,9 +325,7 @@ TEST_CASE("Value converts integer to the other arithmetic types",
   REQUIRE(asString == "42");
 }
 
-TEST_CASE("Value converts float to the other arithmetic types",
-          "[unit][Value]")
-{
+TEST_CASE("Value converts float to the other arithmetic types", "[unit][Value]") {
   Value value(2.5f);
 
   int32_t asInteger = 0;
@@ -380,8 +341,7 @@ TEST_CASE("Value converts float to the other arithmetic types",
   REQUIRE(asString == "2.5");
 }
 
-TEST_CASE("Value refuses string to numeric conversion", "[unit][Value]")
-{
+TEST_CASE("Value refuses string to numeric conversion", "[unit][Value]") {
   Value value(std::string("text"));
 
   int32_t asInteger = 0;
@@ -398,8 +358,7 @@ TEST_CASE("Value refuses string to numeric conversion", "[unit][Value]")
   REQUIRE(asString == "text");
 }
 
-TEST_CASE("Value converts unsigned integer", "[unit][Value]")
-{
+TEST_CASE("Value converts unsigned integer", "[unit][Value]") {
   Value value(static_cast<uint32_t>(7));
 
   int32_t asInteger = 0;
@@ -415,27 +374,21 @@ TEST_CASE("Value converts unsigned integer", "[unit][Value]")
   REQUIRE(asString == "7");
 }
 
-TEST_CASE("Value converts unsigned out of signed range throws",
-          "[unit][Value][convert]")
-{
+TEST_CASE("Value converts unsigned out of signed range throws", "[unit][Value][convert]") {
   Value value(static_cast<uint32_t>(3000000000u));
 
   int32_t asInteger = 0;
   REQUIRE_THROWS_AS(value.convert(asInteger), kern::RuntimeError);
 }
 
-TEST_CASE("Value converts negative integer to unsigned throws",
-          "[unit][Value][convert]")
-{
+TEST_CASE("Value converts negative integer to unsigned throws", "[unit][Value][convert]") {
   Value value(static_cast<int32_t>(-1));
 
   uint32_t asUnsigned = 0;
   REQUIRE_THROWS_AS(value.convert(asUnsigned), kern::RuntimeError);
 }
 
-TEST_CASE("Value converts unsigned at the signed boundary",
-          "[unit][Value][convert]")
-{
+TEST_CASE("Value converts unsigned at the signed boundary", "[unit][Value][convert]") {
   Value maxSigned(static_cast<uint32_t>(2147483647u));
   int32_t asInteger = 0;
   REQUIRE(maxSigned.convert(asInteger));
@@ -447,19 +400,15 @@ TEST_CASE("Value converts unsigned at the signed boundary",
   REQUIRE(asUnsigned == 0u);
 }
 
-TEST_CASE("Value toString prints every type", "[unit][Value][tostring]")
-{
+TEST_CASE("Value toString prints every type", "[unit][Value][tostring]") {
   REQUIRE(Value(static_cast<int32_t>(-7)).toString() == "Integer : -7");
-  REQUIRE(Value(static_cast<uint32_t>(7)).toString() ==
-          "UnsignedInteger : 7");
+  REQUIRE(Value(static_cast<uint32_t>(7)).toString() == "UnsignedInteger : 7");
   REQUIRE(Value(1.25f).toString() == "Float : 1.25");
   REQUIRE(Value(std::string("text")).toString() == "String : text");
   REQUIRE(Value().toString() == "Invalid");
 }
 
-TEST_CASE("Value float to int truncates in-range fractions",
-          "[unit][Value][frac]")
-{
+TEST_CASE("Value float to int truncates in-range fractions", "[unit][Value][frac]") {
   Value value(2.9f);
 
   int32_t asInteger = 0;
@@ -467,9 +416,7 @@ TEST_CASE("Value float to int truncates in-range fractions",
   REQUIRE(asInteger == 2);
 }
 
-TEST_CASE("Value float to int stays strict past the boundary",
-          "[unit][Value][frac]")
-{
+TEST_CASE("Value float to int stays strict past the boundary", "[unit][Value][frac]") {
   // The widened value exceeds INT32_MAX, so it throws even though truncation
   // would land in range. Strictness is deliberate: the check runs on the
   // value the language holds, not on its truncation.
@@ -479,8 +426,7 @@ TEST_CASE("Value float to int stays strict past the boundary",
   REQUIRE_THROWS_AS(value.convert(asInteger), kern::RuntimeError);
 }
 
-TEST_CASE("Invalid Value does not convert", "[unit][Value]")
-{
+TEST_CASE("Invalid Value does not convert", "[unit][Value]") {
   Value value;
 
   int32_t asInteger = 0;
@@ -492,8 +438,7 @@ TEST_CASE("Invalid Value does not convert", "[unit][Value]")
   REQUIRE(value.toString() == "Invalid");
 }
 
-TEST_CASE("Value compares integers", "[unit][Value]")
-{
+TEST_CASE("Value compares integers", "[unit][Value]") {
   Value left(static_cast<int32_t>(1));
   Value right(static_cast<int32_t>(2));
 
@@ -504,8 +449,7 @@ TEST_CASE("Value compares integers", "[unit][Value]")
   REQUIRE(left <= right);
 }
 
-TEST_CASE("Value adds integers", "[unit][Value]")
-{
+TEST_CASE("Value adds integers", "[unit][Value]") {
   Value value(static_cast<int32_t>(1));
   Value operand(static_cast<int32_t>(2));
 
@@ -516,8 +460,7 @@ TEST_CASE("Value adds integers", "[unit][Value]")
   REQUIRE(result == 3);
 }
 
-TEST_CASE("Value subtracts integers", "[unit][Value]")
-{
+TEST_CASE("Value subtracts integers", "[unit][Value]") {
   Value value(static_cast<int32_t>(5));
   Value operand(static_cast<int32_t>(2));
 
@@ -528,8 +471,7 @@ TEST_CASE("Value subtracts integers", "[unit][Value]")
   REQUIRE(result == 3);
 }
 
-TEST_CASE("Value move leaves the moved-from value invalid", "[unit][Value][m7]")
-{
+TEST_CASE("Value move leaves the moved-from value invalid", "[unit][Value][m7]") {
   Value value(std::string("move"));
   Value moved(std::move(value));
 
@@ -547,8 +489,7 @@ TEST_CASE("Value move leaves the moved-from value invalid", "[unit][Value][m7]")
   REQUIRE(result == 1);
 }
 
-TEST_CASE("Value mixed-type overflow throws", "[unit][Value][m8]")
-{
+TEST_CASE("Value mixed-type overflow throws", "[unit][Value][m8]") {
   // A mixed result beyond the unsigned range still throws instead of
   // wrapping; INT_MAX + 1u itself now succeeds as 2147483648u (see below).
   Value value(static_cast<int32_t>(2000000000));
@@ -557,8 +498,7 @@ TEST_CASE("Value mixed-type overflow throws", "[unit][Value][m8]")
   REQUIRE_THROWS_AS(value += operand, kern::RuntimeError);
 }
 
-TEST_CASE("Value mixed INT_MAX plus one stays unsigned", "[unit][Value][m3]")
-{
+TEST_CASE("Value mixed INT_MAX plus one stays unsigned", "[unit][Value][m3]") {
   Value value(static_cast<int32_t>(2147483647));
   Value operand(static_cast<uint32_t>(1));
 
@@ -570,8 +510,7 @@ TEST_CASE("Value mixed INT_MAX plus one stays unsigned", "[unit][Value][m3]")
   REQUIRE(result == 2147483648u);
 }
 
-TEST_CASE("Value large unsigned plus one stays unsigned", "[unit][Value][m3]")
-{
+TEST_CASE("Value large unsigned plus one stays unsigned", "[unit][Value][m3]") {
   Value value(static_cast<uint32_t>(3000000000u));
   Value one(static_cast<int32_t>(1));
 
@@ -583,8 +522,7 @@ TEST_CASE("Value large unsigned plus one stays unsigned", "[unit][Value][m3]")
   REQUIRE(result == 3000000001u);
 }
 
-TEST_CASE("Value large unsigned plus zero stays unsigned", "[unit][Value][m3]")
-{
+TEST_CASE("Value large unsigned plus zero stays unsigned", "[unit][Value][m3]") {
   Value value(static_cast<uint32_t>(3000000000u));
   Value zero(static_cast<int32_t>(0));
 
@@ -596,8 +534,7 @@ TEST_CASE("Value large unsigned plus zero stays unsigned", "[unit][Value][m3]")
   REQUIRE(result == 3000000000u);
 }
 
-TEST_CASE("Value unsigned decrement edge cases", "[unit][Value][m3]")
-{
+TEST_CASE("Value unsigned decrement edge cases", "[unit][Value][m3]") {
   {
     Value value(static_cast<uint32_t>(1));
     Value one(static_cast<int32_t>(1));
@@ -627,9 +564,7 @@ TEST_CASE("Value unsigned decrement edge cases", "[unit][Value][m3]")
   }
 }
 
-TEST_CASE("Value mixed-type arithmetic keeps float precision",
-          "[unit][Value][m8]")
-{
+TEST_CASE("Value mixed-type arithmetic keeps float precision", "[unit][Value][m8]") {
   Value value(static_cast<int32_t>(16777217));
   Value operand(0.0f);
 
@@ -642,8 +577,7 @@ TEST_CASE("Value mixed-type arithmetic keeps float precision",
   REQUIRE(result == 16777216.f);
 }
 
-TEST_CASE("Invalid values never equal", "[unit][Value][m9]")
-{
+TEST_CASE("Invalid values never equal", "[unit][Value][m9]") {
   // Both hold null buffers; equality must answer without touching them.
   Value first;
   Value second;
@@ -652,8 +586,7 @@ TEST_CASE("Invalid values never equal", "[unit][Value][m9]")
   REQUIRE(first != second);
 }
 
-TEST_CASE("Value copies strings", "[unit][Value]")
-{
+TEST_CASE("Value copies strings", "[unit][Value]") {
   Value value(std::string("copy"));
   Value copy(value);
 
@@ -669,8 +602,7 @@ TEST_CASE("Value copies strings", "[unit][Value]")
   REQUIRE(assignedText == "copy");
 }
 
-TEST_CASE("Value self assignment leaves the value intact", "[unit][Value]")
-{
+TEST_CASE("Value self assignment leaves the value intact", "[unit][Value]") {
   Value value(std::string("self"));
 
   Value &reference = value;
@@ -681,8 +613,7 @@ TEST_CASE("Value self assignment leaves the value intact", "[unit][Value]")
   REQUIRE(text == "self");
 }
 
-TEST_CASE("Value moves strings", "[unit][Value]")
-{
+TEST_CASE("Value moves strings", "[unit][Value]") {
   Value value(std::string("move"));
   Value moved(std::move(value));
 
@@ -698,8 +629,7 @@ TEST_CASE("Value moves strings", "[unit][Value]")
   REQUIRE(movedText == "move");
 }
 
-TEST_CASE("Value assignment replaces the previous string", "[unit][Value]")
-{
+TEST_CASE("Value assignment replaces the previous string", "[unit][Value]") {
   Value value(std::string("first"));
   value = Value(std::string("second"));
 

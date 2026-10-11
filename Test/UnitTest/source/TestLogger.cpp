@@ -4,19 +4,16 @@
 
 #include "common/Lexer.h"
 
-namespace
-{
+namespace {
 
 // Every level of the pipeline has to forward the logger it is given, so these
 // tests each construct a component directly rather than through a factory.
 
 const std::string labelScript = "extern println 1\n\nfunc main\n{\npushi 1\n"
                                 "jle missing\nret\n}\n";
-}
+} // namespace
 
-TEST_CASE("Assembler forwards its logger on an unresolved label",
-          "[unit][logger]")
-{
+TEST_CASE("Assembler forwards its logger on an unresolved label", "[unit][logger]") {
   testutil::RecordingLogger logger;
 
   kern::IAssembler *assembler = kern::createAssembler(&logger);
@@ -31,9 +28,7 @@ TEST_CASE("Assembler forwards its logger on an unresolved label",
   delete assembler;
 }
 
-TEST_CASE("Assembler without a logger still reports failure",
-          "[unit][logger]")
-{
+TEST_CASE("Assembler without a logger still reports failure", "[unit][logger]") {
   std::stringstream source(labelScript);
   std::stringstream byteCode;
 
@@ -46,9 +41,7 @@ TEST_CASE("Assembler without a logger still reports failure",
   delete assembler;
 }
 
-TEST_CASE("Assembler without an explicit logger uses the default logger",
-          "[unit][logger]")
-{
+TEST_CASE("Assembler without an explicit logger uses the default logger", "[unit][logger]") {
   std::stringstream source(labelScript);
   std::stringstream byteCode;
 
@@ -60,9 +53,7 @@ TEST_CASE("Assembler without an explicit logger uses the default logger",
   delete assembler;
 }
 
-TEST_CASE("Lexer forwards its logger to the injected instance",
-          "[unit][logger]")
-{
+TEST_CASE("Lexer forwards its logger to the injected instance", "[unit][logger]") {
   testutil::RecordingLogger logger;
 
   Lexer lexer(&logger);
@@ -77,8 +68,7 @@ TEST_CASE("Lexer forwards its logger to the injected instance",
   REQUIRE_FALSE(logger.empty());
 }
 
-TEST_CASE("Lexer takes a null logger without crashing", "[unit][logger]")
-{
+TEST_CASE("Lexer takes a null logger without crashing", "[unit][logger]") {
   Lexer lexer(nullptr);
   std::stringstream stream("42");
 
@@ -87,9 +77,7 @@ TEST_CASE("Lexer takes a null logger without crashing", "[unit][logger]")
   REQUIRE(lexer.getLexeme() == "42");
 }
 
-TEST_CASE("Assembler forwards its logger to its internal lexer",
-          "[unit][logger]")
-{
+TEST_CASE("Assembler forwards its logger to its internal lexer", "[unit][logger]") {
   testutil::RecordingLogger logger;
 
   kern::IAssembler *assembler = kern::createAssembler(&logger);
@@ -110,8 +98,7 @@ TEST_CASE("Assembler forwards its logger to its internal lexer",
   delete assembler;
 }
 
-TEST_CASE("Assembler logs a non-integer extern count", "[unit][logger]")
-{
+TEST_CASE("Assembler logs a non-integer extern count", "[unit][logger]") {
   testutil::RecordingLogger logger;
 
   kern::IAssembler *assembler = kern::createAssembler(&logger);
@@ -130,8 +117,7 @@ TEST_CASE("Assembler logs a non-integer extern count", "[unit][logger]")
   delete assembler;
 }
 
-TEST_CASE("A null logger discards messages", "[unit][logger]")
-{
+TEST_CASE("A null logger discards messages", "[unit][logger]") {
   kern::NullLogger logger;
   // No exception and no output.
   logger.error("a message");

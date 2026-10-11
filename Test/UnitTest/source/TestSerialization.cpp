@@ -3,46 +3,35 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "common/Deserialize.h"
-#include "common/Instructions.h"
 #include "common/ExternFunction.h"
 #include "common/Instruction.h"
+#include "common/Instructions.h"
 #include "common/ScriptHeader.h"
 
 #include <kern/RuntimeError.h>
 
-namespace
-{
+namespace {
 
-template <typename T> void writeRaw(std::stringstream &stream, T value)
-{
+template <typename T> void writeRaw(std::stringstream &stream, T value) {
   stream.write(reinterpret_cast<const char *>(&value), sizeof(T));
 }
+} // namespace
+
+TEST_CASE("Instructions table matches the instruction enum", "[unit][serialize]") {
+  REQUIRE(instructions[static_cast<unsigned int>(Opcode::Nop)].mnemonic == "nop");
+  REQUIRE(instructions[static_cast<unsigned int>(Opcode::Jle)].mnemonic == "jle");
 }
 
-TEST_CASE("Instructions table matches the instruction enum",
-          "[unit][serialize]")
-{
-  REQUIRE(instructions[static_cast<unsigned int>(Opcode::Nop)].mnemonic ==
-          "nop");
-  REQUIRE(instructions[static_cast<unsigned int>(Opcode::Jle)].mnemonic ==
-          "jle");
-}
+TEST_CASE("Every instruction has a mnemonic and an argument count", "[unit][serialize]") {
+  const unsigned int count = static_cast<unsigned int>(sizeof(instructions) / sizeof(instructions[0]));
 
-TEST_CASE("Every instruction has a mnemonic and an argument count",
-          "[unit][serialize]")
-{
-  const unsigned int count =
-      static_cast<unsigned int>(sizeof(instructions) / sizeof(instructions[0]));
-
-  for (unsigned int i = 0; i < count; ++i)
-  {
+  for (unsigned int i = 0; i < count; ++i) {
     REQUIRE_FALSE(instructions[i].mnemonic.empty());
     REQUIRE(instructions[i].argCount <= 4);
   }
 }
 
-TEST_CASE("Instruction survives serialization", "[unit][serialize]")
-{
+TEST_CASE("Instruction survives serialization", "[unit][serialize]") {
   Instruction instruction;
   instruction.id = Opcode::Movi;
   instruction.args[0] = 12;
@@ -59,9 +48,7 @@ TEST_CASE("Instruction survives serialization", "[unit][serialize]")
   REQUIRE(result.args[1] == instruction.args[1]);
 }
 
-TEST_CASE("Instruction serializes only the declared arguments",
-          "[unit][serialize]")
-{
+TEST_CASE("Instruction serializes only the declared arguments", "[unit][serialize]") {
   Instruction instruction;
   instruction.id = Opcode::Pushi;
   instruction.args[0] = 99;
@@ -73,8 +60,7 @@ TEST_CASE("Instruction serializes only the declared arguments",
   REQUIRE(static_cast<unsigned int>(stream.str().size()) == expectedSize);
 }
 
-TEST_CASE("ExternFunction survives serialization", "[unit][serialize]")
-{
+TEST_CASE("ExternFunction survives serialization", "[unit][serialize]") {
   ExternFunction externFunction;
   externFunction.name = "println";
   externFunction.argCount = 1;
@@ -89,8 +75,7 @@ TEST_CASE("ExternFunction survives serialization", "[unit][serialize]")
   REQUIRE(result.argCount == 1);
 }
 
-TEST_CASE("ScriptHeader survives serialization", "[unit][serialize]")
-{
+TEST_CASE("ScriptHeader survives serialization", "[unit][serialize]") {
   ScriptHeader header;
   header.identifier[0] = 'K';
   header.identifier[1] = 'E';
@@ -113,8 +98,7 @@ TEST_CASE("ScriptHeader survives serialization", "[unit][serialize]")
   REQUIRE(result.moduleName == "Test");
 }
 
-TEST_CASE("Deserialize reads integer types", "[unit][serialize]")
-{
+TEST_CASE("Deserialize reads integer types", "[unit][serialize]") {
   {
     std::stringstream stream;
     writeRaw<int8_t>(stream, -8);
@@ -166,16 +150,13 @@ TEST_CASE("Deserialize reads integer types", "[unit][serialize]")
   }
 }
 
-TEST_CASE("Deserialize reports failure on an empty stream",
-          "[unit][serialize]")
-{
+TEST_CASE("Deserialize reports failure on an empty stream", "[unit][serialize]") {
   std::stringstream stream;
   int32_t result = 0;
   REQUIRE_FALSE(deserialize(stream, result));
 }
 
-TEST_CASE("Deserialize reads strings", "[unit][serialize]")
-{
+TEST_CASE("Deserialize reads strings", "[unit][serialize]") {
   const std::string text = "a string constant";
 
   std::stringstream stream;
@@ -188,9 +169,7 @@ TEST_CASE("Deserialize reads strings", "[unit][serialize]")
   REQUIRE(result == text);
 }
 
-TEST_CASE("Deserialize reports failure on a truncated stream",
-          "[unit][serialize]")
-{
+TEST_CASE("Deserialize reports failure on a truncated stream", "[unit][serialize]") {
   std::stringstream stream;
   const uint32_t length = 100;
   writeRaw<uint32_t>(stream, length);
@@ -200,9 +179,7 @@ TEST_CASE("Deserialize reports failure on a truncated stream",
   REQUIRE_FALSE(deserialize(stream, result, 1024));
 }
 
-TEST_CASE("Deserialize leaves the target alone on a truncated string",
-          "[unit][serialize][trunc]")
-{
+TEST_CASE("Deserialize leaves the target alone on a truncated string", "[unit][serialize][trunc]") {
   std::stringstream stream;
   writeRaw<uint32_t>(stream, 10);
   stream.write("abc", 3);
@@ -212,9 +189,7 @@ TEST_CASE("Deserialize leaves the target alone on a truncated string",
   REQUIRE(result == "sentinel");
 }
 
-TEST_CASE("Deserialize throws on a string longer than the limit",
-          "[unit][serialize][c7]")
-{
+TEST_CASE("Deserialize throws on a string longer than the limit", "[unit][serialize][c7]") {
   std::stringstream stream;
   writeRaw<uint32_t>(stream, 16);
   stream.write("1234567890123456", 16);
@@ -223,9 +198,7 @@ TEST_CASE("Deserialize throws on a string longer than the limit",
   REQUIRE_THROWS_AS(deserialize(stream, result, 15), kern::RuntimeError);
 }
 
-TEST_CASE("Deserialize accepts a string at exactly the limit",
-          "[unit][serialize][c7]")
-{
+TEST_CASE("Deserialize accepts a string at exactly the limit", "[unit][serialize][c7]") {
   std::stringstream stream;
   writeRaw<uint32_t>(stream, 16);
   stream.write("1234567890123456", 16);
@@ -235,9 +208,7 @@ TEST_CASE("Deserialize accepts a string at exactly the limit",
   REQUIRE(result == "1234567890123456");
 }
 
-TEST_CASE("Deserialize clears the target on an empty string",
-          "[unit][serialize][m1]")
-{
+TEST_CASE("Deserialize clears the target on an empty string", "[unit][serialize][m1]") {
   std::stringstream stream;
   writeRaw<uint32_t>(stream, 0);
 
@@ -246,19 +217,15 @@ TEST_CASE("Deserialize clears the target on an empty string",
   REQUIRE(result.empty());
 }
 
-TEST_CASE("Default constructed Instruction has zero arguments",
-          "[unit][serialize][m6]")
-{
+TEST_CASE("Default constructed Instruction has zero arguments", "[unit][serialize][m6]") {
   Instruction instruction;
   REQUIRE(instruction.id == Opcode::Nop);
-  for (int i = 0; i < 4; ++i)
-  {
+  for (int i = 0; i < 4; ++i) {
     REQUIRE(instruction.args[i] == 0);
   }
 }
 
-TEST_CASE("Serialize refuses an unknown instruction id", "[unit][serialize]")
-{
+TEST_CASE("Serialize refuses an unknown instruction id", "[unit][serialize]") {
   Instruction instruction;
   instruction.id = static_cast<Opcode>(999);
 
@@ -267,9 +234,7 @@ TEST_CASE("Serialize refuses an unknown instruction id", "[unit][serialize]")
   REQUIRE(stream.str().empty());
 }
 
-TEST_CASE("Deserialize refuses an unknown instruction id",
-          "[unit][serialize]")
-{
+TEST_CASE("Deserialize refuses an unknown instruction id", "[unit][serialize]") {
   std::stringstream stream;
   writeRaw<uint16_t>(stream, 999);
 
@@ -277,9 +242,7 @@ TEST_CASE("Deserialize refuses an unknown instruction id",
   REQUIRE_FALSE(deserialize(result, stream));
 }
 
-TEST_CASE("ExternFunction with an empty name is refused",
-          "[unit][serialize][m12]")
-{
+TEST_CASE("ExternFunction with an empty name is refused", "[unit][serialize][m12]") {
   ExternFunction empty;
   empty.argCount = 0;
 
@@ -294,8 +257,7 @@ TEST_CASE("ExternFunction with an empty name is refused",
   REQUIRE_FALSE(deserialize(corrupt, result, 1024));
 }
 
-TEST_CASE("toString names an unknown instruction id", "[unit][serialize]")
-{
+TEST_CASE("toString names an unknown instruction id", "[unit][serialize]") {
   Instruction instruction;
   instruction.id = static_cast<Opcode>(999);
 

@@ -7,13 +7,11 @@
 #include <kern/FunctionBinding.h>
 #include <kern/IVirtualMachine.h>
 
-namespace
-{
+namespace {
 
 int sub4(int a, int b, int c, int d) { return a - b - c - d; }
 
-void consume4(int a, int b, int c, int d)
-{
+void consume4(int a, int b, int c, int d) {
   (void)a;
   (void)b;
   (void)c;
@@ -27,13 +25,12 @@ unsigned int answer() { return 3000000000u; }
 bool truthy() { return true; }
 
 /**
-* \brief Minimal virtual machine for binding tests.
-*
-* Hands out preloaded integers and records which setReturnValue overload the
-* binding dispatches to.
-*/
-class FakeVM : public kern::IVirtualMachine
-{
+ * \brief Minimal virtual machine for binding tests.
+ *
+ * Hands out preloaded integers and records which setReturnValue overload the
+ * binding dispatches to.
+ */
+class FakeVM : public kern::IVirtualMachine {
 public:
   std::vector<int> intParams;
   int intResult = 0;
@@ -51,72 +48,61 @@ public:
   void addFunction(const std::string &, kern::IExternFunction *) override {}
   void removeFunction(const std::string &) override {}
 
-  bool popParameter(int &value) override
-  {
+  bool popParameter(int &value) override {
     value = intParams.back();
     intParams.pop_back();
     return true;
   }
 
-  bool popParameter(float &value) override
-  {
+  bool popParameter(float &value) override {
     value = 0.f;
     return true;
   }
 
-  bool popParameter(std::string &value) override
-  {
+  bool popParameter(std::string &value) override {
     value.clear();
     return true;
   }
 
-  bool popParameter(double &value) override
-  {
+  bool popParameter(double &value) override {
     value = 0.0;
     return true;
   }
 
-  bool popParameter(unsigned int &value) override
-  {
+  bool popParameter(unsigned int &value) override {
     value = 0;
     return true;
   }
 
-  bool popParameter(bool &value) override
-  {
+  bool popParameter(bool &value) override {
     value = false;
     return true;
   }
 
   void setReturnValue() override {}
-  void setReturnValue(int value) override
-  {
+  void setReturnValue(int value) override {
     intResult = value;
     intReturned = true;
   }
   void setReturnValue(float) override {}
   void setReturnValue(const std::string &) override {}
-  void setReturnValue(double value) override
-  {
+  void setReturnValue(double value) override {
     doubleResult = value;
     doubleReturned = true;
   }
-  void setReturnValue(unsigned int value) override
-  {
+  void setReturnValue(unsigned int value) override {
     unsignedResult = value;
     unsignedReturned = true;
   }
-  void setReturnValue(bool value) override
-  {
+  void setReturnValue(bool value) override {
     boolResult = value;
     boolReturned = true;
   }
 };
 
-}
+} // namespace
 
-TEST_CASE("createExternFunction supports four arguments", "[unit][binding]")
-{
+TEST_CASE("createExternFunction supports four arguments", "[unit][binding]") {
   std::unique_ptr<kern::IExternFunction> fn(kern::createExternFunction(&sub4));
   REQUIRE(fn->getArgumentCount() == 4);
 
@@ -129,11 +115,8 @@ TEST_CASE("createExternFunction supports four arguments", "[unit][binding]")
   REQUIRE(vm.intResult == -8);
 }
 
-TEST_CASE("createExternFunction supports four void arguments",
-          "[unit][binding]")
-{
-  std::unique_ptr<kern::IExternFunction> fn(
-      kern::createExternFunction(&consume4));
+TEST_CASE("createExternFunction supports four void arguments", "[unit][binding]") {
+  std::unique_ptr<kern::IExternFunction> fn(kern::createExternFunction(&consume4));
   REQUIRE(fn->getArgumentCount() == 4);
 
   FakeVM vm;
@@ -141,8 +124,7 @@ TEST_CASE("createExternFunction supports four void arguments",
   REQUIRE(fn->call(vm));
 }
 
-TEST_CASE("Extern functions return doubles", "[unit][binding]")
-{
+TEST_CASE("Extern functions return doubles", "[unit][binding]") {
   std::unique_ptr<kern::IExternFunction> fn(kern::createExternFunction(&pi));
 
   FakeVM vm;
@@ -152,10 +134,8 @@ TEST_CASE("Extern functions return doubles", "[unit][binding]")
   REQUIRE(vm.doubleResult == 3.25);
 }
 
-TEST_CASE("Extern functions return unsigned integers", "[unit][binding]")
-{
-  std::unique_ptr<kern::IExternFunction> fn(
-      kern::createExternFunction(&answer));
+TEST_CASE("Extern functions return unsigned integers", "[unit][binding]") {
+  std::unique_ptr<kern::IExternFunction> fn(kern::createExternFunction(&answer));
 
   FakeVM vm;
   REQUIRE(fn->call(vm));
@@ -165,10 +145,8 @@ TEST_CASE("Extern functions return unsigned integers", "[unit][binding]")
   REQUIRE(vm.unsignedResult == 3000000000u);
 }
 
-TEST_CASE("Extern functions return booleans", "[unit][binding]")
-{
-  std::unique_ptr<kern::IExternFunction> fn(
-      kern::createExternFunction(&truthy));
+TEST_CASE("Extern functions return booleans", "[unit][binding]") {
+  std::unique_ptr<kern::IExternFunction> fn(kern::createExternFunction(&truthy));
 
   FakeVM vm;
   REQUIRE(fn->call(vm));

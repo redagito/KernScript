@@ -2,11 +2,9 @@
 
 #include "Deserialize.h"
 
-bool serialize(const ExternFunction &externFunction, std::ostream &stream)
-{
+bool serialize(const ExternFunction &externFunction, std::ostream &stream) {
   // Sanity checks
-  if (externFunction.name.empty())
-  {
+  if (externFunction.name.empty()) {
     return false;
   }
 
@@ -16,34 +14,28 @@ bool serialize(const ExternFunction &externFunction, std::ostream &stream)
   stream.write((char *)externFunction.name.data(), length);
 
   // Write argument count
-  stream.write((char *)&externFunction.argCount,
-               sizeof(externFunction.argCount));
+  stream.write((char *)&externFunction.argCount, sizeof(externFunction.argCount));
 
   // Return stream state
   return stream.good();
 }
 
-bool deserialize(std::istream &stream, ExternFunction &externFunction,
-                 size_t maxNameLength)
-{
+bool deserialize(std::istream &stream, ExternFunction &externFunction, size_t maxNameLength) {
   // Function name
   std::string name;
-  if (!deserialize(stream, name, maxNameLength))
-  {
+  if (!deserialize(stream, name, maxNameLength)) {
     return false;
   }
 
   // Empty names are never emitted, matching serialize(), so one on the wire
   // is corrupt input.
-  if (name.empty())
-  {
+  if (name.empty()) {
     return false;
   }
 
   // Argument count
   uint8_t argCount;
-  if (!deserialize(stream, argCount))
-  {
+  if (!deserialize(stream, argCount)) {
     return false;
   }
 

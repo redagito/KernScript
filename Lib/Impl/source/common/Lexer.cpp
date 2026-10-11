@@ -1,21 +1,17 @@
 #include "Lexer.h"
 
+#include <cassert>
 #include <cctype>
 #include <cstdio>
-#include <cassert>
 
 #include "logging/Logger.h"
 
-Lexer::Lexer(kern::ILogger *logger)
-    : m_logger(logger != nullptr ? logger : nullLogger())
-{
+Lexer::Lexer(kern::ILogger *logger) : m_logger(logger != nullptr ? logger : nullLogger()) {
   // Empty
 }
 
-unsigned int Lexer::lex(std::istream &stream)
-{
-  if (m_ignoreLex)
-  {
+unsigned int Lexer::lex(std::istream &stream) {
+  if (m_ignoreLex) {
     m_ignoreLex = false;
     return m_blankSkipped;
   }
@@ -32,13 +28,10 @@ unsigned int Lexer::lex(std::istream &stream)
   // For counting whitespaces
   m_blankSkipped = 0;
   // Skip blanks
-  while (next == ' ' || next == '\t' || next == '\r' ||
-         (m_ignoreNewLine && next == '\n'))
-  {
+  while (next == ' ' || next == '\t' || next == '\r' || (m_ignoreNewLine && next == '\n')) {
     // Skip blank
     stream.get();
-    if (next != '\n' && next != '\r')
-    {
+    if (next != '\n' && next != '\r') {
       ++m_blankSkipped;
     }
     // Peek next
@@ -46,8 +39,7 @@ unsigned int Lexer::lex(std::istream &stream)
   }
 
   // End of stream is decided on the int, before any narrowing.
-  if (next == EOF)
-  {
+  if (next == EOF) {
     m_currentToken = LexerToken::End;
     return m_blankSkipped;
   }
@@ -56,27 +48,20 @@ unsigned int Lexer::lex(std::istream &stream)
   const unsigned char narrow = static_cast<unsigned char>(next);
 
   // Check for numeric values
-  if (std::isdigit(narrow))
-  {
+  if (std::isdigit(narrow)) {
     // The next lexeme is a numeric type, either int or float
     lexNumeric(stream);
-  }
-  else if (std::isalpha(narrow))
-  {
+  } else if (std::isalpha(narrow)) {
     // Either identifier or keyword
     lexIdentifierOrKeyword(stream);
-  }
-  else
-  {
-    switch (next)
-    {
+  } else {
+    switch (next) {
     case '.':
       lexSingleCharLexeme(stream, LexerToken::Dot);
       break;
     case ':':
       // Either ':' or '::'
-      lexSingleOrDoubleCharLexeme(stream, LexerToken::Colon, ':',
-                                  LexerToken::DoubleColon);
+      lexSingleOrDoubleCharLexeme(stream, LexerToken::Colon, ':', LexerToken::DoubleColon);
       break;
     case ';':
       lexSingleCharLexeme(stream, LexerToken::Semicolon);
@@ -110,45 +95,36 @@ unsigned int Lexer::lex(std::istream &stream)
       break;
     case '!':
       // Either just '!' or '!='
-      lexSingleOrDoubleCharLexeme(stream, LexerToken::ExclamationMark, '=',
-                                  LexerToken::NotEqual);
+      lexSingleOrDoubleCharLexeme(stream, LexerToken::ExclamationMark, '=', LexerToken::NotEqual);
       break;
     case '?':
       lexSingleCharLexeme(stream, LexerToken::QuestionMark);
       break;
     case '&':
       // Either '&' or '&&'
-      lexSingleOrDoubleCharLexeme(stream, LexerToken::Ampersand, '&',
-                                  LexerToken::DoubleAmpersand);
+      lexSingleOrDoubleCharLexeme(stream, LexerToken::Ampersand, '&', LexerToken::DoubleAmpersand);
       break;
     case '|':
       // Either '|' or '||'
-      lexSingleOrDoubleCharLexeme(stream, LexerToken::Pipe, '|',
-                                  LexerToken::DoublePipe);
+      lexSingleOrDoubleCharLexeme(stream, LexerToken::Pipe, '|', LexerToken::DoublePipe);
       break;
     case '<':
       // Either '<' or '<='
-      lexSingleOrDoubleCharLexeme(stream, LexerToken::LessThan, '=',
-                                  LexerToken::LessOrEqual);
+      lexSingleOrDoubleCharLexeme(stream, LexerToken::LessThan, '=', LexerToken::LessOrEqual);
       break;
     case '>':
       // Either '>' or '>='
-      lexSingleOrDoubleCharLexeme(stream, LexerToken::GreaterThan, '=',
-                                  LexerToken::GreaterOrEqual);
+      lexSingleOrDoubleCharLexeme(stream, LexerToken::GreaterThan, '=', LexerToken::GreaterOrEqual);
       break;
     case '%':
       // Either '%' or '%='
-      lexSingleOrDoubleCharLexeme(stream, LexerToken::Percent, '=',
-                                  LexerToken::ModuloAssign);
+      lexSingleOrDoubleCharLexeme(stream, LexerToken::Percent, '=', LexerToken::ModuloAssign);
       break;
     case '/':
       // Might be comment "//" or divide and assign "/=" or slash
       // Multiline comments "/* ... */" currently not supported
-      lexSingleOrDoubleCharLexeme(stream, LexerToken::Slash, '=',
-                                  LexerToken::DivideAssign, '/',
-                                  LexerToken::Comment);
-      if (m_currentToken == LexerToken::Comment)
-      {
+      lexSingleOrDoubleCharLexeme(stream, LexerToken::Slash, '=', LexerToken::DivideAssign, '/', LexerToken::Comment);
+      if (m_currentToken == LexerToken::Comment) {
         lexComment(stream);
       }
       break;
@@ -157,24 +133,19 @@ unsigned int Lexer::lex(std::istream &stream)
       break;
     case '=':
       // Either '=' or '=='
-      lexSingleOrDoubleCharLexeme(stream, LexerToken::Assign, '=',
-                                  LexerToken::Equal);
+      lexSingleOrDoubleCharLexeme(stream, LexerToken::Assign, '=', LexerToken::Equal);
       break;
     case '*':
       // Either '*' or '*='
-      lexSingleOrDoubleCharLexeme(stream, LexerToken::Asterisk, '=',
-                                  LexerToken::MultiplyAssign);
+      lexSingleOrDoubleCharLexeme(stream, LexerToken::Asterisk, '=', LexerToken::MultiplyAssign);
       break;
     case '+':
       // Either '+' or '+=' or '++'
-      lexSingleOrDoubleCharLexeme(stream, LexerToken::Plus, '=',
-                                  LexerToken::AddAssign, '+',
-                                  LexerToken::Increment);
+      lexSingleOrDoubleCharLexeme(stream, LexerToken::Plus, '=', LexerToken::AddAssign, '+', LexerToken::Increment);
       break;
     case '-':
       // Either '-' or '-=' or '--'
-      lexSingleOrDoubleCharLexeme(stream, LexerToken::Dash, '=',
-                                  LexerToken::SubtractAssign, '-',
+      lexSingleOrDoubleCharLexeme(stream, LexerToken::Dash, '=', LexerToken::SubtractAssign, '-',
                                   LexerToken::Decrement);
       break;
     case '"':
@@ -186,8 +157,7 @@ unsigned int Lexer::lex(std::istream &stream)
     default:
       // Error. EOF is handled before the switch, so everything landing here
       // is a genuinely unexpected byte, logged as a character.
-      m_logger->error("Lexer error: Invalid character '{}' encountered.",
-                      static_cast<char>(next));
+      m_logger->error("Lexer error: Invalid character '{}' encountered.", static_cast<char>(next));
       break;
     }
   }
@@ -198,27 +168,17 @@ const std::string &Lexer::getLexeme() const { return m_currentLexeme; }
 
 LexerToken Lexer::getToken() const { return m_currentToken; }
 
-void Lexer::addKeyword(const std::string &keyword)
-{
-  m_keywords.insert(keyword);
-}
+void Lexer::addKeyword(const std::string &keyword) { m_keywords.insert(keyword); }
 
-void Lexer::removeKeyword(const std::string &keyword)
-{
-  m_keywords.erase(keyword);
-}
+void Lexer::removeKeyword(const std::string &keyword) { m_keywords.erase(keyword); }
 
 void Lexer::ignoreNextLex() { m_ignoreLex = true; }
 
 void Lexer::ignoreNewLine(bool state) { m_ignoreNewLine = state; }
 
-bool Lexer::isKeyword(const std::string &text) const
-{
-  return m_keywords.find(text) != m_keywords.end();
-}
+bool Lexer::isKeyword(const std::string &text) const { return m_keywords.find(text) != m_keywords.end(); }
 
-void Lexer::lexSingleCharLexeme(std::istream &stream, LexerToken tokenType)
-{
+void Lexer::lexSingleCharLexeme(std::istream &stream, LexerToken tokenType) {
   // Retrieve next char
   char c;
   stream.get(c);
@@ -228,81 +188,65 @@ void Lexer::lexSingleCharLexeme(std::istream &stream, LexerToken tokenType)
   m_currentToken = tokenType;
 }
 
-void Lexer::lexSingleOrDoubleCharLexeme(std::istream &stream,
-                                         LexerToken singleToken,
-                                         char nextPossible,
-                                         LexerToken doubleToken)
-{
+void Lexer::lexSingleOrDoubleCharLexeme(std::istream &stream, LexerToken singleToken, char nextPossible,
+                                        LexerToken doubleToken) {
   // Retrieve char and store
   char c;
   stream.get(c);
   m_currentLexeme.push_back(c);
 
   // Look ahead and check if lexeme is double char sequence
-  if (stream.peek() == nextPossible)
-  {
+  if (stream.peek() == nextPossible) {
     // Add next char to lexeme
     stream.get(c);
     m_currentLexeme.push_back(c);
     // Set token to double token type
     m_currentToken = doubleToken;
-  }
-  else
-  {
+  } else {
     // Set token to single token sequence
     m_currentToken = singleToken;
   }
 }
 
-void Lexer::lexSingleOrDoubleCharLexeme(
-    std::istream &stream, LexerToken singleToken, char nextPossible0,
-    LexerToken doubleToken0, char nextPossible1, LexerToken doubleToken1)
-{
+void Lexer::lexSingleOrDoubleCharLexeme(std::istream &stream, LexerToken singleToken, char nextPossible0,
+                                        LexerToken doubleToken0, char nextPossible1, LexerToken doubleToken1) {
   // Retrieve char and store
   char c;
   stream.get(c);
   m_currentLexeme.push_back(c);
 
   // Look ahead and check if lexeme is double char sequence
-  if (stream.peek() == nextPossible0)
-  {
+  if (stream.peek() == nextPossible0) {
     // Add next char to lexeme
     stream.get(c);
     m_currentLexeme.push_back(c);
     // Set token to double token type
     m_currentToken = doubleToken0;
-  }
-  else if (stream.peek() == nextPossible1)
-  {
+  } else if (stream.peek() == nextPossible1) {
     // Add next char to lexeme
     stream.get(c);
     m_currentLexeme.push_back(c);
     // Set token to double token type
     m_currentToken = doubleToken1;
-  }
-  else
-  {
+  } else {
     // Set token to single token sequence
     m_currentToken = singleToken;
   }
 }
 
-void Lexer::lexNumeric(std::istream &stream)
-{
+void Lexer::lexNumeric(std::istream &stream) {
   // Default is integer until proven otherwise
   m_currentToken = LexerToken::Integer;
 
   // Loop through chars until non-digit is found
-  while (std::isdigit(stream.peek()))
-  {
+  while (std::isdigit(stream.peek())) {
     char c;
     stream.get(c);
     m_currentLexeme.push_back(c);
   }
 
   // Check for dot
-  if (stream.peek() != '.')
-  {
+  if (stream.peek() != '.') {
     // Next token not a dot means end of integer, otherwise its a float
     return;
   }
@@ -316,8 +260,7 @@ void Lexer::lexNumeric(std::istream &stream)
   m_currentLexeme.push_back(c);
 
   // Read remaining digits
-  while (std::isdigit(stream.peek()))
-  {
+  while (std::isdigit(stream.peek())) {
     // Valid float found
     m_currentToken = LexerToken::Float;
     char c;
@@ -326,12 +269,10 @@ void Lexer::lexNumeric(std::istream &stream)
   }
 }
 
-void Lexer::lexIdentifierOrKeyword(std::istream &stream)
-{
+void Lexer::lexIdentifierOrKeyword(std::istream &stream) {
   // Already checked for leading alphabetic character
   // Valid characters in a, identifier are alphabetic, numeric and underscore
-  while (std::isalnum(stream.peek()) || stream.peek() == '_')
-  {
+  while (std::isalnum(stream.peek()) || stream.peek() == '_') {
     // Build lexeme
     char c;
     stream.get(c);
@@ -341,46 +282,37 @@ void Lexer::lexIdentifierOrKeyword(std::istream &stream)
   // Default to identifier
   m_currentToken = LexerToken::Identifier;
   // Check if lexeme is keyword
-  if (isKeyword(m_currentLexeme))
-  {
+  if (isKeyword(m_currentLexeme)) {
     m_currentToken = LexerToken::Keyword;
   }
 }
 
-void Lexer::lexString(std::istream &stream)
-{
+void Lexer::lexString(std::istream &stream) {
   // Throw away first quote
   assert(stream.peek() == '"');
   char c;
   stream.get(c);
 
   bool escaped = false;
-  while (!(stream.peek() == '"' && !escaped))
-  {
+  while (!(stream.peek() == '"' && !escaped)) {
     stream.get(c);
     // A failed extraction (EOF or stream error) leaves c holding stale
     // content. The string is unterminated, so stop instead of processing it.
-    if (stream.fail())
-    {
+    if (stream.fail()) {
       m_currentToken = LexerToken::Invalid;
       return;
     }
-    if (!escaped)
-    {
-      if (c == '\\')
-      {
+    if (!escaped) {
+      if (c == '\\') {
         escaped = true;
       }
-    }
-    else
-    {
+    } else {
       escaped = false;
     }
 
     // Check for line break (which is invalid in strings) or unexpected EOF
     // stream signal
-    if (stream.peek() == '\n' || stream.peek() == EOF)
-    {
+    if (stream.peek() == '\n' || stream.peek() == EOF) {
       m_currentToken = LexerToken::Invalid;
       return;
     }
@@ -392,13 +324,11 @@ void Lexer::lexString(std::istream &stream)
   m_currentToken = LexerToken::String;
 }
 
-void Lexer::lexComment(std::istream &stream)
-{
+void Lexer::lexComment(std::istream &stream) {
   // The '//' part has already been written, add remaining line
   // without newline character to lexeme
   // Check for newline or end of stream
-  while (!(stream.peek() == '\n' || stream.peek() == EOF))
-  {
+  while (!(stream.peek() == '\n' || stream.peek() == EOF)) {
     char c;
     stream.get(c);
     m_currentLexeme.push_back(c);

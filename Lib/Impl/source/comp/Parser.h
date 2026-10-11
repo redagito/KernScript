@@ -6,13 +6,12 @@
 
 #include "common/Lexer.h"
 
-class Parser
-{
+class Parser {
 public:
   /**
-  * \brief Constructs a parser.
-  * \param logger Receives diagnostics. A null pointer discards them.
-  */
+   * \brief Constructs a parser.
+   * \param logger Receives diagnostics. A null pointer discards them.
+   */
   explicit Parser(kern::ILogger *logger);
 
   bool parse(std::istream &sourceCode);

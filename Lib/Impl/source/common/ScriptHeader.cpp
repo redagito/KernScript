@@ -2,8 +2,7 @@
 
 #include "Deserialize.h"
 
-bool serialize(const ScriptHeader &header, std::ostream &stream)
-{
+bool serialize(const ScriptHeader &header, std::ostream &stream) {
   // 4 byte identifier
   stream.write((char *)header.identifier, sizeof(header.identifier));
   // 1 byte major version
@@ -18,22 +17,18 @@ bool serialize(const ScriptHeader &header, std::ostream &stream)
   return stream.good();
 }
 
-bool deserialize(ScriptHeader &header, std::istream &stream,
-                 size_t maxModuleLength)
-{
+bool deserialize(ScriptHeader &header, std::istream &stream, size_t maxModuleLength) {
   // 4 byte identifier
   stream.read((char *)header.identifier, sizeof(header.identifier));
   // 1 byte major version
   stream.read((char *)&header.majorVersion, sizeof(header.majorVersion));
   // 1 byte minor version
   stream.read((char *)&header.minorVersion, sizeof(header.minorVersion));
-  if (!stream.good())
-  {
+  if (!stream.good()) {
     return false;
   }
   std::string moduleName;
-  if (!deserialize(stream, moduleName, maxModuleLength))
-  {
+  if (!deserialize(stream, moduleName, maxModuleLength)) {
     return false;
   }
   header.moduleName = std::move(moduleName);

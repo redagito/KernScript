@@ -9,89 +9,66 @@
 #ifdef _WIN32
 #include <crtdbg.h>
 
-namespace
-{
+namespace {
 
-struct ReportModeInitializer
-{
-  ReportModeInitializer()
-  {
+struct ReportModeInitializer {
+  ReportModeInitializer() {
     _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE | _CRTDBG_MODE_DEBUG);
     _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE | _CRTDBG_MODE_DEBUG);
   }
 };
 
 const ReportModeInitializer g_reportModeInitializer;
-}
+} // namespace
 #endif
 
-namespace
-{
+namespace {
 
 // The active recorder the host functions forward to. Host functions are
 // registered as plain function pointers, so the recorder has to be reachable
 // from a file static. Tests are single threaded.
 testutil::OutputRecorder *g_recorder = nullptr;
-}
+} // namespace
 
-namespace host
-{
+namespace host {
 
 // Deliberately namespaced: "print" and "log" collide with the C library
 // functions of the same name that <sstream> pulls into the global namespace,
 // which makes taking their address ambiguous.
-namespace
-{
+namespace {
 
 void print(std::string text) { g_recorder->print(text); }
 
 void println(std::string text) { g_recorder->println(text); }
 
-void log(std::string severity, std::string message)
-{
-  g_recorder->log(severity, message);
-}
+void log(std::string severity, std::string message) { g_recorder->log(severity, message); }
 
 int get_value() { return 35; }
 
-int fast_fib(int v)
-{
+int fast_fib(int v) {
   if (v < 2)
     return v;
   return fast_fib(v - 1) + fast_fib(v - 2);
 }
-}
-}
+} // namespace
+} // namespace host
 
 testutil::OutputRecorder::~OutputRecorder() {}
 
-const std::vector<std::string> &testutil::RecordingLogger::messages() const
-{
-  return m_messages;
-}
+const std::vector<std::string> &testutil::RecordingLogger::messages() const { return m_messages; }
 
 bool testutil::RecordingLogger::empty() const { return m_messages.empty(); }
 
-void testutil::RecordingLogger::onError(const std::string &message)
-{
-  m_messages.push_back(message);
-}
+void testutil::RecordingLogger::onError(const std::string &message) { m_messages.push_back(message); }
 
+void testutil::StringRecorder::print(const std::string &text) { m_text += text; }
 
-void testutil::StringRecorder::print(const std::string &text)
-{
-  m_text += text;
-}
-
-void testutil::StringRecorder::println(const std::string &text)
-{
+void testutil::StringRecorder::println(const std::string &text) {
   m_text += text;
   m_text += '\n';
 }
 
-void testutil::StringRecorder::log(const std::string &severity,
-                                   const std::string &message)
-{
+void testutil::StringRecorder::log(const std::string &severity, const std::string &message) {
   m_text += '[';
   m_text += severity;
   m_text += "]: ";
@@ -107,12 +84,9 @@ void testutil::DiscardRecorder::print(const std::string &text) {}
 
 void testutil::DiscardRecorder::println(const std::string &text) {}
 
-void testutil::DiscardRecorder::log(const std::string &severity,
-                                    const std::string &message) {}
+void testutil::DiscardRecorder::log(const std::string &severity, const std::string &message) {}
 
-void testutil::registerHostFunctions(kern::IVirtualMachine &vm,
-                                     OutputRecorder &recorder)
-{
+void testutil::registerHostFunctions(kern::IVirtualMachine &vm, OutputRecorder &recorder) {
   g_recorder = &recorder;
 
   vm.addFunction("print", kern::createExternFunction(&host::print));
@@ -122,49 +96,38 @@ void testutil::registerHostFunctions(kern::IVirtualMachine &vm,
   vm.addFunction("fast_fib", kern::createExternFunction(&host::fast_fib));
 }
 
-bool testutil::assemble(const std::string &asmSource,
-                        std::stringstream &byteCode)
-{
+bool testutil::assemble(const std::string &asmSource, std::stringstream &byteCode) {
   std::stringstream source(asmSource);
 
   std::unique_ptr<kern::IAssembler> assembler(kern::createAssembler());
-  if (!assembler->assemble(source, byteCode))
-  {
+  if (!assembler->assemble(source, byteCode)) {
     return false;
   }
   return true;
 }
 
-bool testutil::runScript(const std::string &asmSource,
-                         const std::string &functionName,
-                         OutputRecorder &recorder)
-{
+bool testutil::runScript(const std::string &asmSource, const std::string &functionName, OutputRecorder &recorder) {
   std::stringstream byteCode;
-  if (!assemble(asmSource, byteCode))
-  {
+  if (!assemble(asmSource, byteCode)) {
     return false;
   }
 
   std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
   registerHostFunctions(*vm, recorder);
 
-  if (!vm->load(byteCode))
-  {
+  if (!vm->load(byteCode)) {
     return false;
   }
 
-  if (!vm->callFunction(functionName))
-  {
+  if (!vm->callFunction(functionName)) {
     return false;
   }
   return true;
 }
 
-std::string testutil::readFile(const std::string &path)
-{
+std::string testutil::readFile(const std::string &path) {
   std::ifstream stream(path);
-  if (!stream.is_open())
-  {
+  if (!stream.is_open()) {
     return std::string();
   }
   std::stringstream buffer;

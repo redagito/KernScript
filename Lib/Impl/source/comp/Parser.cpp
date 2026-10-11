@@ -4,10 +4,7 @@
 
 #include "logging/Logger.h"
 
-Parser::Parser(kern::ILogger *logger)
-    : m_lexer(logger),
-      m_logger(logger != nullptr ? logger : nullLogger())
-{
+Parser::Parser(kern::ILogger *logger) : m_lexer(logger), m_logger(logger != nullptr ? logger : nullLogger()) {
   // Language specific keywords
   m_lexer.addKeyword("var");    // Variable declaration
   m_lexer.addKeyword("func");   // Function declaration
@@ -22,42 +19,32 @@ Parser::Parser(kern::ILogger *logger)
   m_lexer.addKeyword("return"); // Return statement
 }
 
-bool Parser::parse(std::istream &stream)
-{
+bool Parser::parse(std::istream &stream) {
   m_currentLineIndex = 0;
   m_currentLineNumber = 1;
 
-  do
-  {
+  do {
     // Get lexeme
     m_currentLineIndex += m_lexer.lex(stream);
 
     // Process lexeme
-    switch (m_lexer.getToken())
-    {
+    switch (m_lexer.getToken()) {
     case LexerToken::NewLine:
       ++m_currentLineNumber;
       m_currentLineIndex = 0;
       break;
     case LexerToken::Keyword:
-      if (m_lexer.getLexeme() == "func")
-      {
+      if (m_lexer.getLexeme() == "func") {
         // Script function
-        if (!parseFunction(stream))
-        {
+        if (!parseFunction(stream)) {
           return false;
         }
-      }
-      else if (m_lexer.getLexeme() == "extern")
-      {
+      } else if (m_lexer.getLexeme() == "extern") {
         // Extern function
-        if (!parseExternFunction(stream))
-        {
+        if (!parseExternFunction(stream)) {
           return false;
         }
-      }
-      else
-      {
+      } else {
         m_logger->error("Invalid lexeme encountered: {}", m_lexer.getLexeme());
         return false;
       }
@@ -67,13 +54,11 @@ bool Parser::parse(std::istream &stream)
     default:
       break;
     }
-  } while (m_lexer.getToken() != LexerToken::End &&
-           m_lexer.getToken() != LexerToken::Invalid);
+  } while (m_lexer.getToken() != LexerToken::End && m_lexer.getToken() != LexerToken::Invalid);
   return true;
 }
 
-bool Parser::parseVariableDeclaration(std::istream &stream)
-{
+bool Parser::parseVariableDeclaration(std::istream &stream) {
   // Variable declaration has the form
   // 'var' Identifier [ '[' Integer ']' ] [ '=' Expression ] ';'
 
@@ -89,23 +74,18 @@ bool Parser::parseVariableDeclaration(std::istream &stream)
   return false;
 }
 
-bool Parser::parseFunction(std::istream &stream)
-{
+bool Parser::parseFunction(std::istream &stream) {
   // Make sure the last token was 'func'
   assert(m_lexer.getToken() == LexerToken::Keyword);
   assert(m_lexer.getLexeme() == "func");
 
   // Next should be function name identifier
   m_currentLineIndex += m_lexer.lex(stream);
-  if (m_lexer.getToken() != LexerToken::Identifier)
-  {
-    if (m_lexer.getToken() == LexerToken::End)
-    {
+  if (m_lexer.getToken() != LexerToken::Identifier) {
+    if (m_lexer.getToken() == LexerToken::End) {
       m_logger->error("Unexpected end of stream encountered while expecting a "
-                   "function name identifier.");
-    }
-    else
-    {
+                      "function name identifier.");
+    } else {
       m_logger->error("Invalid function name identifier '{}'.", m_lexer.getLexeme());
     }
     return false;
@@ -116,8 +96,7 @@ bool Parser::parseFunction(std::istream &stream)
 
   // Next token should be '('
   m_currentLineIndex += m_lexer.lex(stream);
-  if (m_lexer.getToken() != LexerToken::OpenParenthesis)
-  {
+  if (m_lexer.getToken() != LexerToken::OpenParenthesis) {
     return false;
   }
 
@@ -125,8 +104,7 @@ bool Parser::parseFunction(std::istream &stream)
 
   // Next token should be ')'
   m_currentLineIndex += m_lexer.lex(stream);
-  if (m_lexer.getToken() != LexerToken::CloseParenthesis)
-  {
+  if (m_lexer.getToken() != LexerToken::CloseParenthesis) {
     return false;
   }
 
