@@ -1,0 +1,112 @@
+// Exercises every jump: each conditional taken and not taken, an
+// unconditional jump, and a counted loop that jumps backward.
+extern println 1
+
+func main
+{
+  // jmp skips the block
+  jmp after
+  pushi 99
+  calle println
+  label after
+  pushi 1
+  calle println
+
+  // je taken (3 == 3), jne not taken
+  pushi 3
+  pushi 3
+  je je_taken
+  pushi 99
+  calle println
+  label je_taken
+  pushi 2
+  calle println
+  pushi 3
+  pushi 3
+  jne jne_taken
+  pushi 3
+  calle println
+  label jne_taken
+
+  // jne taken (3 != 4), je not taken
+  pushi 3
+  pushi 4
+  jne jne_taken2
+  pushi 99
+  calle println
+  label jne_taken2
+  pushi 4
+  calle println
+  pushi 3
+  pushi 4
+  je je_taken2
+  pushi 5
+  calle println
+  label je_taken2
+
+  // jg taken (5 > 4), jge taken on equal (5 >= 5)
+  pushi 5
+  pushi 4
+  jg jg_taken
+  pushi 99
+  calle println
+  label jg_taken
+  pushi 6
+  calle println
+  pushi 5
+  pushi 5
+  jge jge_taken
+  pushi 99
+  calle println
+  label jge_taken
+  pushi 7
+  calle println
+
+  // jl taken (4 < 5), jle taken on equal (5 <= 5)
+  pushi 4
+  pushi 5
+  jl jl_taken
+  pushi 99
+  calle println
+  label jl_taken
+  pushi 8
+  calle println
+  pushi 5
+  pushi 5
+  jle jle_taken
+  pushi 99
+  calle println
+  label jle_taken
+  pushi 9
+  calle println
+
+  // not-taken complements print their fallthrough values
+  pushi 4
+  pushi 5
+  jg jg_skipped
+  pushi 10
+  calle println
+  label jg_skipped
+  pushi 5
+  pushi 4
+  jl jl_skipped
+  pushi 11
+  calle println
+  label jl_skipped
+
+  // counted loop: print 3 2 1 using a backward jump
+  var count
+  pushi 3
+  popv count
+  label loop
+  pushv count
+  calle println
+  pushv count
+  pushi 1
+  sub
+  popv count
+  pushv count
+  pushi 0
+  jg loop
+  ret
+}

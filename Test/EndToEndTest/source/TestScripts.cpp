@@ -45,6 +45,15 @@ TEST_CASE("logic evaluates truth tables and a combined expression",
                              "0\n");
 }
 
+TEST_CASE("jumps cover every conditional both ways plus a loop",
+          "[e2e][fixture]")
+{
+  const testutil::StringRecorder recorder = runFixture("jumps");
+
+  REQUIRE(recorder.text() == "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n"
+                             "3\n2\n1\n");
+}
+
 TEST_CASE("test1 prints its values and calls a two argument extern function",
           "[e2e][fixture]")
 {
