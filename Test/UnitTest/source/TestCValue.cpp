@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "kern/RuntimeError.h"
 #include "vm/Value.h"
 
 TEST_CASE("Value carries the type it was constructed with", "[unit][Value]")
@@ -308,18 +309,18 @@ TEST_CASE("Value converts float to the other arithmetic types",
   REQUIRE(asString == "2.5");
 }
 
-TEST_CASE("Value rejects conversions it does not implement", "[unit][Value]")
+TEST_CASE("Value refuses string to numeric conversion", "[unit][Value]")
 {
   Value value(std::string("text"));
 
   int32_t asInteger = 0;
-  REQUIRE_FALSE(value.convert(asInteger));
+  REQUIRE_THROWS_AS(value.convert(asInteger), kern::RuntimeError);
 
   uint32_t asUnsigned = 0;
-  REQUIRE_FALSE(value.convert(asUnsigned));
+  REQUIRE_THROWS_AS(value.convert(asUnsigned), kern::RuntimeError);
 
   float asFloat = 0.f;
-  REQUIRE_FALSE(value.convert(asFloat));
+  REQUIRE_THROWS_AS(value.convert(asFloat), kern::RuntimeError);
 
   std::string asString;
   REQUIRE(value.convert(asString));

@@ -1104,6 +1104,24 @@ TEST_CASE("A host function receives its arguments in source order",
   REQUIRE(recorder.text() == "[1]: 2\n");
 }
 
+TEST_CASE("Passing a string to an int extern parameter throws",
+          "[integration][vm]")
+{
+  const std::string source = "extern fast_fib 1\nextern println 1\n"
+                             "\nfunc main\n{\npushs \"text\"\n"
+                             "calle fast_fib\ncalle println\nret\n}\n";
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
+}
+
 TEST_CASE("VMConfig defaults to 1MB stack and 1024 depth",
           "[integration][vm][limits]")
 {

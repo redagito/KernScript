@@ -1,5 +1,7 @@
 #include "Value.h"
 
+#include "kern/RuntimeError.h"
+
 #include <cstring>
 #include <sstream>
 #include <cassert>
@@ -61,8 +63,7 @@ bool Value::convert(int32_t &value) const
     value = (int32_t)m_float;
     return true;
   case Type::String:
-    // String conversion TODO
-    return false;
+    throw kern::RuntimeError("Cannot convert string to integer.");
   default:
     // Unknown or invalid conversion
     return false;
@@ -83,8 +84,7 @@ bool Value::convert(uint32_t &value) const
     value = (uint32_t)m_float;
     return true;
   case Type::String:
-    // String conversion TODO
-    return false;
+    throw kern::RuntimeError("Cannot convert string to unsigned integer.");
   default:
     // Unknown or invalid conversion
     return false;
@@ -105,8 +105,7 @@ bool Value::convert(float &value) const
     value = m_float;
     return true;
   case Type::String:
-    // String conversion TODO
-    return false;
+    throw kern::RuntimeError("Cannot convert string to float.");
   default:
     // Unknown or invalid conversion
     return false;
