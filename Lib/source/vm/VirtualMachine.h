@@ -11,25 +11,25 @@
 #include "kern/ILogger.h"
 #include "kern/VMConfig.h"
 
-#include "CValue.h"
+#include "Value.h"
 #include "common/SInstruction.h"
 #include "common/SExternFunction.h"
 
-class CVirtualMachine : public kern::IVirtualMachine
+class VirtualMachine : public kern::IVirtualMachine
 {
 public:
   /**
   * \brief Constructs a virtual machine with default limits.
   * \param logger Receives diagnostics. A null pointer discards them.
   */
-  explicit CVirtualMachine(kern::ILogger *logger);
+  explicit VirtualMachine(kern::ILogger *logger);
 
   /**
   * \brief Constructs a virtual machine with explicit limits.
   * \param logger Receives diagnostics. A null pointer discards them.
   * \param config Bounds the runtime stack and the call depth.
   */
-  CVirtualMachine(kern::ILogger *logger, kern::VMConfig config);
+  VirtualMachine(kern::ILogger *logger, kern::VMConfig config);
 
   bool load(std::istream &byteCode);
 
@@ -65,12 +65,12 @@ protected:
   /**
   * \brief Pushes value on top of runtime stack.
   */
-  void pushValue(const CValue &value);
+  void pushValue(const Value &value);
 
   /**
   * \brief Pops value from runtime stack into supplied variable.
   */
-  bool popValue(CValue &val);
+  bool popValue(Value &val);
 
 private:
   /**
@@ -113,7 +113,7 @@ private:
   std::unordered_map<std::string, std::unique_ptr<kern::IExternFunction>>
       m_externFunctionsMap; /**< Extern functions. */
 
-  std::vector<CValue> m_runtimeStack; /**< Active runtime stack. */
+  std::vector<Value> m_runtimeStack; /**< Active runtime stack. */
   std::stack<SFunctionFrame>
       m_callStack; /**< Function call stack for instruction ret. */
 

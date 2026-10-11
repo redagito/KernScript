@@ -6,7 +6,7 @@
 #include "testutil/TestSupport.hpp"
 
 #include "common/SInstruction.h"
-#include "vm/CVirtualMachine.h"
+#include "vm/VirtualMachine.h"
 
 namespace
 {
@@ -99,7 +99,7 @@ void requireCorrupt(const std::vector<std::string> &strings,
                     const std::vector<FakeFunction> &functions)
 {
   std::stringstream byteCode = buildByteCode(strings, functions);
-  CVirtualMachine vm(nullptr);
+  VirtualMachine vm(nullptr);
   REQUIRE(vm.load(byteCode));
   REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
 }
@@ -175,7 +175,7 @@ TEST_CASE("Inc on an empty stack stops the script", "[integration][vm]")
   std::stringstream byteCode;
   REQUIRE(testutil::assemble(source, byteCode));
 
-  CVirtualMachine vm(nullptr);
+  VirtualMachine vm(nullptr);
   testutil::DiscardRecorder recorder;
   testutil::registerHostFunctions(vm, recorder);
   REQUIRE(vm.load(byteCode));
@@ -190,7 +190,7 @@ TEST_CASE("Inc on a string operand is refused", "[integration][vm]")
   std::stringstream byteCode;
   REQUIRE(testutil::assemble(source, byteCode));
 
-  CVirtualMachine vm(nullptr);
+  VirtualMachine vm(nullptr);
   testutil::DiscardRecorder recorder;
   testutil::registerHostFunctions(vm, recorder);
   REQUIRE(vm.load(byteCode));
@@ -205,7 +205,7 @@ TEST_CASE("Dec on an empty stack stops the script", "[integration][vm]")
   std::stringstream byteCode;
   REQUIRE(testutil::assemble(source, byteCode));
 
-  CVirtualMachine vm(nullptr);
+  VirtualMachine vm(nullptr);
   testutil::DiscardRecorder recorder;
   testutil::registerHostFunctions(vm, recorder);
   REQUIRE(vm.load(byteCode));
@@ -353,7 +353,7 @@ TEST_CASE("Or on strings is refused", "[integration][vm]")
   std::stringstream byteCode;
   REQUIRE(testutil::assemble(source, byteCode));
 
-  CVirtualMachine vm(nullptr);
+  VirtualMachine vm(nullptr);
   testutil::DiscardRecorder recorder;
   testutil::registerHostFunctions(vm, recorder);
   REQUIRE(vm.load(byteCode));
@@ -368,7 +368,7 @@ TEST_CASE("Not on an empty stack stops the script", "[integration][vm]")
   std::stringstream byteCode;
   REQUIRE(testutil::assemble(source, byteCode));
 
-  CVirtualMachine vm(nullptr);
+  VirtualMachine vm(nullptr);
   testutil::DiscardRecorder recorder;
   testutil::registerHostFunctions(vm, recorder);
   REQUIRE(vm.load(byteCode));
@@ -383,7 +383,7 @@ TEST_CASE("And on a short stack stops the script", "[integration][vm]")
   std::stringstream byteCode;
   REQUIRE(testutil::assemble(source, byteCode));
 
-  CVirtualMachine vm(nullptr);
+  VirtualMachine vm(nullptr);
   testutil::DiscardRecorder recorder;
   testutil::registerHostFunctions(vm, recorder);
   REQUIRE(vm.load(byteCode));
@@ -671,7 +671,7 @@ TEST_CASE("Pop on an empty stack stops the script", "[integration][vm]")
   std::stringstream byteCode;
   REQUIRE(testutil::assemble(source, byteCode));
 
-  CVirtualMachine vm(nullptr);
+  VirtualMachine vm(nullptr);
   testutil::DiscardRecorder recorder;
   testutil::registerHostFunctions(vm, recorder);
   REQUIRE(vm.load(byteCode));
@@ -688,7 +688,7 @@ TEST_CASE("Calling an extern function without arguments stops the script",
   std::stringstream byteCode;
   REQUIRE(testutil::assemble(source, byteCode));
 
-  CVirtualMachine vm(nullptr);
+  VirtualMachine vm(nullptr);
   testutil::DiscardRecorder recorder;
   testutil::registerHostFunctions(vm, recorder);
   REQUIRE(vm.load(byteCode));
@@ -849,7 +849,7 @@ TEST_CASE("Div by zero stops the script and logs an error",
   std::stringstream byteCode;
   REQUIRE(testutil::assemble(source, byteCode));
 
-  CVirtualMachine vm(nullptr);
+  VirtualMachine vm(nullptr);
   testutil::DiscardRecorder recorder;
   testutil::registerHostFunctions(vm, recorder);
 
@@ -867,7 +867,7 @@ TEST_CASE("Arithmetic on a string operand is refused", "[integration][vm]")
   std::stringstream byteCode;
   REQUIRE(testutil::assemble(source, byteCode));
 
-  CVirtualMachine vm(nullptr);
+  VirtualMachine vm(nullptr);
   testutil::DiscardRecorder recorder;
   testutil::registerHostFunctions(vm, recorder);
   REQUIRE(vm.load(byteCode));
@@ -1116,7 +1116,7 @@ TEST_CASE("Stack limit allows pushes within budget",
           "[integration][vm][limits]")
 {
   const size_t slots = 4;
-  const kern::VMConfig config{slots * sizeof(CValue), 1024};
+  const kern::VMConfig config{slots * sizeof(Value), 1024};
   const std::string source = wrap("pushi 1\npushi 2\npushi 3\npushi 4\n"
                                   "calle println\ncalle println\n"
                                   "calle println\ncalle println\nret");
@@ -1124,7 +1124,7 @@ TEST_CASE("Stack limit allows pushes within budget",
   std::stringstream byteCode;
   REQUIRE(testutil::assemble(source, byteCode));
 
-  CVirtualMachine vm(nullptr, config);
+  VirtualMachine vm(nullptr, config);
   testutil::StringRecorder recorder;
   testutil::registerHostFunctions(vm, recorder);
   REQUIRE(vm.load(byteCode));
@@ -1136,14 +1136,14 @@ TEST_CASE("Stack limit allows pushes within budget",
 TEST_CASE("Stack limit throws past budget", "[integration][vm][limits]")
 {
   const size_t slots = 4;
-  const kern::VMConfig config{slots * sizeof(CValue), 1024};
+  const kern::VMConfig config{slots * sizeof(Value), 1024};
   const std::string source = wrap("pushi 1\npushi 2\npushi 3\npushi 4\n"
                                   "pushi 5\npushi 6\nret");
 
   std::stringstream byteCode;
   REQUIRE(testutil::assemble(source, byteCode));
 
-  CVirtualMachine vm(nullptr, config);
+  VirtualMachine vm(nullptr, config);
   testutil::DiscardRecorder recorder;
   testutil::registerHostFunctions(vm, recorder);
   REQUIRE(vm.load(byteCode));
@@ -1161,7 +1161,7 @@ TEST_CASE("Call depth limit stops infinite recursion",
   std::stringstream byteCode;
   REQUIRE(testutil::assemble(source, byteCode));
 
-  CVirtualMachine vm(nullptr, config);
+  VirtualMachine vm(nullptr, config);
   testutil::DiscardRecorder recorder;
   testutil::registerHostFunctions(vm, recorder);
   REQUIRE(vm.load(byteCode));
@@ -1180,7 +1180,7 @@ TEST_CASE("Corrupt stack size is rejected, not bad_alloc",
   callee.parameterSize = 0;
 
   std::stringstream byteCode = buildByteCode({}, {main, callee});
-  CVirtualMachine vm(nullptr, kern::VMConfig{});
+  VirtualMachine vm(nullptr, kern::VMConfig{});
   REQUIRE(vm.load(byteCode));
 
   REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
@@ -1194,7 +1194,7 @@ TEST_CASE("Factory overloads accept a config", "[integration][vm][limits]")
   std::stringstream byteCode;
   REQUIRE(testutil::assemble(source, byteCode));
 
-  const kern::VMConfig tiny{4 * sizeof(CValue), 1024};
+  const kern::VMConfig tiny{4 * sizeof(Value), 1024};
   std::unique_ptr<kern::IVirtualMachine> vm(
       kern::createVirtualMachine(nullptr, tiny));
   testutil::DiscardRecorder recorder;
@@ -1218,7 +1218,7 @@ TEST_CASE("Factory overloads accept a config", "[integration][vm][limits]")
 TEST_CASE("Return past a full stack throws", "[integration][vm][limits]")
 {
   const size_t slots = 2;
-  const kern::VMConfig config{slots * sizeof(CValue), 1024};
+  const kern::VMConfig config{slots * sizeof(Value), 1024};
   const std::string source = "extern println 1\n\nfunc f\n{\nreti 5\n}\n"
                              "\nfunc main\n{\npushi 1\npushi 2\ncall f\n"
                              "calle println\nret\n}\n";
@@ -1226,7 +1226,7 @@ TEST_CASE("Return past a full stack throws", "[integration][vm][limits]")
   std::stringstream byteCode;
   REQUIRE(testutil::assemble(source, byteCode));
 
-  CVirtualMachine vm(nullptr, config);
+  VirtualMachine vm(nullptr, config);
   testutil::StringRecorder recorder;
   testutil::registerHostFunctions(vm, recorder);
   REQUIRE(vm.load(byteCode));
@@ -1465,7 +1465,7 @@ TEST_CASE("Jmp to exactly the end returns cleanly",
   FakeFunction main;
   main.instructions = {makeInstruction(EInstruction::Jmp, 1)};
   std::stringstream byteCode = buildByteCode({}, {main});
-  CVirtualMachine vm(nullptr);
+  VirtualMachine vm(nullptr);
   REQUIRE(vm.load(byteCode));
   REQUIRE(vm.callFunction("main"));
 }

@@ -6,7 +6,7 @@
 /**
 * \brief Stores a value of any of the supported types.
 */
-class CValue
+class Value
 {
 public:
   enum class EType
@@ -19,15 +19,15 @@ public:
     Invalid
   };
 
-  CValue();
-  CValue(const CValue &value);
-  CValue(CValue &&value);
-  CValue(int32_t value);
-  CValue(uint32_t value);
-  CValue(float value);
-  CValue(const std::string &value);
+  Value();
+  Value(const Value &value);
+  Value(Value &&value);
+  Value(int32_t value);
+  Value(uint32_t value);
+  Value(float value);
+  Value(const std::string &value);
 
-  ~CValue();
+  ~Value();
 
   bool convert(int32_t &value) const;
   bool convert(uint32_t &value) const;
@@ -54,36 +54,36 @@ public:
   */
   bool isZero() const;
 
-  CValue &operator=(const CValue &rhs);
-  CValue &operator=(CValue &&rhs);
+  Value &operator=(const Value &rhs);
+  Value &operator=(Value &&rhs);
 
-  CValue &operator+=(const CValue &rhs);
-  CValue &operator-=(const CValue &rhs);
-  CValue &operator*=(const CValue &rhs);
-  CValue &operator/=(const CValue &rhs);
+  Value &operator+=(const Value &rhs);
+  Value &operator-=(const Value &rhs);
+  Value &operator*=(const Value &rhs);
+  Value &operator/=(const Value &rhs);
 
-  bool operator==(const CValue &rhs) const;
-  bool operator!=(const CValue &rhs) const;
+  bool operator==(const Value &rhs) const;
+  bool operator!=(const Value &rhs) const;
 
-  bool operator<=(const CValue &rhs) const;
+  bool operator<=(const Value &rhs) const;
 
-  bool operator<(const CValue &rhs) const;
+  bool operator<(const Value &rhs) const;
 
-  bool operator>=(const CValue &rhs) const;
+  bool operator>=(const Value &rhs) const;
 
-  bool operator>(const CValue &rhs) const;
+  bool operator>(const Value &rhs) const;
 
 private:
   /**
   * \brief Converts to a double, used when the operand types differ.
   */
-  static double asDouble(const CValue &value);
+  static double asDouble(const Value &value);
 
   /**
   * \brief Compares two numeric values.
   * \return Negative, zero or positive as lhs is less, equal or greater.
   */
-  static int compare(const CValue &lhs, const CValue &rhs);
+  static int compare(const Value &lhs, const Value &rhs);
 
   /**
   * \brief Stores a computed value of the given type.
@@ -93,7 +93,7 @@ private:
   /**
   * \brief Converts to a bool, used by the logical operators.
   */
-  static bool asBool(const CValue &value);
+  static bool asBool(const Value &value);
 
   union
   {

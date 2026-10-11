@@ -1,10 +1,10 @@
 #include <cassert>
 
-#include "CParser.h"
+#include "Parser.h"
 
-#include "logging/CLogger.h"
+#include "logging/Logger.h"
 
-CParser::CParser(kern::ILogger *logger)
+Parser::Parser(kern::ILogger *logger)
     : m_lexer(logger),
       m_logger(logger != nullptr ? logger : nullLogger())
 {
@@ -22,7 +22,7 @@ CParser::CParser(kern::ILogger *logger)
   m_lexer.addKeyword("return"); // Return statement
 }
 
-bool CParser::parse(std::istream &stream)
+bool Parser::parse(std::istream &stream)
 {
   m_currentLineIndex = 0;
   m_currentLineNumber = 1;
@@ -72,7 +72,7 @@ bool CParser::parse(std::istream &stream)
   return true;
 }
 
-bool CParser::parseVariableDeclaration(std::istream &stream)
+bool Parser::parseVariableDeclaration(std::istream &stream)
 {
   // Variable declaration has the form
   // 'var' Identifier [ '[' Integer ']' ] [ '=' Expression ] ';'
@@ -89,7 +89,7 @@ bool CParser::parseVariableDeclaration(std::istream &stream)
   return false;
 }
 
-bool CParser::parseFunction(std::istream &stream)
+bool Parser::parseFunction(std::istream &stream)
 {
   // Make sure the last token was 'func'
   assert(m_lexer.getToken() == ELexerToken::Keyword);
@@ -138,14 +138,14 @@ bool CParser::parseFunction(std::istream &stream)
   return false;
 }
 
-bool CParser::parseExternFunction(std::istream &stream) { return false; }
+bool Parser::parseExternFunction(std::istream &stream) { return false; }
 
-bool CParser::parseIf(std::istream &stream) { return false; }
+bool Parser::parseIf(std::istream &stream) { return false; }
 
-bool CParser::parseElse(std::istream &stream) { return false; }
+bool Parser::parseElse(std::istream &stream) { return false; }
 
-bool CParser::parseWhile(std::istream &stream) { return false; }
+bool Parser::parseWhile(std::istream &stream) { return false; }
 
-bool CParser::parseReturn(std::istream &stream) { return false; }
+bool Parser::parseReturn(std::istream &stream) { return false; }
 
-bool CParser::parseBlock(std::istream &stream) { return false; }
+bool Parser::parseBlock(std::istream &stream) { return false; }

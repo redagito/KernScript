@@ -4,16 +4,16 @@
 
 #include <kern/ILogger.h>
 
-#include "common/CLexer.h"
+#include "common/Lexer.h"
 
-class CParser
+class Parser
 {
 public:
   /**
   * \brief Constructs a parser.
   * \param logger Receives diagnostics. A null pointer discards them.
   */
-  explicit CParser(kern::ILogger *logger);
+  explicit Parser(kern::ILogger *logger);
 
   bool parse(std::istream &sourceCode);
 
@@ -32,6 +32,6 @@ protected:
 private:
   unsigned int m_currentLineNumber = 1;
   unsigned int m_currentLineIndex = 0;
-  CLexer m_lexer;
+  Lexer m_lexer;
   kern::ILogger *m_logger;
 };

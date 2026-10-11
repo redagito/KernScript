@@ -1,14 +1,14 @@
-#include "CCompiler.h"
+#include "Compiler.h"
 
-#include "logging/CLogger.h"
+#include "logging/Logger.h"
 
-CCompiler::CCompiler(kern::ILogger *logger)
+Compiler::Compiler(kern::ILogger *logger)
     : m_logger(logger != nullptr ? logger : nullLogger())
 {
   // Empty
 }
 
-bool CCompiler::compile(std::istream &sourceCode, std::ostream &asmCode)
+bool Compiler::compile(std::istream &sourceCode, std::ostream &asmCode)
 {
   // Not implemented yet. The parser exists but does not produce output.
   return false;

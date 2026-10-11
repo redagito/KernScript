@@ -1,13 +1,13 @@
-#include "CAssembler.h"
+#include "Assembler.h"
 
 #include <sstream>
 #include <unordered_map>
 #include <tuple>
 #include <cstring>
 
-#include "logging/CLogger.h"
+#include "logging/Logger.h"
 
-CAssembler::CAssembler(kern::ILogger *logger)
+Assembler::Assembler(kern::ILogger *logger)
     : m_lexer(logger), m_logger(logger != nullptr ? logger : nullLogger())
 {
   // Assembler specific
@@ -73,7 +73,7 @@ CAssembler::CAssembler(kern::ILogger *logger)
   m_lexer.ignoreNewLine(true);
 }
 
-bool CAssembler::assemble(std::istream &asmCode, std::ostream &byteCode)
+bool Assembler::assemble(std::istream &asmCode, std::ostream &byteCode)
 {
   m_functions.clear();
   m_externFunctions.clear();
@@ -153,7 +153,7 @@ bool CAssembler::assemble(std::istream &asmCode, std::ostream &byteCode)
   return true;
 }
 
-bool CAssembler::parseFunction(std::istream &stream)
+bool Assembler::parseFunction(std::istream &stream)
 {
   // 'func' keyword already parsed, next is identifier
   m_lexer.lex(stream);
@@ -1072,7 +1072,7 @@ bool CAssembler::parseFunction(std::istream &stream)
   return true;
 }
 
-bool CAssembler::parseExternFunction(std::istream &stream)
+bool Assembler::parseExternFunction(std::istream &stream)
 {
   // 'extern* keyword already parsed, next is identifier
   m_lexer.lex(stream);
@@ -1104,7 +1104,7 @@ bool CAssembler::parseExternFunction(std::istream &stream)
   return true;
 }
 
-bool CAssembler::parseModule(std::istream &stream)
+bool Assembler::parseModule(std::istream &stream)
 {
   // 'module' keyword already parsed, next is identifier
   m_lexer.lex(stream);
@@ -1125,13 +1125,13 @@ bool CAssembler::parseModule(std::istream &stream)
   return true;
 }
 
-bool CAssembler::isFunction(const std::string &name)
+bool Assembler::isFunction(const std::string &name)
 {
   int32_t id;
   return getFunctionId(name, id);
 }
 
-bool CAssembler::getFunctionId(const std::string &name, int32_t &id)
+bool Assembler::getFunctionId(const std::string &name, int32_t &id)
 {
   // Linear search
   // TODO Slow?
@@ -1147,13 +1147,13 @@ bool CAssembler::getFunctionId(const std::string &name, int32_t &id)
   return false;
 }
 
-bool CAssembler::isExternFunction(const std::string &name)
+bool Assembler::isExternFunction(const std::string &name)
 {
   int32_t id;
   return getExternFunctionId(name, id);
 }
 
-bool CAssembler::getExternFunctionId(const std::string &name, int32_t &id)
+bool Assembler::getExternFunctionId(const std::string &name, int32_t &id)
 {
   // Linear search
   // TODO Slow?
@@ -1169,7 +1169,7 @@ bool CAssembler::getExternFunctionId(const std::string &name, int32_t &id)
   return false;
 }
 
-bool CAssembler::serializeStrings(std::ostream &stream) const
+bool Assembler::serializeStrings(std::ostream &stream) const
 {
   // Write string count
   uint32_t size = static_cast<uint32_t>(m_strings.size());
@@ -1187,7 +1187,7 @@ bool CAssembler::serializeStrings(std::ostream &stream) const
   return stream.good();
 }
 
-bool CAssembler::serializeExternFunctions(std::ostream &stream) const
+bool Assembler::serializeExternFunctions(std::ostream &stream) const
 {
   // Write extern function count
   uint32_t size = static_cast<uint32_t>(m_externFunctions.size());
@@ -1205,7 +1205,7 @@ bool CAssembler::serializeExternFunctions(std::ostream &stream) const
   return stream.good();
 }
 
-bool CAssembler::serializeFunctions(std::ostream &stream) const
+bool Assembler::serializeFunctions(std::ostream &stream) const
 {
   // Write function count
   uint32_t size = static_cast<uint32_t>(m_functions.size());
@@ -1243,7 +1243,7 @@ bool CAssembler::serializeFunctions(std::ostream &stream) const
   return stream.good();
 }
 
-uint32_t CAssembler::addString(const std::string &str)
+uint32_t Assembler::addString(const std::string &str)
 {
   // Add string to table if it does not exist
   uint32_t index = 0;

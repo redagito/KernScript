@@ -2,7 +2,7 @@
 
 #include "testutil/TestSupport.hpp"
 
-#include "common/CLexer.h"
+#include "common/Lexer.h"
 
 namespace
 {
@@ -65,7 +65,7 @@ TEST_CASE("Lexer forwards its logger to the injected instance",
 {
   testutil::RecordingLogger logger;
 
-  CLexer lexer(&logger);
+  Lexer lexer(&logger);
   std::stringstream stream("~");
 
   // An unhandled character is reported through the logger that was passed to
@@ -77,9 +77,9 @@ TEST_CASE("Lexer forwards its logger to the injected instance",
   REQUIRE_FALSE(logger.empty());
 }
 
-TEST_CASE("CLexer takes a null logger without crashing", "[unit][logger]")
+TEST_CASE("Lexer takes a null logger without crashing", "[unit][logger]")
 {
-  CLexer lexer(nullptr);
+  Lexer lexer(nullptr);
   std::stringstream stream("42");
 
   REQUIRE(lexer.lex(stream) == 0);

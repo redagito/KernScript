@@ -1,10 +1,10 @@
 #include "kern/Kern.h"
 
-#include "asm/CAssembler.h"
-#include "comp/CCompiler.h"
-#include "vm/CVirtualMachine.h"
+#include "asm/Assembler.h"
+#include "comp/Compiler.h"
+#include "vm/VirtualMachine.h"
 #include "common/Version.h"
-#include "logging/CLogger.h"
+#include "logging/Logger.h"
 
 namespace
 {
@@ -12,12 +12,12 @@ namespace
 /**
 * \brief Returns the shared logger used when no logger is supplied.
 *
-* CLogger holds no state, so one instance is enough. It is a function local
+* Logger holds no state, so one instance is enough. It is a function local
 * static to avoid depending on static initialization order.
 */
-CLogger &defaultLogger()
+Logger &defaultLogger()
 {
-  static CLogger logger;
+  static Logger logger;
   return logger;
 }
 }
@@ -29,7 +29,7 @@ kern::IAssembler *kern::createAssembler()
 
 kern::IAssembler *kern::createAssembler(kern::ILogger *logger)
 {
-  return new CAssembler(logger);
+  return new Assembler(logger);
 }
 
 kern::ICompiler *kern::createCompiler()
@@ -39,7 +39,7 @@ kern::ICompiler *kern::createCompiler()
 
 kern::ICompiler *kern::createCompiler(kern::ILogger *logger)
 {
-  return new CCompiler(logger);
+  return new Compiler(logger);
 }
 
 kern::IVirtualMachine *kern::createVirtualMachine()
@@ -49,13 +49,13 @@ kern::IVirtualMachine *kern::createVirtualMachine()
 
 kern::IVirtualMachine *kern::createVirtualMachine(kern::ILogger *logger)
 {
-  return new CVirtualMachine(logger);
+  return new VirtualMachine(logger);
 }
 
 kern::IVirtualMachine *kern::createVirtualMachine(kern::ILogger *logger,
                                                   kern::VMConfig config)
 {
-  return new CVirtualMachine(logger, config);
+  return new VirtualMachine(logger, config);
 }
 
 kern::IVirtualMachine *kern::createVirtualMachine(kern::VMConfig config)

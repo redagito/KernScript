@@ -1,39 +1,39 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "vm/CValue.h"
+#include "vm/Value.h"
 
-TEST_CASE("CValue carries the type it was constructed with", "[unit][CValue]")
+TEST_CASE("Value carries the type it was constructed with", "[unit][Value]")
 {
-  CValue integer(static_cast<int32_t>(-7));
-  REQUIRE(integer.getType() == CValue::EType::Integer);
+  Value integer(static_cast<int32_t>(-7));
+  REQUIRE(integer.getType() == Value::EType::Integer);
 
-  CValue unsignedInteger(static_cast<uint32_t>(7));
-  REQUIRE(unsignedInteger.getType() == CValue::EType::UnsignedInteger);
+  Value unsignedInteger(static_cast<uint32_t>(7));
+  REQUIRE(unsignedInteger.getType() == Value::EType::UnsignedInteger);
 
-  CValue floatValue(1.25f);
-  REQUIRE(floatValue.getType() == CValue::EType::Float);
+  Value floatValue(1.25f);
+  REQUIRE(floatValue.getType() == Value::EType::Float);
 
-  CValue stringValue(std::string("text"));
-  REQUIRE(stringValue.getType() == CValue::EType::String);
+  Value stringValue(std::string("text"));
+  REQUIRE(stringValue.getType() == Value::EType::String);
 }
 
-TEST_CASE("CValue arithmetic widens to the wider type", "[unit][CValue]")
+TEST_CASE("Value arithmetic widens to the wider type", "[unit][Value]")
 {
-  CValue integer(static_cast<int32_t>(1));
-  CValue fraction(2.5f);
+  Value integer(static_cast<int32_t>(1));
+  Value fraction(2.5f);
 
   integer += fraction;
 
-  REQUIRE(integer.getType() == CValue::EType::Float);
+  REQUIRE(integer.getType() == Value::EType::Float);
   float result = 0.f;
   REQUIRE(integer.convert(result));
   REQUIRE(result == 3.5f);
 }
 
-TEST_CASE("CValue arithmetic keeps integers exact", "[unit][CValue]")
+TEST_CASE("Value arithmetic keeps integers exact", "[unit][Value]")
 {
-  CValue value(static_cast<int32_t>(2000000000));
-  CValue operand(static_cast<int32_t>(2000000000));
+  Value value(static_cast<int32_t>(2000000000));
+  Value operand(static_cast<int32_t>(2000000000));
 
   value += operand;
 
@@ -46,10 +46,10 @@ TEST_CASE("CValue arithmetic keeps integers exact", "[unit][CValue]")
           expected - 2147483648.0);
 }
 
-TEST_CASE("CValue multiplies", "[unit][CValue]")
+TEST_CASE("Value multiplies", "[unit][Value]")
 {
-  CValue value(static_cast<int32_t>(3));
-  CValue operand(static_cast<int32_t>(4));
+  Value value(static_cast<int32_t>(3));
+  Value operand(static_cast<int32_t>(4));
 
   value *= operand;
 
@@ -58,36 +58,36 @@ TEST_CASE("CValue multiplies", "[unit][CValue]")
   REQUIRE(result == 12);
 }
 
-TEST_CASE("CValue multiplies floats", "[unit][CValue]")
+TEST_CASE("Value multiplies floats", "[unit][Value]")
 {
-  CValue value(2.5f);
-  CValue operand(4.f);
+  Value value(2.5f);
+  Value operand(4.f);
 
   value *= operand;
 
-  REQUIRE(value.getType() == CValue::EType::Float);
+  REQUIRE(value.getType() == Value::EType::Float);
   float result = 0.f;
   REQUIRE(value.convert(result));
   REQUIRE(result == 10.f);
 }
 
-TEST_CASE("CValue multiplies across types", "[unit][CValue]")
+TEST_CASE("Value multiplies across types", "[unit][Value]")
 {
-  CValue value(2.5f);
-  CValue operand(static_cast<int32_t>(4));
+  Value value(2.5f);
+  Value operand(static_cast<int32_t>(4));
 
   value *= operand;
 
-  REQUIRE(value.getType() == CValue::EType::Float);
+  REQUIRE(value.getType() == Value::EType::Float);
   float result = 0.f;
   REQUIRE(value.convert(result));
   REQUIRE(result == 10.f);
 }
 
-TEST_CASE("CValue divides integers", "[unit][CValue]")
+TEST_CASE("Value divides integers", "[unit][Value]")
 {
-  CValue value(static_cast<int32_t>(17));
-  CValue operand(static_cast<int32_t>(5));
+  Value value(static_cast<int32_t>(17));
+  Value operand(static_cast<int32_t>(5));
 
   value /= operand;
 
@@ -97,24 +97,24 @@ TEST_CASE("CValue divides integers", "[unit][CValue]")
   REQUIRE(result == 3);
 }
 
-TEST_CASE("CValue divides floats", "[unit][CValue]")
+TEST_CASE("Value divides floats", "[unit][Value]")
 {
-  CValue value(1.f);
-  CValue operand(4.f);
+  Value value(1.f);
+  Value operand(4.f);
 
   value /= operand;
 
-  REQUIRE(value.getType() == CValue::EType::Float);
+  REQUIRE(value.getType() == Value::EType::Float);
   float result = 0.f;
   REQUIRE(value.convert(result));
   REQUIRE(result == 0.25f);
 }
 
-TEST_CASE("CValue division by zero leaves the value unchanged",
-          "[unit][CValue]")
+TEST_CASE("Value division by zero leaves the value unchanged",
+          "[unit][Value]")
 {
-  CValue value(static_cast<int32_t>(10));
-  CValue zero(static_cast<int32_t>(0));
+  Value value(static_cast<int32_t>(10));
+  Value zero(static_cast<int32_t>(0));
 
   value /= zero;
 
@@ -123,10 +123,10 @@ TEST_CASE("CValue division by zero leaves the value unchanged",
   REQUIRE(result == 10);
 }
 
-TEST_CASE("CValue float division by zero does not trap", "[unit][CValue]")
+TEST_CASE("Value float division by zero does not trap", "[unit][Value]")
 {
-  CValue value(1.f);
-  CValue zero(0.f);
+  Value value(1.f);
+  Value zero(0.f);
 
   value /= zero;
 
@@ -136,11 +136,11 @@ TEST_CASE("CValue float division by zero does not trap", "[unit][CValue]")
   REQUIRE(result > 1e30f);
 }
 
-TEST_CASE("CValue arithmetic ignores non numeric operands",
-          "[unit][CValue]")
+TEST_CASE("Value arithmetic ignores non numeric operands",
+          "[unit][Value]")
 {
-  CValue value(static_cast<int32_t>(7));
-  CValue text(std::string("seven"));
+  Value value(static_cast<int32_t>(7));
+  Value text(std::string("seven"));
 
   value += text;
   value *= text;
@@ -150,10 +150,10 @@ TEST_CASE("CValue arithmetic ignores non numeric operands",
   REQUIRE(result == 7);
 }
 
-TEST_CASE("CValue compares across types", "[unit][CValue]")
+TEST_CASE("Value compares across types", "[unit][Value]")
 {
-  CValue integer(static_cast<int32_t>(2));
-  CValue fraction(2.5f);
+  Value integer(static_cast<int32_t>(2));
+  Value fraction(2.5f);
 
   REQUIRE(integer < fraction);
   REQUIRE(integer <= fraction);
@@ -163,9 +163,9 @@ TEST_CASE("CValue compares across types", "[unit][CValue]")
   REQUIRE(fraction >= integer);
 }
 
-TEST_CASE("CValue orders equal values", "[unit][CValue]")
+TEST_CASE("Value orders equal values", "[unit][Value]")
 {
-  CValue value(static_cast<int32_t>(5));
+  Value value(static_cast<int32_t>(5));
 
   REQUIRE(value <= value);
   REQUIRE(value >= value);
@@ -174,48 +174,48 @@ TEST_CASE("CValue orders equal values", "[unit][CValue]")
   REQUIRE_FALSE(value > value);
 }
 
-TEST_CASE("CValue compares strings by value", "[unit][CValue]")
+TEST_CASE("Value compares strings by value", "[unit][Value]")
 {
-  CValue left(std::string("same"));
-  CValue right(std::string("same"));
-  CValue other(std::string("different"));
+  Value left(std::string("same"));
+  Value right(std::string("same"));
+  Value other(std::string("different"));
 
   REQUIRE(left == right);
   REQUIRE(left != other);
 }
 
-TEST_CASE("CValue compares strings of different types as unequal",
-          "[unit][CValue]")
+TEST_CASE("Value compares strings of different types as unequal",
+          "[unit][Value]")
 {
-  CValue text(std::string("7"));
-  CValue number(static_cast<int32_t>(7));
+  Value text(std::string("7"));
+  Value number(static_cast<int32_t>(7));
 
   REQUIRE(text != number);
   REQUIRE_FALSE(text == number);
 }
 
-TEST_CASE("CValue does not assert on comparisons", "[unit][CValue]")
+TEST_CASE("Value does not assert on comparisons", "[unit][Value]")
 {
   // These used to reach assert(false) and abort the process.
-  CValue floatValue(1.5f);
-  CValue otherFloat(2.5f);
+  Value floatValue(1.5f);
+  Value otherFloat(2.5f);
 
   REQUIRE_FALSE(floatValue == otherFloat);
   REQUIRE(floatValue <= otherFloat);
 
-  CValue integer(static_cast<int32_t>(1));
+  Value integer(static_cast<int32_t>(1));
   REQUIRE_FALSE(floatValue == integer);
   REQUIRE(floatValue >= integer);
 
-  CValue invalid;
+  Value invalid;
   REQUIRE_FALSE(invalid == floatValue);
   REQUIRE_FALSE(floatValue == invalid);
 }
 
-TEST_CASE("CValue adds floats", "[unit][CValue]")
+TEST_CASE("Value adds floats", "[unit][Value]")
 {
-  CValue value(1.5f);
-  CValue operand(2.25f);
+  Value value(1.5f);
+  Value operand(2.25f);
 
   value += operand;
 
@@ -224,10 +224,10 @@ TEST_CASE("CValue adds floats", "[unit][CValue]")
   REQUIRE(result == 3.75f);
 }
 
-TEST_CASE("CValue subtracts floats", "[unit][CValue]")
+TEST_CASE("Value subtracts floats", "[unit][Value]")
 {
-  CValue value(2.5f);
-  CValue operand(0.5f);
+  Value value(2.5f);
+  Value operand(0.5f);
 
   value -= operand;
 
@@ -236,42 +236,42 @@ TEST_CASE("CValue subtracts floats", "[unit][CValue]")
   REQUIRE(result == 2.f);
 }
 
-TEST_CASE("CValue reports whether it is numeric", "[unit][CValue]")
+TEST_CASE("Value reports whether it is numeric", "[unit][Value]")
 {
-  REQUIRE(CValue(static_cast<int32_t>(1)).isNumeric());
-  REQUIRE(CValue(static_cast<uint32_t>(1)).isNumeric());
-  REQUIRE(CValue(1.5f).isNumeric());
+  REQUIRE(Value(static_cast<int32_t>(1)).isNumeric());
+  REQUIRE(Value(static_cast<uint32_t>(1)).isNumeric());
+  REQUIRE(Value(1.5f).isNumeric());
 
-  CValue text(std::string("text"));
+  Value text(std::string("text"));
   REQUIRE_FALSE(text.isNumeric());
 
-  CValue invalid;
+  Value invalid;
   REQUIRE_FALSE(invalid.isNumeric());
 }
 
-TEST_CASE("CValue unsigned arithmetic wraps", "[unit][CValue]")
+TEST_CASE("Value unsigned arithmetic wraps", "[unit][Value]")
 {
-  CValue value(static_cast<uint32_t>(0));
-  CValue operand(static_cast<uint32_t>(1));
+  Value value(static_cast<uint32_t>(0));
+  Value operand(static_cast<uint32_t>(1));
 
   value -= operand;
 
-  REQUIRE(value.getType() == CValue::EType::UnsignedInteger);
+  REQUIRE(value.getType() == Value::EType::UnsignedInteger);
   uint32_t result = 0;
   REQUIRE(value.convert(result));
   REQUIRE(result == 4294967295u);
 }
 
-TEST_CASE("Default constructed CValue is invalid", "[unit][CValue]")
+TEST_CASE("Default constructed Value is invalid", "[unit][Value]")
 {
-  CValue value;
-  REQUIRE(value.getType() == CValue::EType::Invalid);
+  Value value;
+  REQUIRE(value.getType() == Value::EType::Invalid);
 }
 
-TEST_CASE("CValue converts integer to the other arithmetic types",
-          "[unit][CValue]")
+TEST_CASE("Value converts integer to the other arithmetic types",
+          "[unit][Value]")
 {
-  CValue value(static_cast<int32_t>(42));
+  Value value(static_cast<int32_t>(42));
 
   int32_t asInteger = 0;
   REQUIRE(value.convert(asInteger));
@@ -290,10 +290,10 @@ TEST_CASE("CValue converts integer to the other arithmetic types",
   REQUIRE(asString == "42");
 }
 
-TEST_CASE("CValue converts float to the other arithmetic types",
-          "[unit][CValue]")
+TEST_CASE("Value converts float to the other arithmetic types",
+          "[unit][Value]")
 {
-  CValue value(2.5f);
+  Value value(2.5f);
 
   int32_t asInteger = 0;
   REQUIRE(value.convert(asInteger));
@@ -308,9 +308,9 @@ TEST_CASE("CValue converts float to the other arithmetic types",
   REQUIRE(asString == "2.5");
 }
 
-TEST_CASE("CValue rejects conversions it does not implement", "[unit][CValue]")
+TEST_CASE("Value rejects conversions it does not implement", "[unit][Value]")
 {
-  CValue value(std::string("text"));
+  Value value(std::string("text"));
 
   int32_t asInteger = 0;
   REQUIRE_FALSE(value.convert(asInteger));
@@ -326,9 +326,9 @@ TEST_CASE("CValue rejects conversions it does not implement", "[unit][CValue]")
   REQUIRE(asString == "text");
 }
 
-TEST_CASE("CValue converts unsigned integer", "[unit][CValue]")
+TEST_CASE("Value converts unsigned integer", "[unit][Value]")
 {
-  CValue value(static_cast<uint32_t>(7));
+  Value value(static_cast<uint32_t>(7));
 
   int32_t asInteger = 0;
   REQUIRE(value.convert(asInteger));
@@ -343,9 +343,9 @@ TEST_CASE("CValue converts unsigned integer", "[unit][CValue]")
   REQUIRE(asString == "7");
 }
 
-TEST_CASE("Invalid CValue does not convert", "[unit][CValue]")
+TEST_CASE("Invalid Value does not convert", "[unit][Value]")
 {
-  CValue value;
+  Value value;
 
   int32_t asInteger = 0;
   REQUIRE_FALSE(value.convert(asInteger));
@@ -356,10 +356,10 @@ TEST_CASE("Invalid CValue does not convert", "[unit][CValue]")
   REQUIRE(value.toString() == "Invalid");
 }
 
-TEST_CASE("CValue compares integers", "[unit][CValue]")
+TEST_CASE("Value compares integers", "[unit][Value]")
 {
-  CValue left(static_cast<int32_t>(1));
-  CValue right(static_cast<int32_t>(2));
+  Value left(static_cast<int32_t>(1));
+  Value right(static_cast<int32_t>(2));
 
   REQUIRE(left == left);
   REQUIRE_FALSE(left == right);
@@ -368,10 +368,10 @@ TEST_CASE("CValue compares integers", "[unit][CValue]")
   REQUIRE(left <= right);
 }
 
-TEST_CASE("CValue adds integers", "[unit][CValue]")
+TEST_CASE("Value adds integers", "[unit][Value]")
 {
-  CValue value(static_cast<int32_t>(1));
-  CValue operand(static_cast<int32_t>(2));
+  Value value(static_cast<int32_t>(1));
+  Value operand(static_cast<int32_t>(2));
 
   value += operand;
 
@@ -380,10 +380,10 @@ TEST_CASE("CValue adds integers", "[unit][CValue]")
   REQUIRE(result == 3);
 }
 
-TEST_CASE("CValue subtracts integers", "[unit][CValue]")
+TEST_CASE("Value subtracts integers", "[unit][Value]")
 {
-  CValue value(static_cast<int32_t>(5));
-  CValue operand(static_cast<int32_t>(2));
+  Value value(static_cast<int32_t>(5));
+  Value operand(static_cast<int32_t>(2));
 
   value -= operand;
 
@@ -392,16 +392,16 @@ TEST_CASE("CValue subtracts integers", "[unit][CValue]")
   REQUIRE(result == 3);
 }
 
-TEST_CASE("CValue copies strings", "[unit][CValue]")
+TEST_CASE("Value copies strings", "[unit][Value]")
 {
-  CValue value(std::string("copy"));
-  CValue copy(value);
+  Value value(std::string("copy"));
+  Value copy(value);
 
   std::string copyText;
   REQUIRE(copy.convert(copyText));
   REQUIRE(copyText == "copy");
 
-  CValue assigned;
+  Value assigned;
   assigned = value;
 
   std::string assignedText;
@@ -409,11 +409,11 @@ TEST_CASE("CValue copies strings", "[unit][CValue]")
   REQUIRE(assignedText == "copy");
 }
 
-TEST_CASE("CValue self assignment leaves the value intact", "[unit][CValue]")
+TEST_CASE("Value self assignment leaves the value intact", "[unit][Value]")
 {
-  CValue value(std::string("self"));
+  Value value(std::string("self"));
 
-  CValue &reference = value;
+  Value &reference = value;
   value = reference;
 
   std::string text;
@@ -421,16 +421,16 @@ TEST_CASE("CValue self assignment leaves the value intact", "[unit][CValue]")
   REQUIRE(text == "self");
 }
 
-TEST_CASE("CValue moves strings", "[unit][CValue]")
+TEST_CASE("Value moves strings", "[unit][Value]")
 {
-  CValue value(std::string("move"));
-  CValue moved(std::move(value));
+  Value value(std::string("move"));
+  Value moved(std::move(value));
 
   std::string text;
   REQUIRE(moved.convert(text));
   REQUIRE(text == "move");
 
-  CValue assigned(std::string("other"));
+  Value assigned(std::string("other"));
   assigned = std::move(moved);
 
   std::string movedText;
@@ -438,10 +438,10 @@ TEST_CASE("CValue moves strings", "[unit][CValue]")
   REQUIRE(movedText == "move");
 }
 
-TEST_CASE("CValue assignment replaces the previous string", "[unit][CValue]")
+TEST_CASE("Value assignment replaces the previous string", "[unit][Value]")
 {
-  CValue value(std::string("first"));
-  value = CValue(std::string("second"));
+  Value value(std::string("first"));
+  value = Value(std::string("second"));
 
   std::string text;
   REQUIRE(value.convert(text));

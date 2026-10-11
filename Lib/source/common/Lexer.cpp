@@ -1,18 +1,18 @@
-#include "CLexer.h"
+#include "Lexer.h"
 
 #include <cctype>
 #include <cstdio>
 #include <cassert>
 
-#include "logging/CLogger.h"
+#include "logging/Logger.h"
 
-CLexer::CLexer(kern::ILogger *logger)
+Lexer::Lexer(kern::ILogger *logger)
     : m_logger(logger != nullptr ? logger : nullLogger())
 {
   // Empty
 }
 
-unsigned int CLexer::lex(std::istream &stream)
+unsigned int Lexer::lex(std::istream &stream)
 {
   if (m_ignoreLex)
   {
@@ -183,30 +183,30 @@ unsigned int CLexer::lex(std::istream &stream)
   return m_blankSkipped;
 }
 
-const std::string &CLexer::getLexeme() const { return m_currentLexeme; }
+const std::string &Lexer::getLexeme() const { return m_currentLexeme; }
 
-ELexerToken CLexer::getToken() const { return m_currentToken; }
+ELexerToken Lexer::getToken() const { return m_currentToken; }
 
-void CLexer::addKeyword(const std::string &keyword)
+void Lexer::addKeyword(const std::string &keyword)
 {
   m_keywords.insert(keyword);
 }
 
-void CLexer::removeKeyword(const std::string &keyword)
+void Lexer::removeKeyword(const std::string &keyword)
 {
   m_keywords.erase(keyword);
 }
 
-void CLexer::ignoreNextLex() { m_ignoreLex = true; }
+void Lexer::ignoreNextLex() { m_ignoreLex = true; }
 
-void CLexer::ignoreNewLine(bool state) { m_ignoreNewLine = state; }
+void Lexer::ignoreNewLine(bool state) { m_ignoreNewLine = state; }
 
-bool CLexer::isKeyword(const std::string &text) const
+bool Lexer::isKeyword(const std::string &text) const
 {
   return m_keywords.find(text) != m_keywords.end();
 }
 
-void CLexer::lexSingleCharLexeme(std::istream &stream, ELexerToken tokenType)
+void Lexer::lexSingleCharLexeme(std::istream &stream, ELexerToken tokenType)
 {
   // Retrieve next char
   char c;
@@ -217,7 +217,7 @@ void CLexer::lexSingleCharLexeme(std::istream &stream, ELexerToken tokenType)
   m_currentToken = tokenType;
 }
 
-void CLexer::lexSingleOrDoubleCharLexeme(std::istream &stream,
+void Lexer::lexSingleOrDoubleCharLexeme(std::istream &stream,
                                          ELexerToken singleToken,
                                          char nextPossible,
                                          ELexerToken doubleToken)
@@ -243,7 +243,7 @@ void CLexer::lexSingleOrDoubleCharLexeme(std::istream &stream,
   }
 }
 
-void CLexer::lexSingleOrDoubleCharLexeme(
+void Lexer::lexSingleOrDoubleCharLexeme(
     std::istream &stream, ELexerToken singleToken, char nextPossible0,
     ELexerToken doubleToken0, char nextPossible1, ELexerToken doubleToken1)
 {
@@ -276,7 +276,7 @@ void CLexer::lexSingleOrDoubleCharLexeme(
   }
 }
 
-void CLexer::lexNumeric(std::istream &stream)
+void Lexer::lexNumeric(std::istream &stream)
 {
   // Default is integer until proven otherwise
   m_currentToken = ELexerToken::Integer;
@@ -315,7 +315,7 @@ void CLexer::lexNumeric(std::istream &stream)
   }
 }
 
-void CLexer::lexIdentifierOrKeyword(std::istream &stream)
+void Lexer::lexIdentifierOrKeyword(std::istream &stream)
 {
   // Already checked for leading alphabetic character
   // Valid characters in a, identifier are alphabetic, numeric and underscore
@@ -336,7 +336,7 @@ void CLexer::lexIdentifierOrKeyword(std::istream &stream)
   }
 }
 
-void CLexer::lexString(std::istream &stream)
+void Lexer::lexString(std::istream &stream)
 {
   // Throw away first quote
   assert(stream.peek() == '"');
@@ -374,7 +374,7 @@ void CLexer::lexString(std::istream &stream)
   m_currentToken = ELexerToken::String;
 }
 
-void CLexer::lexComment(std::istream &stream)
+void Lexer::lexComment(std::istream &stream)
 {
   // The '//' part has already been written, add remaining line
   // without newline character to lexeme

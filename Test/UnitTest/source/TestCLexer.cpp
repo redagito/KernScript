@@ -2,12 +2,12 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "common/CLexer.h"
+#include "common/Lexer.h"
 
-TEST_CASE("Lexer scans integer and float literals", "[unit][CLexer]")
+TEST_CASE("Lexer scans integer and float literals", "[unit][Lexer]")
 {
   std::istringstream stream("42 1.5");
-  CLexer lexer(nullptr);
+  Lexer lexer(nullptr);
 
   lexer.lex(stream);
   REQUIRE(lexer.getToken() == ELexerToken::Integer);
@@ -18,19 +18,19 @@ TEST_CASE("Lexer scans integer and float literals", "[unit][CLexer]")
   REQUIRE(lexer.getLexeme() == "1.5");
 }
 
-TEST_CASE("Lexer reports a malformed float as invalid", "[unit][CLexer]")
+TEST_CASE("Lexer reports a malformed float as invalid", "[unit][Lexer]")
 {
   std::istringstream stream("1.");
-  CLexer lexer(nullptr);
+  Lexer lexer(nullptr);
 
   lexer.lex(stream);
   REQUIRE(lexer.getToken() == ELexerToken::Invalid);
 }
 
-TEST_CASE("Lexer separates identifiers from keywords", "[unit][CLexer]")
+TEST_CASE("Lexer separates identifiers from keywords", "[unit][Lexer]")
 {
   std::istringstream stream("name keyword");
-  CLexer lexer(nullptr);
+  Lexer lexer(nullptr);
   lexer.addKeyword("keyword");
 
   lexer.lex(stream);
@@ -42,20 +42,20 @@ TEST_CASE("Lexer separates identifiers from keywords", "[unit][CLexer]")
   REQUIRE(lexer.getLexeme() == "keyword");
 }
 
-TEST_CASE("Lexer accepts underscores in identifiers", "[unit][CLexer]")
+TEST_CASE("Lexer accepts underscores in identifiers", "[unit][Lexer]")
 {
   std::istringstream stream("a_b_1");
-  CLexer lexer(nullptr);
+  Lexer lexer(nullptr);
 
   lexer.lex(stream);
   REQUIRE(lexer.getToken() == ELexerToken::Identifier);
   REQUIRE(lexer.getLexeme() == "a_b_1");
 }
 
-TEST_CASE("Lexer removes a keyword again", "[unit][CLexer]")
+TEST_CASE("Lexer removes a keyword again", "[unit][Lexer]")
 {
   std::istringstream stream("keyword");
-  CLexer lexer(nullptr);
+  Lexer lexer(nullptr);
   lexer.addKeyword("keyword");
   lexer.removeKeyword("keyword");
 
@@ -63,10 +63,10 @@ TEST_CASE("Lexer removes a keyword again", "[unit][CLexer]")
   REQUIRE(lexer.getToken() == ELexerToken::Identifier);
 }
 
-TEST_CASE("Lexer scans string literals without the quotes", "[unit][CLexer]")
+TEST_CASE("Lexer scans string literals without the quotes", "[unit][Lexer]")
 {
   std::istringstream stream("\"hello\"");
-  CLexer lexer(nullptr);
+  Lexer lexer(nullptr);
 
   lexer.lex(stream);
   REQUIRE(lexer.getToken() == ELexerToken::String);
@@ -74,38 +74,38 @@ TEST_CASE("Lexer scans string literals without the quotes", "[unit][CLexer]")
 }
 
 TEST_CASE("Lexer keeps backslash escapes inside string literals",
-          "[unit][CLexer]")
+          "[unit][Lexer]")
 {
   std::istringstream stream("\"a\\\"b\"");
-  CLexer lexer(nullptr);
+  Lexer lexer(nullptr);
 
   lexer.lex(stream);
   REQUIRE(lexer.getToken() == ELexerToken::String);
   REQUIRE(lexer.getLexeme() == "a\\\"b");
 }
 
-TEST_CASE("Lexer rejects an unterminated string", "[unit][CLexer]")
+TEST_CASE("Lexer rejects an unterminated string", "[unit][Lexer]")
 {
   std::istringstream stream("\"unterminated");
-  CLexer lexer(nullptr);
+  Lexer lexer(nullptr);
 
   lexer.lex(stream);
   REQUIRE(lexer.getToken() == ELexerToken::Invalid);
 }
 
-TEST_CASE("Lexer skips line comments", "[unit][CLexer]")
+TEST_CASE("Lexer skips line comments", "[unit][Lexer]")
 {
   std::istringstream stream("// a comment");
-  CLexer lexer(nullptr);
+  Lexer lexer(nullptr);
 
   lexer.lex(stream);
   REQUIRE(lexer.getToken() == ELexerToken::Comment);
 }
 
-TEST_CASE("Lexer scans single character tokens", "[unit][CLexer]")
+TEST_CASE("Lexer scans single character tokens", "[unit][Lexer]")
 {
   std::istringstream stream(". ; , # @ ( ) { } [ ]");
-  CLexer lexer(nullptr);
+  Lexer lexer(nullptr);
 
   const ELexerToken expected[] = {ELexerToken::Dot,
                                   ELexerToken::Semicolon,
@@ -126,10 +126,10 @@ TEST_CASE("Lexer scans single character tokens", "[unit][CLexer]")
   }
 }
 
-TEST_CASE("Lexer scans compound operator tokens", "[unit][CLexer]")
+TEST_CASE("Lexer scans compound operator tokens", "[unit][Lexer]")
 {
   std::istringstream stream(":: || && == != <= >= ++ -- += -= *= /= %=");
-  CLexer lexer(nullptr);
+  Lexer lexer(nullptr);
 
   const ELexerToken expected[] = {ELexerToken::DoubleColon,
                                   ELexerToken::DoublePipe,
@@ -154,10 +154,10 @@ TEST_CASE("Lexer scans compound operator tokens", "[unit][CLexer]")
 }
 
 TEST_CASE("Lexer distinguishes the single character form of operators",
-          "[unit][CLexer]")
+          "[unit][Lexer]")
 {
   std::istringstream stream("| & = ! : < > % / \\ * + -");
-  CLexer lexer(nullptr);
+  Lexer lexer(nullptr);
 
   lexer.lex(stream);
   REQUIRE(lexer.getToken() == ELexerToken::Pipe);
@@ -199,45 +199,45 @@ TEST_CASE("Lexer distinguishes the single character form of operators",
   REQUIRE(lexer.getToken() == ELexerToken::Dash);
 }
 
-TEST_CASE("Lexer reports newlines unless they are ignored", "[unit][CLexer]")
+TEST_CASE("Lexer reports newlines unless they are ignored", "[unit][Lexer]")
 {
   std::istringstream stream("\nvar");
 
-  CLexer lexer(nullptr);
+  Lexer lexer(nullptr);
   lexer.lex(stream);
   REQUIRE(lexer.getToken() == ELexerToken::NewLine);
 
   std::istringstream ignoredStream("\nvar");
-  CLexer ignoringLexer(nullptr);
+  Lexer ignoringLexer(nullptr);
   ignoringLexer.ignoreNewLine(true);
   ignoringLexer.lex(ignoredStream);
   REQUIRE(ignoringLexer.getToken() == ELexerToken::Identifier);
   REQUIRE(ignoringLexer.getLexeme() == "var");
 }
 
-TEST_CASE("Lexer counts skipped blanks", "[unit][CLexer]")
+TEST_CASE("Lexer counts skipped blanks", "[unit][Lexer]")
 {
   std::istringstream stream("   42");
-  CLexer lexer(nullptr);
+  Lexer lexer(nullptr);
 
   REQUIRE(lexer.lex(stream) == 3);
   REQUIRE(lexer.getLexeme() == "42");
 }
 
-TEST_CASE("Lexer signals end of stream", "[unit][CLexer]")
+TEST_CASE("Lexer signals end of stream", "[unit][Lexer]")
 {
   std::istringstream stream("");
-  CLexer lexer(nullptr);
+  Lexer lexer(nullptr);
 
   lexer.lex(stream);
   REQUIRE(lexer.getToken() == ELexerToken::End);
 }
 
 TEST_CASE("Lexer keeps the current token when the next lex is ignored",
-          "[unit][CLexer]")
+          "[unit][Lexer]")
 {
   std::istringstream stream("name ignored");
-  CLexer lexer(nullptr);
+  Lexer lexer(nullptr);
 
   lexer.lex(stream);
   REQUIRE(lexer.getToken() == ELexerToken::Identifier);

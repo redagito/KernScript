@@ -5,20 +5,20 @@
 #include <cstdint>
 
 #include "kern/IAssembler.h"
-#include "common/CLexer.h"
+#include "common/Lexer.h"
 
 #include "common/SScriptHeader.h"
 #include "common/SExternFunction.h"
 #include "common/SInstruction.h"
 
-class CAssembler : public kern::IAssembler
+class Assembler : public kern::IAssembler
 {
 public:
   /**
   * \brief Constructs an assembler.
   * \param logger Receives diagnostics. A null pointer discards them.
   */
-  explicit CAssembler(kern::ILogger *logger);
+  explicit Assembler(kern::ILogger *logger);
 
   bool assemble(std::istream &asmCode, std::ostream &byteCode);
 
@@ -61,6 +61,6 @@ private:
   std::list<SExternFunction>
       m_externFunctions;            /**< Extern function declarations. */
   std::list<std::string> m_strings; /**< String constants. */
-  CLexer m_lexer;                   /**< Internal lexer. */
+  Lexer m_lexer;                   /**< Internal lexer. */
   kern::ILogger *m_logger = nullptr; /**< Receives diagnostics. */
 };

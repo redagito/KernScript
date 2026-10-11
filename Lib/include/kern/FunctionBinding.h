@@ -13,16 +13,16 @@ namespace kern
 {
 
 template <typename ReturnType, typename... ArgumentTypes>
-class CExternFunction : public IExternFunction
+class ExternFunction : public IExternFunction
 {
   // Empty
 };
 
 template <typename ReturnType>
-class CExternFunction<ReturnType> : public IExternFunction
+class ExternFunction<ReturnType> : public IExternFunction
 {
 public:
-  CExternFunction(ReturnType (*function)(void)) : m_function(function)
+  ExternFunction(ReturnType (*function)(void)) : m_function(function)
   {
     // Empty
   }
@@ -40,10 +40,10 @@ private:
   ::std::function<ReturnType(void)> m_function;
 };
 
-template <> class CExternFunction<void> : public IExternFunction
+template <> class ExternFunction<void> : public IExternFunction
 {
 public:
-  CExternFunction(void (*function)(void)) : m_function(function)
+  ExternFunction(void (*function)(void)) : m_function(function)
   {
     // Empty
   }
@@ -62,10 +62,10 @@ private:
 };
 
 template <typename ReturnType, typename ArgType0>
-class CExternFunction<ReturnType, ArgType0> : public IExternFunction
+class ExternFunction<ReturnType, ArgType0> : public IExternFunction
 {
 public:
-  CExternFunction(ReturnType (*function)(ArgType0)) : m_function(function)
+  ExternFunction(ReturnType (*function)(ArgType0)) : m_function(function)
   {
     // Empty
   }
@@ -89,10 +89,10 @@ private:
 };
 
 template <typename ArgType0>
-class CExternFunction<void, ArgType0> : public IExternFunction
+class ExternFunction<void, ArgType0> : public IExternFunction
 {
 public:
-  CExternFunction(void (*function)(ArgType0)) : m_function(function)
+  ExternFunction(void (*function)(ArgType0)) : m_function(function)
   {
     // Empty
   }
@@ -116,10 +116,10 @@ private:
 };
 
 template <typename ReturnType, typename ArgType0, typename ArgType1>
-class CExternFunction<ReturnType, ArgType0, ArgType1> : public IExternFunction
+class ExternFunction<ReturnType, ArgType0, ArgType1> : public IExternFunction
 {
 public:
-  CExternFunction(ReturnType (*function)(ArgType0, ArgType1))
+  ExternFunction(ReturnType (*function)(ArgType0, ArgType1))
       : m_function(function)
   {
     // Empty
@@ -153,10 +153,10 @@ private:
 };
 
 template <typename ArgType0, typename ArgType1>
-class CExternFunction<void, ArgType0, ArgType1> : public IExternFunction
+class ExternFunction<void, ArgType0, ArgType1> : public IExternFunction
 {
 public:
-  CExternFunction(void (*function)(ArgType0, ArgType1)) : m_function(function)
+  ExternFunction(void (*function)(ArgType0, ArgType1)) : m_function(function)
   {
     // Empty
   }
@@ -190,11 +190,11 @@ private:
 
 template <typename ReturnType, typename ArgType0, typename ArgType1,
           typename ArgType2>
-class CExternFunction<ReturnType, ArgType0, ArgType1, ArgType2>
+class ExternFunction<ReturnType, ArgType0, ArgType1, ArgType2>
     : public IExternFunction
 {
 public:
-  CExternFunction(ReturnType (*function)(ArgType0, ArgType1, ArgType2))
+  ExternFunction(ReturnType (*function)(ArgType0, ArgType1, ArgType2))
       : m_function(function)
   {
     // Empty
@@ -231,11 +231,11 @@ private:
 };
 
 template <typename ArgType0, typename ArgType1, typename ArgType2>
-class CExternFunction<void, ArgType0, ArgType1, ArgType2>
+class ExternFunction<void, ArgType0, ArgType1, ArgType2>
     : public IExternFunction
 {
 public:
-  CExternFunction(void (*function)(ArgType0, ArgType1, ArgType2))
+  ExternFunction(void (*function)(ArgType0, ArgType1, ArgType2))
       : m_function(function)
   {
     // Empty
@@ -273,11 +273,11 @@ private:
 
 template <typename ReturnType, typename ArgType0, typename ArgType1,
           typename ArgType2, typename ArgType3>
-class CExternFunction<ReturnType, ArgType0, ArgType1, ArgType2, ArgType3>
+class ExternFunction<ReturnType, ArgType0, ArgType1, ArgType2, ArgType3>
     : public IExternFunction
 {
 public:
-  CExternFunction(ReturnType (*function)(ArgType0, ArgType1, ArgType2,
+  ExternFunction(ReturnType (*function)(ArgType0, ArgType1, ArgType2,
                                          ArgType3))
       : m_function(function)
   {
@@ -320,11 +320,11 @@ private:
 
 template <typename ArgType0, typename ArgType1, typename ArgType2,
           typename ArgType3>
-class CExternFunction<void, ArgType0, ArgType1, ArgType2, ArgType3>
+class ExternFunction<void, ArgType0, ArgType1, ArgType2, ArgType3>
     : public IExternFunction
 {
 public:
-  CExternFunction(void (*function)(ArgType0, ArgType1, ArgType2, ArgType3))
+  ExternFunction(void (*function)(ArgType0, ArgType1, ArgType2, ArgType3))
       : m_function(function)
   {
     // Empty
@@ -369,20 +369,20 @@ private:
 template <typename ReturnType>
 IExternFunction *createExternFunction(ReturnType (*externFunction)(void))
 {
-  return new CExternFunction<ReturnType>(externFunction);
+  return new ExternFunction<ReturnType>(externFunction);
 }
 
 template <typename ReturnType, typename ArgType0>
 IExternFunction *createExternFunction(ReturnType (*externFunction)(ArgType0))
 {
-  return new CExternFunction<ReturnType, ArgType0>(externFunction);
+  return new ExternFunction<ReturnType, ArgType0>(externFunction);
 }
 
 template <typename ReturnType, typename ArgType0, typename ArgType1>
 IExternFunction *createExternFunction(ReturnType (*externFunction)(ArgType0,
                                                                    ArgType1))
 {
-  return new CExternFunction<ReturnType, ArgType0, ArgType1>(externFunction);
+  return new ExternFunction<ReturnType, ArgType0, ArgType1>(externFunction);
 }
 
 template <typename ReturnType, typename ArgType0, typename ArgType1,
@@ -391,7 +391,7 @@ IExternFunction *createExternFunction(ReturnType (*externFunction)(ArgType0,
                                                                    ArgType1,
                                                                    ArgType2))
 {
-  return new CExternFunction<ReturnType, ArgType0, ArgType1, ArgType2>(
+  return new ExternFunction<ReturnType, ArgType0, ArgType1, ArgType2>(
       externFunction);
 }
 }

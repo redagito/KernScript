@@ -11,14 +11,14 @@
 /**
 * \brief Lexer class.
 */
-class CLexer
+class Lexer
 {
 public:
   /**
   * \brief Constructs a lexer.
   * \param logger Receives diagnostics. A null pointer discards them.
   */
-  explicit CLexer(kern::ILogger *logger);
+  explicit Lexer(kern::ILogger *logger);
   /**
   * \brief Extracts next token/lexeme from stream.
   * \return Number of whitespaces skipped.

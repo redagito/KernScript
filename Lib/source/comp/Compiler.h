@@ -3,14 +3,14 @@
 #include <kern/ICompiler.h>
 #include <kern/ILogger.h>
 
-class CCompiler : public kern::ICompiler
+class Compiler : public kern::ICompiler
 {
 public:
   /**
   * \brief Constructs a compiler.
   * \param logger Receives diagnostics. A null pointer discards them.
   */
-  explicit CCompiler(kern::ILogger *logger);
+  explicit Compiler(kern::ILogger *logger);
 
   bool compile(std::istream &sourceCode, std::ostream &asmCode);
 

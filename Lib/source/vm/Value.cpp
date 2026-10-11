@@ -1,37 +1,37 @@
-#include "CValue.h"
+#include "Value.h"
 
 #include <cstring>
 #include <sstream>
 #include <cassert>
 
-CValue::CValue()
+Value::Value()
 {
   // Empty
 }
 
-CValue::CValue(const CValue &value) { (*this) = value; }
+Value::Value(const Value &value) { (*this) = value; }
 
-CValue::CValue(CValue &&value) { (*this) = value; }
+Value::Value(Value &&value) { (*this) = value; }
 
-CValue::CValue(int32_t value)
+Value::Value(int32_t value)
 {
   m_type = EType::Integer;
   m_integer = value;
 }
 
-CValue::CValue(uint32_t value)
+Value::Value(uint32_t value)
 {
   m_type = EType::UnsignedInteger;
   m_unsignedInteger = value;
 }
 
-CValue::CValue(float value)
+Value::Value(float value)
 {
   m_type = EType::Float;
   m_float = value;
 }
 
-CValue::CValue(const std::string &value)
+Value::Value(const std::string &value)
 {
   m_type = EType::String;
   m_string = new char[value.length() + 1];
@@ -39,7 +39,7 @@ CValue::CValue(const std::string &value)
   m_string[value.length()] = '\0';
 }
 
-CValue::~CValue()
+Value::~Value()
 {
   if (m_type == EType::String && m_string != nullptr)
   {
@@ -47,7 +47,7 @@ CValue::~CValue()
   }
 }
 
-bool CValue::convert(int32_t &value) const
+bool Value::convert(int32_t &value) const
 {
   switch (m_type)
   {
@@ -69,7 +69,7 @@ bool CValue::convert(int32_t &value) const
   }
 }
 
-bool CValue::convert(uint32_t &value) const
+bool Value::convert(uint32_t &value) const
 {
   switch (m_type)
   {
@@ -91,7 +91,7 @@ bool CValue::convert(uint32_t &value) const
   }
 }
 
-bool CValue::convert(float &value) const
+bool Value::convert(float &value) const
 {
   switch (m_type)
   {
@@ -113,7 +113,7 @@ bool CValue::convert(float &value) const
   }
 }
 
-bool CValue::convert(std::string &value) const
+bool Value::convert(std::string &value) const
 {
   // TODO Slow!!
   std::stringstream ss;
@@ -140,30 +140,30 @@ bool CValue::convert(std::string &value) const
   }
 }
 
-CValue::EType CValue::getType() const { return m_type; }
+Value::EType Value::getType() const { return m_type; }
 
-std::string CValue::toString() const
+std::string Value::toString() const
 {
   std::stringstream ss;
   switch (m_type)
   {
-  case CValue::EType::Float:
+  case Value::EType::Float:
     ss << "Float";
     break;
 
-  case CValue::EType::Integer:
+  case Value::EType::Integer:
     ss << "Integer";
     break;
 
-  case CValue::EType::Invalid:
+  case Value::EType::Invalid:
     return "Invalid";
     break;
 
-  case CValue::EType::String:
+  case Value::EType::String:
     ss << "String";
     break;
 
-  case CValue::EType::UnsignedInteger:
+  case Value::EType::UnsignedInteger:
     ss << "UnsignedInteger";
     break;
   }
@@ -173,7 +173,7 @@ std::string CValue::toString() const
   return ss.str();
 }
 
-CValue &CValue::operator=(const CValue &rhs)
+Value &Value::operator=(const Value &rhs)
 {
   // Same object?
   if (this == &rhs)
@@ -214,7 +214,7 @@ CValue &CValue::operator=(const CValue &rhs)
   return *this;
 }
 
-CValue &CValue::operator=(CValue &&rhs)
+Value &Value::operator=(Value &&rhs)
 {
   if (this == &rhs)
   {
@@ -258,13 +258,13 @@ CValue &CValue::operator=(CValue &&rhs)
   return *this;
 }
 
-bool CValue::isNumeric() const
+bool Value::isNumeric() const
 {
   return m_type == EType::Integer || m_type == EType::UnsignedInteger ||
          m_type == EType::Float;
 }
 
-bool CValue::isZero() const
+bool Value::isZero() const
 {
   switch (m_type)
   {
@@ -279,7 +279,7 @@ bool CValue::isZero() const
   }
 }
 
-double CValue::asDouble(const CValue &value)
+double Value::asDouble(const Value &value)
 {
   switch (value.m_type)
   {
@@ -294,7 +294,7 @@ double CValue::asDouble(const CValue &value)
   }
 }
 
-bool CValue::asBool(const CValue &value)
+bool Value::asBool(const Value &value)
 {
   switch (value.m_type)
   {
@@ -309,7 +309,7 @@ bool CValue::asBool(const CValue &value)
   }
 }
 
-void CValue::store(EType type, double value)
+void Value::store(EType type, double value)
 {
   m_type = type;
   switch (type)
@@ -338,22 +338,22 @@ namespace
 * Float wins over the integers, matching how the conversions widen. Two
 * unsigned integers stay unsigned, everything else becomes signed.
 */
-CValue::EType widen(CValue::EType lhs, CValue::EType rhs)
+Value::EType widen(Value::EType lhs, Value::EType rhs)
 {
-  if (lhs == CValue::EType::Float || rhs == CValue::EType::Float)
+  if (lhs == Value::EType::Float || rhs == Value::EType::Float)
   {
-    return CValue::EType::Float;
+    return Value::EType::Float;
   }
-  if (lhs == CValue::EType::UnsignedInteger &&
-      rhs == CValue::EType::UnsignedInteger)
+  if (lhs == Value::EType::UnsignedInteger &&
+      rhs == Value::EType::UnsignedInteger)
   {
-    return CValue::EType::UnsignedInteger;
+    return Value::EType::UnsignedInteger;
   }
-  return CValue::EType::Integer;
+  return Value::EType::Integer;
 }
 }
 
-CValue &CValue::operator+=(const CValue &rhs)
+Value &Value::operator+=(const Value &rhs)
 {
   if (isNumeric() && rhs.isNumeric())
   {
@@ -381,7 +381,7 @@ CValue &CValue::operator+=(const CValue &rhs)
   return *this;
 }
 
-CValue &CValue::operator-=(const CValue &rhs)
+Value &Value::operator-=(const Value &rhs)
 {
   if (isNumeric() && rhs.isNumeric())
   {
@@ -407,7 +407,7 @@ CValue &CValue::operator-=(const CValue &rhs)
   return *this;
 }
 
-CValue &CValue::operator*=(const CValue &rhs)
+Value &Value::operator*=(const Value &rhs)
 {
   if (isNumeric() && rhs.isNumeric())
   {
@@ -433,7 +433,7 @@ CValue &CValue::operator*=(const CValue &rhs)
   return *this;
 }
 
-CValue &CValue::operator/=(const CValue &rhs)
+Value &Value::operator/=(const Value &rhs)
 {
   // Division by zero leaves the operand unchanged, matching how the other
   // operators ignore non numeric operands. The caller checks for it.
@@ -476,7 +476,7 @@ CValue &CValue::operator/=(const CValue &rhs)
   return *this;
 }
 
-bool CValue::operator==(const CValue &rhs) const
+bool Value::operator==(const Value &rhs) const
 {
   if (!isNumeric() || !rhs.isNumeric())
   {
@@ -506,9 +506,9 @@ bool CValue::operator==(const CValue &rhs) const
   return asDouble(*this) == asDouble(rhs);
 }
 
-bool CValue::operator!=(const CValue &rhs) const { return !((*this) == rhs); }
+bool Value::operator!=(const Value &rhs) const { return !((*this) == rhs); }
 
-int CValue::compare(const CValue &lhs, const CValue &rhs)
+int Value::compare(const Value &lhs, const Value &rhs)
 {
   if (lhs.m_type == rhs.m_type)
   {
@@ -534,7 +534,7 @@ int CValue::compare(const CValue &lhs, const CValue &rhs)
   return a < b ? -1 : (a > b ? 1 : 0);
 }
 
-bool CValue::operator<=(const CValue &rhs) const
+bool Value::operator<=(const Value &rhs) const
 {
   if (!isNumeric() || !rhs.isNumeric())
   {
@@ -543,7 +543,7 @@ bool CValue::operator<=(const CValue &rhs) const
   return compare(*this, rhs) <= 0;
 }
 
-bool CValue::operator<(const CValue &rhs) const
+bool Value::operator<(const Value &rhs) const
 {
   if (!isNumeric() || !rhs.isNumeric())
   {
@@ -552,7 +552,7 @@ bool CValue::operator<(const CValue &rhs) const
   return compare(*this, rhs) < 0;
 }
 
-bool CValue::operator>=(const CValue &rhs) const
+bool Value::operator>=(const Value &rhs) const
 {
   if (!isNumeric() || !rhs.isNumeric())
   {
@@ -561,7 +561,7 @@ bool CValue::operator>=(const CValue &rhs) const
   return compare(*this, rhs) >= 0;
 }
 
-bool CValue::operator>(const CValue &rhs) const
+bool Value::operator>(const Value &rhs) const
 {
   if (!isNumeric() || !rhs.isNumeric())
   {

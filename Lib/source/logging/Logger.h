@@ -2,7 +2,7 @@
 
 #include <kern/ILogger.h>
 
-class CLogger;
+class Logger;
 
 /**
 * \brief Returns a shared logger that discards everything.
@@ -22,7 +22,7 @@ kern::ILogger *nullLogger();
 *
 * Holds no state, so a single shared instance is used everywhere.
 */
-class CLogger : public kern::ILogger
+class Logger : public kern::ILogger
 {
 protected:
   void onError(const std::string &message) override;

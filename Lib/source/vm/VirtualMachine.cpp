@@ -1,12 +1,12 @@
 #include <cassert>
 
-#include "CVirtualMachine.h"
+#include "VirtualMachine.h"
 
 #include "kern/RuntimeError.h"
 
 #include "common/Instructions.h"
 #include "common/Deserialize.h"
-#include "logging/CLogger.h"
+#include "logging/Logger.h"
 
 namespace
 {
@@ -43,9 +43,9 @@ bool indexInRange(uint32_t base, int32_t rawIndex, size_t size)
 
 }
 
-CVirtualMachine::SFunctionFrame::SFunctionFrame() {}
+VirtualMachine::SFunctionFrame::SFunctionFrame() {}
 
-CVirtualMachine::SFunctionFrame::SFunctionFrame(uint32_t funcIndex,
+VirtualMachine::SFunctionFrame::SFunctionFrame(uint32_t funcIndex,
                                                  uint32_t instrIndex,
                                                  uint32_t stackBaseIndex)
 {
@@ -54,21 +54,21 @@ CVirtualMachine::SFunctionFrame::SFunctionFrame(uint32_t funcIndex,
   runtimeStackBaseIndex = stackBaseIndex;
 }
 
-CVirtualMachine::CVirtualMachine(kern::ILogger *logger)
-    : CVirtualMachine(logger, kern::VMConfig{})
+VirtualMachine::VirtualMachine(kern::ILogger *logger)
+    : VirtualMachine(logger, kern::VMConfig{})
 {
 }
 
-CVirtualMachine::CVirtualMachine(kern::ILogger *logger, kern::VMConfig config)
+VirtualMachine::VirtualMachine(kern::ILogger *logger, kern::VMConfig config)
     : m_logger(logger != nullptr ? logger : nullLogger()),
-      m_maxStackSize(config.maxStackBytes / sizeof(CValue)),
+      m_maxStackSize(config.maxStackBytes / sizeof(Value)),
       m_maxCallDepth(config.maxCallDepth)
 {
   // Preallocate the whole budget, so steady state never reallocates.
   m_runtimeStack.reserve(m_maxStackSize);
 }
 
-bool CVirtualMachine::load(std::istream &byteCode)
+bool VirtualMachine::load(std::istream &byteCode)
 {
   // Load string constants
   if (!deserializeStrings(byteCode))
@@ -88,7 +88,7 @@ bool CVirtualMachine::load(std::istream &byteCode)
   return true;
 }
 
-void CVirtualMachine::clearScripts()
+void VirtualMachine::clearScripts()
 {
   m_currentFunctionIndex = 0;
   m_currentInstructionIndex = 0;
@@ -99,7 +99,7 @@ void CVirtualMachine::clearScripts()
   m_functions.clear();
 }
 
-bool CVirtualMachine::callFunction(const std::string &functionName)
+bool VirtualMachine::callFunction(const std::string &functionName)
 {
   // Retrieve function index if exists
   if (!getFunctionIndexByName(functionName, m_currentFunctionIndex))
@@ -125,18 +125,18 @@ bool CVirtualMachine::callFunction(const std::string &functionName)
   return true;
 }
 
-void CVirtualMachine::addFunction(const std::string &functionName,
+void VirtualMachine::addFunction(const std::string &functionName,
                                   kern::IExternFunction *function)
 {
   m_externFunctionsMap[functionName].reset(function);
 }
 
-void CVirtualMachine::removeFunction(const ::std::string &functionName)
+void VirtualMachine::removeFunction(const ::std::string &functionName)
 {
   m_externFunctionsMap.erase(functionName);
 }
 
-bool CVirtualMachine::popParameter(int &value)
+bool VirtualMachine::popParameter(int &value)
 {
   if (m_runtimeStack.empty())
   {
@@ -148,7 +148,7 @@ bool CVirtualMachine::popParameter(int &value)
   return ret;
 }
 
-bool CVirtualMachine::popParameter(float &value)
+bool VirtualMachine::popParameter(float &value)
 {
   if (m_runtimeStack.empty())
   {
@@ -160,7 +160,7 @@ bool CVirtualMachine::popParameter(float &value)
   return ret;
 }
 
-bool CVirtualMachine::popParameter(::std::string &value)
+bool VirtualMachine::popParameter(::std::string &value)
 {
   if (m_runtimeStack.empty())
   {
@@ -172,18 +172,18 @@ bool CVirtualMachine::popParameter(::std::string &value)
   return ret;
 }
 
-void CVirtualMachine::setReturnValue() { return; }
+void VirtualMachine::setReturnValue() { return; }
 
-void CVirtualMachine::setReturnValue(int value) { pushValue(CValue(value)); }
+void VirtualMachine::setReturnValue(int value) { pushValue(Value(value)); }
 
-void CVirtualMachine::setReturnValue(float value) { pushValue(CValue(value)); }
+void VirtualMachine::setReturnValue(float value) { pushValue(Value(value)); }
 
-void CVirtualMachine::setReturnValue(const std::string &value)
+void VirtualMachine::setReturnValue(const std::string &value)
 {
-  pushValue(CValue(value));
+  pushValue(Value(value));
 }
 
-bool CVirtualMachine::deserializeStrings(std::istream &stream)
+bool VirtualMachine::deserializeStrings(std::istream &stream)
 {
   // Get string table size and reserve space
   uint32_t size = 0;
@@ -204,7 +204,7 @@ bool CVirtualMachine::deserializeStrings(std::istream &stream)
   return true;
 }
 
-bool CVirtualMachine::deserializeExternFunctions(std::istream &stream)
+bool VirtualMachine::deserializeExternFunctions(std::istream &stream)
 {
   // Read size
   uint32_t size = 0;
@@ -220,7 +220,7 @@ bool CVirtualMachine::deserializeExternFunctions(std::istream &stream)
   return stream.good();
 }
 
-bool CVirtualMachine::deserializeFunctions(std::istream &stream)
+bool VirtualMachine::deserializeFunctions(std::istream &stream)
 {
   // Read size
   uint32_t size = 0;
@@ -266,7 +266,7 @@ bool CVirtualMachine::deserializeFunctions(std::istream &stream)
   return stream.good();
 }
 
-bool CVirtualMachine::getFunctionIndexByName(const std::string &functionName,
+bool VirtualMachine::getFunctionIndexByName(const std::string &functionName,
                                              uint32_t &index)
 {
   index = 0;
@@ -281,9 +281,9 @@ bool CVirtualMachine::getFunctionIndexByName(const std::string &functionName,
   return false;
 }
 
-bool CVirtualMachine::getFunctionByName(
+bool VirtualMachine::getFunctionByName(
     const std::string &functionName,
-    const CVirtualMachine::SFunction *function_out) const
+    const VirtualMachine::SFunction *function_out) const
 {
   for (const auto &function : m_functions)
   {
@@ -296,7 +296,7 @@ bool CVirtualMachine::getFunctionByName(
   return false;
 }
 
-bool CVirtualMachine::execute()
+bool VirtualMachine::execute()
 {
   // Cache current function
   const SFunction &currentFunction = m_functions.at(m_currentFunctionIndex);
@@ -398,13 +398,13 @@ bool CVirtualMachine::execute()
   case EInstruction::Pushi:
     // Push signed 32 bit integer value to
     // Arg 0 is integer value
-    pushValue(CValue(instruction.args[0]));
+    pushValue(Value(instruction.args[0]));
     ++m_currentInstructionIndex;
     break;
 
   case EInstruction::Pushu:
     // Arg 0 is an unsigned integer value
-    pushValue(CValue(*((uint32_t *)&instruction.args[0])));
+    pushValue(Value(*((uint32_t *)&instruction.args[0])));
     ++m_currentInstructionIndex;
     break;
 
@@ -420,7 +420,7 @@ bool CVirtualMachine::execute()
 
   case EInstruction::Pushf:
     // Arg 0 is float value
-    pushValue(CValue(*((float *)&instruction.args[0])));
+    pushValue(Value(*((float *)&instruction.args[0])));
     ++m_currentInstructionIndex;
     break;
 
@@ -714,7 +714,7 @@ bool CVirtualMachine::execute()
 
   case EInstruction::Add:
   {
-    CValue x;
+    Value x;
     // 2 Values needed
     if (!popValue(x) || m_runtimeStack.empty())
     {
@@ -727,7 +727,7 @@ bool CVirtualMachine::execute()
 
   case EInstruction::Sub:
   {
-    CValue x;
+    Value x;
     // 2 Values needed
     if (!popValue(x) || m_runtimeStack.empty())
     {
@@ -740,7 +740,7 @@ bool CVirtualMachine::execute()
 
   case EInstruction::Mul:
   {
-    CValue x;
+    Value x;
     // 2 values needed
     if (!popValue(x) || m_runtimeStack.empty())
     {
@@ -757,7 +757,7 @@ bool CVirtualMachine::execute()
 
   case EInstruction::Div:
   {
-    CValue x;
+    Value x;
     // 2 values needed
     if (!popValue(x) || m_runtimeStack.empty())
     {
@@ -767,7 +767,7 @@ bool CVirtualMachine::execute()
     {
       throwRuntimeError(m_logger, "Div needs numeric operands.");
     }
-    // CValue leaves the operand unchanged on a zero divisor instead of
+    // Value leaves the operand unchanged on a zero divisor instead of
     // dividing, so the check belongs to the caller.
     if (x.isZero())
     {
@@ -785,12 +785,12 @@ bool CVirtualMachine::execute()
     {
       throwRuntimeError(m_logger, "Inc needs a value on the runtime stack.");
     }
-    CValue &top = m_runtimeStack.back();
+    Value &top = m_runtimeStack.back();
     if (!top.isNumeric())
     {
       throwRuntimeError(m_logger, "Inc needs a numeric value.");
     }
-    top += CValue(static_cast<int32_t>(1));
+    top += Value(static_cast<int32_t>(1));
     ++m_currentInstructionIndex;
   }
   break;
@@ -802,20 +802,20 @@ bool CVirtualMachine::execute()
     {
       throwRuntimeError(m_logger, "Dec needs a value on the runtime stack.");
     }
-    CValue &top = m_runtimeStack.back();
+    Value &top = m_runtimeStack.back();
     if (!top.isNumeric())
     {
       throwRuntimeError(m_logger, "Dec needs a numeric value.");
     }
-    top -= CValue(static_cast<int32_t>(1));
+    top -= Value(static_cast<int32_t>(1));
     ++m_currentInstructionIndex;
   }
   break;
 
   case EInstruction::And:
   {
-    CValue x;
-    CValue y;
+    Value x;
+    Value y;
     if (!popValue(x) || !popValue(y))
     {
       throwRuntimeError(m_logger, "And needs two values on the runtime stack.");
@@ -825,15 +825,15 @@ bool CVirtualMachine::execute()
       throwRuntimeError(m_logger, "And needs numeric values.");
     }
     // Zero is the only false value, any other value is true.
-    pushValue(CValue(static_cast<int32_t>(!x.isZero() && !y.isZero())));
+    pushValue(Value(static_cast<int32_t>(!x.isZero() && !y.isZero())));
     ++m_currentInstructionIndex;
   }
   break;
 
   case EInstruction::Or:
   {
-    CValue x;
-    CValue y;
+    Value x;
+    Value y;
     if (!popValue(x) || !popValue(y))
     {
       throwRuntimeError(m_logger, "Or needs two values on the runtime stack.");
@@ -842,7 +842,7 @@ bool CVirtualMachine::execute()
     {
       throwRuntimeError(m_logger, "Or needs numeric values.");
     }
-    pushValue(CValue(static_cast<int32_t>(!x.isZero() || !y.isZero())));
+    pushValue(Value(static_cast<int32_t>(!x.isZero() || !y.isZero())));
     ++m_currentInstructionIndex;
   }
   break;
@@ -858,14 +858,14 @@ bool CVirtualMachine::execute()
       throwRuntimeError(m_logger, "Not needs a numeric value.");
     }
     const bool truth = !m_runtimeStack.back().isZero();
-    m_runtimeStack.back() = CValue(static_cast<int32_t>(!truth));
+    m_runtimeStack.back() = Value(static_cast<int32_t>(!truth));
     ++m_currentInstructionIndex;
   }
   break;
   case EInstruction::Xor:
   {
-    CValue x;
-    CValue y;
+    Value x;
+    Value y;
     if (!popValue(x) || !popValue(y))
     {
       throwRuntimeError(m_logger, "Xor needs two values on the runtime stack.");
@@ -876,7 +876,7 @@ bool CVirtualMachine::execute()
     }
     // True only when exactly one side is true.
     const bool truth = (!x.isZero()) != (!y.isZero());
-    pushValue(CValue(static_cast<int32_t>(truth)));
+    pushValue(Value(static_cast<int32_t>(truth)));
     ++m_currentInstructionIndex;
   }
   break;
@@ -897,8 +897,8 @@ bool CVirtualMachine::execute()
   case EInstruction::Je:
   {
     // Compare top 2 values from stack, x == y
-    CValue y;
-    CValue x;
+    Value y;
+    Value x;
     if (!popValue(y) || !popValue(x))
     {
       throwRuntimeError(m_logger, "Je needs two values on the runtime stack.");
@@ -922,8 +922,8 @@ bool CVirtualMachine::execute()
   case EInstruction::Jne:
   {
     // Compare top 2 values from stack, x != y
-    CValue y;
-    CValue x;
+    Value y;
+    Value x;
     if (!popValue(y) || !popValue(x))
     {
       throwRuntimeError(m_logger, "Jne needs two values on the runtime stack.");
@@ -947,8 +947,8 @@ bool CVirtualMachine::execute()
   case EInstruction::Jle:
   {
     // Compare top 2 values from stack, x <= y
-    CValue y;
-    CValue x;
+    Value y;
+    Value x;
     if (!popValue(y) || !popValue(x))
     {
       throwRuntimeError(m_logger, "Jle needs two values on the runtime stack.");
@@ -972,8 +972,8 @@ bool CVirtualMachine::execute()
   case EInstruction::Jg:
   {
     // Compare top 2 values from stack, x > y
-    CValue y;
-    CValue x;
+    Value y;
+    Value x;
     if (!popValue(y) || !popValue(x))
     {
       throwRuntimeError(m_logger, "Jg needs two values on the runtime stack.");
@@ -997,8 +997,8 @@ bool CVirtualMachine::execute()
   case EInstruction::Jge:
   {
     // Compare top 2 values from stack, x >= y
-    CValue y;
-    CValue x;
+    Value y;
+    Value x;
     if (!popValue(y) || !popValue(x))
     {
       throwRuntimeError(m_logger, "Jge needs two values on the runtime stack.");
@@ -1022,8 +1022,8 @@ bool CVirtualMachine::execute()
   case EInstruction::Jl:
   {
     // Compare top 2 values from stack, x < y
-    CValue y;
-    CValue x;
+    Value y;
+    Value x;
     if (!popValue(y) || !popValue(x))
     {
       throwRuntimeError(m_logger, "Jl needs two values on the runtime stack.");
@@ -1054,9 +1054,9 @@ bool CVirtualMachine::execute()
   return true;
 }
 
-void CVirtualMachine::pushValue(const CValue &val)
+void VirtualMachine::pushValue(const Value &val)
 {
-  assert(val.getType() != CValue::EType::Invalid);
+  assert(val.getType() != Value::EType::Invalid);
   if (m_runtimeStack.size() >= m_maxStackSize)
   {
     throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
@@ -1064,14 +1064,14 @@ void CVirtualMachine::pushValue(const CValue &val)
   m_runtimeStack.push_back(val);
 }
 
-bool CVirtualMachine::popValue(CValue &val)
+bool VirtualMachine::popValue(Value &val)
 {
   if (m_runtimeStack.empty())
   {
     return false;
   }
   val = std::move(m_runtimeStack.back());
-  assert(val.getType() != CValue::EType::Invalid);
+  assert(val.getType() != Value::EType::Invalid);
   m_runtimeStack.pop_back();
   return true;
 }
