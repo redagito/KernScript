@@ -31,8 +31,9 @@ TEST_CASE("test1 prints its values and calls a two argument extern function",
 {
   const testutil::StringRecorder recorder = runFixture("test1");
 
-  // log receives its arguments in source order, severity first.
-  REQUIRE(recorder.text() == "10\n200\n10000\n10\n123\n[1]: 2\n");
+  // log receives its arguments in source order, severity first. print emits
+  // no trailing newline, so its output runs straight into the next println.
+  REQUIRE(recorder.text() == "10\n200\n10000\n10123\n[1]: 2\n");
 }
 
 TEST_CASE("test2 prints floats", "[e2e][fixture]")

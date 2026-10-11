@@ -130,11 +130,13 @@ public:
   bool call(IVirtualMachine &vm)
   {
     bool ok = true;
-    ArgType0 arg0;
-    ok = vm.popParameter(arg0);
-
+    // The script pushes arguments in source order, so the last argument is on
+    // top of the runtime stack and has to be popped first.
     ArgType1 arg1;
-    ok &= vm.popParameter(arg1);
+    ok = vm.popParameter(arg1);
+
+    ArgType0 arg0;
+    ok &= vm.popParameter(arg0);
 
     if (!ok)
     {
@@ -164,11 +166,13 @@ public:
   bool call(IVirtualMachine &vm)
   {
     bool ok = true;
-    ArgType0 arg0;
-    ok = vm.popParameter(arg0);
-
+    // The script pushes arguments in source order, so the last argument is on
+    // top of the runtime stack and has to be popped first.
     ArgType1 arg1;
-    ok &= vm.popParameter(arg1);
+    ok = vm.popParameter(arg1);
+
+    ArgType0 arg0;
+    ok &= vm.popParameter(arg0);
 
     if (!ok)
     {
@@ -201,14 +205,16 @@ public:
   bool call(IVirtualMachine &vm)
   {
     bool ok = true;
-    ArgType0 arg0;
-    ok = vm.popParameter(arg0);
+    // The script pushes arguments in source order, so the last argument is on
+    // top of the runtime stack and has to be popped first.
+    ArgType2 arg2;
+    ok = vm.popParameter(arg2);
 
     ArgType1 arg1;
     ok &= vm.popParameter(arg1);
 
-    ArgType2 arg2;
-    ok &= vm.popParameter(arg2);
+    ArgType0 arg0;
+    ok &= vm.popParameter(arg0);
 
     if (!ok)
     {
@@ -240,14 +246,16 @@ public:
   bool call(IVirtualMachine &vm)
   {
     bool ok = true;
-    ArgType0 arg0;
-    ok = vm.popParameter(arg0);
+    // The script pushes arguments in source order, so the last argument is on
+    // top of the runtime stack and has to be popped first.
+    ArgType2 arg2;
+    ok = vm.popParameter(arg2);
 
     ArgType1 arg1;
     ok &= vm.popParameter(arg1);
 
-    ArgType2 arg2;
-    ok &= vm.popParameter(arg2);
+    ArgType0 arg0;
+    ok &= vm.popParameter(arg0);
 
     if (!ok)
     {
@@ -281,17 +289,19 @@ public:
   bool call(IVirtualMachine &vm)
   {
     bool ok = true;
-    ArgType0 arg0;
-    ok = vm.popParameter(arg0);
-
-    ArgType1 arg1;
-    ok &= vm.popParameter(arg1);
+    // The script pushes arguments in source order, so the last argument is on
+    // top of the runtime stack and has to be popped first.
+    ArgType3 arg3;
+    ok = vm.popParameter(arg3);
 
     ArgType2 arg2;
     ok &= vm.popParameter(arg2);
 
-    ArgType3 arg3;
-    ok &= vm.popParameter(arg3);
+    ArgType1 arg1;
+    ok &= vm.popParameter(arg1);
+
+    ArgType0 arg0;
+    ok &= vm.popParameter(arg0);
 
     if (!ok)
     {
@@ -325,17 +335,19 @@ public:
   bool call(IVirtualMachine &vm)
   {
     bool ok = true;
-    ArgType0 arg0;
-    ok = vm.popParameter(arg0);
-
-    ArgType1 arg1;
-    ok &= vm.popParameter(arg1);
+    // The script pushes arguments in source order, so the last argument is on
+    // top of the runtime stack and has to be popped first.
+    ArgType3 arg3;
+    ok = vm.popParameter(arg3);
 
     ArgType2 arg2;
     ok &= vm.popParameter(arg2);
 
-    ArgType3 arg3;
-    ok &= vm.popParameter(arg3);
+    ArgType1 arg1;
+    ok &= vm.popParameter(arg1);
+
+    ArgType0 arg0;
+    ok &= vm.popParameter(arg0);
 
     if (!ok)
     {
