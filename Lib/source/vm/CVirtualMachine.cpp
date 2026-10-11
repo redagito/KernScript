@@ -461,14 +461,12 @@ bool CVirtualMachine::execute()
     }
     // Arg 0 is integer constant
     // The caller's stack ends at the runtime stack base index, so slot base
-    // holds the first argument. It is the slot the caller reads the return
-    // value from once the frame is dropped, so the return value goes there.
+    // is the slot the caller reads the return value from. A function without
+    // parameters or locals leaves the frame empty, so the slot is grown
+    // first rather than assumed to exist.
+    m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
     m_runtimeStack[m_currentRuntimeStackBaseIndex] =
         *((int32_t *)&instruction.args[0]);
-
-    // Resize runtime stack to remove local function variables but the one
-    // holding the return value.
-    m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
 
     // Retrieve function index of previous function
     m_currentFunctionIndex = m_callStack.top().functionIndex;

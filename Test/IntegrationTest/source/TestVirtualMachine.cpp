@@ -579,6 +579,19 @@ TEST_CASE("Break continues execution", "[integration][vm]")
   REQUIRE(recorder.text() == "1\n2\n");
 }
 
+TEST_CASE("reti from a function without parameters or locals",
+          "[integration][vm]")
+{
+  const std::string source = "extern println 1\n\nfunc f\n{\nreti 5\n}\n"
+                             "\nfunc main\n{\ncall f\n"
+                             "calle println\nret\n}\n";
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "5\n");
+}
+
 TEST_CASE("A script function receives its parameter", "[integration][vm]")
 {
   const std::string source = "extern println 1\n\nfunc print\n{\nparam a\n"
