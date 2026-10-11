@@ -424,11 +424,13 @@ bool CVirtualMachine::execute()
       return false;
     }
     // Arg 0 is local variable index
-    // Store return value at local stack position 0
+    // The caller's stack ends at the runtime stack base index, so slot base
+    // holds the first argument. It is the slot the caller reads the return
+    // value from once the frame is dropped, so the return value goes there.
     uint32_t varIndex = *((uint32_t *)&instruction.args[0]);
     if (varIndex != 0)
     {
-      m_runtimeStack[m_currentRuntimeStackBaseIndex + 1] =
+      m_runtimeStack[m_currentRuntimeStackBaseIndex] =
           m_runtimeStack.at(m_currentRuntimeStackBaseIndex + varIndex);
     }
 
@@ -455,8 +457,10 @@ bool CVirtualMachine::execute()
       return false;
     }
     // Arg 0 is integer constant
-    // Store return value at local stack position 0
-    m_runtimeStack[m_currentRuntimeStackBaseIndex + 1] =
+    // The caller's stack ends at the runtime stack base index, so slot base
+    // holds the first argument. It is the slot the caller reads the return
+    // value from once the frame is dropped, so the return value goes there.
+    m_runtimeStack[m_currentRuntimeStackBaseIndex] =
         *((int32_t *)&instruction.args[0]);
 
     // Resize runtime stack to remove local function variables but the one
