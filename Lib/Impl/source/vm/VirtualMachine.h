@@ -126,5 +126,5 @@ private:
   uint32_t m_maxTableEntries =
       0; /**< Most entries accepted in one byte code table. */
   bool m_running =
-      false; /**< Reentrancy guard for callFunction, reset on every exit. */
+      false; /**< Reentrancy guard for execute, reset on every exit. */
 };

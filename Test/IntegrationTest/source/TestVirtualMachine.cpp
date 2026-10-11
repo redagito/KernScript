@@ -1999,3 +1999,59 @@ TEST_CASE("Jmp to exactly the end returns cleanly",
   REQUIRE(vm.load(byteCode));
   REQUIRE(vm.callFunction("main"));
 }
+
+TEST_CASE("Extern calling clearScripts throws", "[integration][vm][reentry]")
+{
+  class ClearingFunction : public kern::IExternFunction
+  {
+  public:
+    bool call(kern::IVirtualMachine &vm) override
+    {
+      vm.clearScripts();
+      return true;
+    }
+
+    unsigned int getArgumentCount() const override { return 0; }
+  };
+
+  const std::string source =
+      "extern boom 0\n\nfunc main\n{\ncalle boom\nret\n}\n";
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  vm.addFunction("boom", new ClearingFunction());
+  REQUIRE(vm.load(byteCode));
+
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
+}
+
+TEST_CASE("Extern removing itself throws", "[integration][vm][reentry]")
+{
+  class SelfRemovingFunction : public kern::IExternFunction
+  {
+  public:
+    bool call(kern::IVirtualMachine &vm) override
+    {
+      vm.removeFunction("boom");
+      return true;
+    }
+
+    unsigned int getArgumentCount() const override { return 0; }
+  };
+
+  const std::string source =
+      "extern boom 0\n\nfunc main\n{\ncalle boom\nret\n}\n";
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  VirtualMachine vm(nullptr);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  vm.addFunction("boom", new SelfRemovingFunction());
+  REQUIRE(vm.load(byteCode));
+
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
+}

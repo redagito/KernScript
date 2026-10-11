@@ -108,6 +108,12 @@ VirtualMachine::VirtualMachine(kern::ILogger *logger, kern::VMConfig config)
 
 bool VirtualMachine::load(std::istream &byteCode)
 {
+  // Tables back the running call: reloading them mid-execution would
+  // reallocate the vectors execute() holds references into.
+  if (m_running)
+  {
+    throwRuntimeError(m_logger, "load is not reentrant.");
+  }
   // The header leads the bytecode. Anything else is not runnable here.
   ScriptHeader header;
   if (!deserialize(header, byteCode, m_maxStringBytes))
@@ -144,6 +150,12 @@ bool VirtualMachine::load(std::istream &byteCode)
 
 void VirtualMachine::clearScripts()
 {
+  // Clearing mid-execution would free the vectors execute() holds references
+  // into, so refuse instead of corrupting the running call.
+  if (m_running)
+  {
+    throwRuntimeError(m_logger, "clearScripts is not reentrant.");
+  }
   m_currentFunctionIndex = 0;
   m_currentInstructionIndex = 0;
   m_currentRuntimeStackBaseIndex = 0;
@@ -203,13 +215,28 @@ bool VirtualMachine::callFunction(const std::string &functionName)
 }
 
 void VirtualMachine::addFunction(const std::string &functionName,
-                                  kern::IExternFunction *function)
+                                   kern::IExternFunction *function)
 {
+  // Mutating the map mid-execution could rehash it while Calle holds an
+  // iterator across the extern call.
+  if (m_running)
+  {
+    // The VM owns the pointer once added, so take it to avoid leaking it on
+    // the refused registration.
+    std::unique_ptr<kern::IExternFunction> owned(function);
+    throwRuntimeError(m_logger, "addFunction is not reentrant.");
+  }
   m_externFunctionsMap[functionName].reset(function);
 }
 
 void VirtualMachine::removeFunction(const ::std::string &functionName)
 {
+  // Erasing mid-execution would destroy the extern object whose call method
+  // is still on the stack.
+  if (m_running)
+  {
+    throwRuntimeError(m_logger, "removeFunction is not reentrant.");
+  }
   m_externFunctionsMap.erase(functionName);
 }
 
