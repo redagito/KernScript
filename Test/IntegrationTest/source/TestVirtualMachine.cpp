@@ -1076,6 +1076,43 @@ TEST_CASE("Retv on an empty frame is refused", "[integration][vm][corrupt][m1]")
   requireCorrupt({}, {main, callee});
 }
 
+TEST_CASE("Call before define works", "[integration][vm][m2]")
+{
+  const std::string source = "extern println 1\n\nfunc main\n{\ncall f\nret\n}\n"
+                             "\nfunc f\n{\npushi 7\ncalle println\nret\n}\n";
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "7\n");
+}
+
+TEST_CASE("Calle before extern declaration works", "[integration][vm][m2]")
+{
+  const std::string source = "func main\n{\npushi 1\ncalle println\nret\n}\n"
+                             "\nextern println 1\n";
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "1\n");
+}
+
+TEST_CASE("Mutual recursion works", "[integration][vm][m2]")
+{
+  const std::string source =
+      "extern println 1\n\nfunc a\n{\nparam n\npushv n\ncalle println\n"
+      "pushv n\npushi 0\nje done\npushv n\npushi 1\nsub\ncall b\n"
+      "label done\nret\n}\n"
+      "\nfunc b\n{\nparam n\npushv n\npushi 1\nsub\ncall a\nret\n}\n"
+      "\nfunc main\n{\npushi 2\ncall a\nret\n}\n";
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "2\n0\n");
+}
+
 TEST_CASE("Movs advances the instruction pointer", "[integration][vm]")
 {
   const std::string source = "extern println 1\n\nfunc main\n{\nvar x\n"

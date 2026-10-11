@@ -3,6 +3,7 @@
 #include <list>
 #include <string>
 #include <cstdint>
+#include <tuple>
 
 #include "kern/IAssembler.h"
 #include "common/Lexer.h"
@@ -61,6 +62,10 @@ private:
   std::list<ExternFunction>
       m_externFunctions;            /**< Extern function declarations. */
   std::list<std::string> m_strings; /**< String constants. */
+  // Calls resolved after the full parse, so callees may be declared later in
+  // the script. Same deferred pattern as the per-function jump lists.
+  std::list<std::tuple<Instruction *, std::string>> m_unresolvedCalls;
+  std::list<std::tuple<Instruction *, std::string>> m_unresolvedExternCalls;
   Lexer m_lexer;                   /**< Internal lexer. */
   kern::ILogger *m_logger = nullptr; /**< Receives diagnostics. */
 };

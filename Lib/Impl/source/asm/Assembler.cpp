@@ -98,6 +98,8 @@ bool Assembler::assemble(std::istream &asmCode, std::ostream &byteCode)
   m_functions.clear();
   m_externFunctions.clear();
   m_strings.clear();
+  m_unresolvedCalls.clear();
+  m_unresolvedExternCalls.clear();
 
   // Parse code
   do
@@ -152,6 +154,28 @@ bool Assembler::assemble(std::istream &asmCode, std::ostream &byteCode)
       return false;
     }
   } while (m_lexer.getToken() != LexerToken::End);
+
+  // Resolve deferred calls now that every function and extern is known, so
+  // forward references and mutual recursion assemble.
+  for (auto &entry : m_unresolvedCalls)
+  {
+    if (!getFunctionId(std::get<1>(entry), std::get<0>(entry)->args[0]))
+    {
+      m_logger->error("The identifier is not a function: {}",
+                      std::get<1>(entry));
+      return false;
+    }
+  }
+  for (auto &entry : m_unresolvedExternCalls)
+  {
+    if (!getExternFunctionId(std::get<1>(entry),
+                             std::get<0>(entry)->args[0]))
+    {
+      m_logger->error("The identifier is not an extern function: {}",
+                      std::get<1>(entry));
+      return false;
+    }
+  }
 
   // Serialize to byte code
   if (!serializeStrings(byteCode))
@@ -711,15 +735,12 @@ bool Assembler::parseFunction(std::istream &stream)
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
-        // Identifier must be script function
-        // Set function index
-        if (!getFunctionId(m_lexer.getLexeme(), instruction.args[0]))
-        {
-          m_logger->error("The identifier is not a function: {}", m_lexer.getLexeme());
-          return false;
-        }
+        // The callee may be defined later in the script, so record the call
+        // and resolve it after the full parse, like jumps.
         // Add assembled instruction
         function.instructions.push_back(instruction);
+        m_unresolvedCalls.push_back(std::make_tuple(
+            &function.instructions.back(), m_lexer.getLexeme()));
       }
       else if (m_lexer.getLexeme() == "calle")
       {
@@ -732,15 +753,12 @@ bool Assembler::parseFunction(std::istream &stream)
           m_logger->error("Unexpected token: {}", m_lexer.getLexeme());
           return false;
         }
-        // Identifier must be extern function
-        // Set function index
-        if (!getExternFunctionId(m_lexer.getLexeme(), instruction.args[0]))
-        {
-          m_logger->error("The identifier is not an extern function: {}", m_lexer.getLexeme());
-          return false;
-        }
+        // The extern may be declared later in the script, so record the call
+        // and resolve it after the full parse, like jumps.
         // Add assembled instruction
         function.instructions.push_back(instruction);
+        m_unresolvedExternCalls.push_back(std::make_tuple(
+            &function.instructions.back(), m_lexer.getLexeme()));
       }
       else if (m_lexer.getLexeme() == "ret")
       {
