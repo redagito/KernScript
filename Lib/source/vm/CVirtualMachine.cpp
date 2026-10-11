@@ -28,6 +28,19 @@ template <typename... Args>
   throw kern::RuntimeError(message);
 }
 
+/**
+* \brief Checks an index read from bytecode against a container size.
+*
+* Indices arrive as signed 32 bit values. Reinterpreting a negative one as
+* unsigned would wrap, so the addition runs in 64 bit where nothing wraps.
+*/
+bool indexInRange(uint32_t base, int32_t rawIndex, size_t size)
+{
+  const uint64_t index =
+      static_cast<uint64_t>(base) + static_cast<uint64_t>(static_cast<uint32_t>(rawIndex));
+  return index < static_cast<uint64_t>(size);
+}
+
 }
 
 CVirtualMachine::SFunctionFrame::SFunctionFrame() {}
@@ -308,6 +321,13 @@ bool CVirtualMachine::execute()
     // Move variable to variable
     // Arg 0 is variable index of destination
     // Arg 1 is variable index of source
+    if (!indexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0],
+                      m_runtimeStack.size()) ||
+        !indexInRange(m_currentRuntimeStackBaseIndex, instruction.args[1],
+                      m_runtimeStack.size()))
+    {
+      throwRuntimeError(m_logger, "Movv variable index out of range.");
+    }
     m_runtimeStack[m_currentRuntimeStackBaseIndex +
                    *((uint32_t *)&instruction.args[0])] =
         m_runtimeStack.at(m_currentRuntimeStackBaseIndex +
@@ -319,6 +339,11 @@ bool CVirtualMachine::execute()
     // Move integer to variable
     // Arg 0 is variable index of destination
     // Arg 1 is source integer value
+    if (!indexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0],
+                      m_runtimeStack.size()))
+    {
+      throwRuntimeError(m_logger, "Movi variable index out of range.");
+    }
     m_runtimeStack[m_currentRuntimeStackBaseIndex +
                    *((uint32_t *)&instruction.args[0])] = instruction.args[1];
     ++m_currentInstructionIndex;
@@ -328,6 +353,11 @@ bool CVirtualMachine::execute()
     // Move float to variable
     // Arg 0 is variable index of destination
     // Arg 1 is source float value
+    if (!indexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0],
+                      m_runtimeStack.size()))
+    {
+      throwRuntimeError(m_logger, "Movf variable index out of range.");
+    }
     m_runtimeStack[m_currentRuntimeStackBaseIndex +
                    *((uint32_t *)&instruction.args[0])] =
         *((float *)&instruction.args[1]);
@@ -338,6 +368,15 @@ bool CVirtualMachine::execute()
     // Move string to variable
     // Arg 0 is variable index of destination
     // Arg 1 is source index of string
+    if (!indexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0],
+                      m_runtimeStack.size()))
+    {
+      throwRuntimeError(m_logger, "Movs variable index out of range.");
+    }
+    if (!indexInRange(0, instruction.args[1], m_strings.size()))
+    {
+      throwRuntimeError(m_logger, "Movs string index out of range.");
+    }
     m_runtimeStack[m_currentRuntimeStackBaseIndex +
                    *((uint32_t *)&instruction.args[0])] =
         m_strings.at(*((uint32_t *)&instruction.args[1]));
@@ -359,6 +398,10 @@ bool CVirtualMachine::execute()
 
   case EInstruction::Pushs:
     // Arg 0 is string index
+    if (!indexInRange(0, instruction.args[0], m_strings.size()))
+    {
+      throwRuntimeError(m_logger, "Pushs string index out of range.");
+    }
     pushValue(m_strings.at(*((uint32_t *)&instruction.args[0])));
     ++m_currentInstructionIndex;
     break;
@@ -371,6 +414,11 @@ bool CVirtualMachine::execute()
 
   case EInstruction::Pushv:
     // Arg 0 is variable index
+    if (!indexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0],
+                      m_runtimeStack.size()))
+    {
+      throwRuntimeError(m_logger, "Pushv variable index out of range.");
+    }
     pushValue(m_runtimeStack.at(m_currentRuntimeStackBaseIndex +
                                 *((uint32_t *)&instruction.args[0])));
     ++m_currentInstructionIndex;
@@ -390,6 +438,15 @@ bool CVirtualMachine::execute()
   {
     // Remove top of the stack and store it in variable
     // Arg 0 is variable index
+    if (m_runtimeStack.empty())
+    {
+      throwRuntimeError(m_logger, "Popv needs a value on the runtime stack.");
+    }
+    if (!indexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0],
+                      m_runtimeStack.size()))
+    {
+      throwRuntimeError(m_logger, "Popv variable index out of range.");
+    }
     m_runtimeStack[m_currentRuntimeStackBaseIndex +
                    *((uint32_t *)&instruction.args[0])] = m_runtimeStack.back();
     m_runtimeStack.pop_back();
@@ -399,23 +456,36 @@ bool CVirtualMachine::execute()
 
   case EInstruction::Call:
   {
+    // Arg 0 is function index of the called function
+    const int32_t functionIndex = instruction.args[0];
+    if (functionIndex < 0 ||
+        static_cast<uint64_t>(functionIndex) >= m_functions.size())
+    {
+      throwRuntimeError(m_logger, "Call function index out of range.");
+    }
+    const SFunction &newCurrentFunction =
+        m_functions.at(static_cast<size_t>(functionIndex));
+    const uint32_t runtimeStackSize =
+        static_cast<uint32_t>(m_runtimeStack.size());
+    if (newCurrentFunction.parameterSize > runtimeStackSize)
+    {
+      throwRuntimeError(m_logger,
+                        "Call needs {} parameters on the runtime stack.",
+                        newCurrentFunction.parameterSize);
+    }
     // Push current function index, next instruction index and base stack index
     // for
     // return call.
     m_callStack.push(SFunctionFrame(m_currentFunctionIndex,
-                                    m_currentInstructionIndex + 1,
-                                    m_currentRuntimeStackBaseIndex));
-    // Arg 0 is function index of the called function
-    m_currentFunctionIndex = *((uint32_t *)&instruction.args[0]);
+                                     m_currentInstructionIndex + 1,
+                                     m_currentRuntimeStackBaseIndex));
+    m_currentFunctionIndex = static_cast<uint32_t>(functionIndex);
     // Reset instruction index
     m_currentInstructionIndex = 0;
-    // Set new runtime stack base index for the called function
-    uint32_t runtimeStackSize = static_cast<uint32_t>(m_runtimeStack.size());
-    m_currentRuntimeStackBaseIndex = runtimeStackSize;
-    // Modify by function parameter size
-    const SFunction &newCurrentFunction =
-        m_functions.at(m_currentFunctionIndex);
-    m_currentRuntimeStackBaseIndex -= newCurrentFunction.parameterSize;
+    // Set new runtime stack base index for the called function, modified by
+    // the function parameter size
+    m_currentRuntimeStackBaseIndex =
+        runtimeStackSize - newCurrentFunction.parameterSize;
     // Resize runtime stack with local stack size of called function
     m_runtimeStack.resize(runtimeStackSize + newCurrentFunction.stackSize -
                           newCurrentFunction.parameterSize);
@@ -425,8 +495,14 @@ bool CVirtualMachine::execute()
   case EInstruction::Calle:
   {
     // Call external, arg 0 is extern function index
+    const int32_t externIndex = instruction.args[0];
+    if (externIndex < 0 ||
+        static_cast<uint64_t>(externIndex) >= m_externFunctions.size())
+    {
+      throwRuntimeError(m_logger, "Calle extern function index out of range.");
+    }
     const SExternFunction &externFunction =
-        m_externFunctions.at(instruction.args[0]);
+        m_externFunctions.at(static_cast<size_t>(externIndex));
 
     // Check if function exists
     // TODO Check if arg count ok
@@ -481,6 +557,11 @@ bool CVirtualMachine::execute()
     uint32_t varIndex = *((uint32_t *)&instruction.args[0]);
     if (varIndex != 0)
     {
+      if (!indexInRange(m_currentRuntimeStackBaseIndex,
+                        instruction.args[0], m_runtimeStack.size()))
+      {
+        throwRuntimeError(m_logger, "Retv variable index out of range.");
+      }
       m_runtimeStack[m_currentRuntimeStackBaseIndex] =
           m_runtimeStack.at(m_currentRuntimeStackBaseIndex + varIndex);
     }
@@ -565,7 +646,12 @@ bool CVirtualMachine::execute()
     // The caller's stack ends at the runtime stack base index, so slot base
     // is the slot the caller reads the return value from. A function without
     // parameters or locals leaves the frame empty, so the slot is grown
-    // first rather than assumed to exist.
+    // first rather than assumed to exist. The string index is validated
+    // before growing, so corrupt input cannot leave a grown frame behind.
+    if (!indexInRange(0, instruction.args[0], m_strings.size()))
+    {
+      throwRuntimeError(m_logger, "Rets string index out of range.");
+    }
     m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
     m_runtimeStack[m_currentRuntimeStackBaseIndex] =
         m_strings.at(*((uint32_t *)&instruction.args[0]));

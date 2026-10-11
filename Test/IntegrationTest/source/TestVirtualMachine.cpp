@@ -1,7 +1,11 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstdint>
+#include <vector>
+
 #include "testutil/TestSupport.hpp"
 
+#include "common/SInstruction.h"
 #include "vm/CVirtualMachine.h"
 
 namespace
@@ -12,6 +16,92 @@ const std::string header = "extern println 1\n";
 std::string wrap(const std::string &body)
 {
   return header + "\nfunc main\n{\n" + body + "\n}\n";
+}
+
+/**
+* \brief A function in a hand built byte code stream.
+*
+* Hand built streams carry corrupt indices the assembler would never emit,
+* which is exactly what the tests below feed the virtual machine.
+*/
+struct FakeFunction
+{
+  std::string name = "main";
+  uint32_t stackSize = 0;
+  uint32_t parameterSize = 0;
+  std::vector<SInstruction> instructions;
+};
+
+template <typename T> void writeRaw(std::stringstream &stream, T value)
+{
+  stream.write(reinterpret_cast<const char *>(&value), sizeof(T));
+}
+
+void writeString(std::stringstream &stream, const std::string &text)
+{
+  writeRaw<uint32_t>(stream, static_cast<uint32_t>(text.size()));
+  stream.write(text.data(), static_cast<std::streamsize>(text.size()));
+}
+
+SInstruction makeInstruction(EInstruction id, int32_t arg0 = 0,
+                             int32_t arg1 = 0)
+{
+  SInstruction instruction{};
+  instruction.id = id;
+  instruction.args[0] = arg0;
+  instruction.args[1] = arg1;
+  return instruction;
+}
+
+/**
+* \brief Builds a byte code stream in the layout load() reads.
+*
+* Only valid instruction ids are written here; the corruption under test is
+* always in the argument values.
+*/
+std::stringstream buildByteCode(const std::vector<std::string> &strings,
+                                const std::vector<FakeFunction> &functions)
+{
+  std::stringstream stream;
+  writeRaw<uint32_t>(stream, static_cast<uint32_t>(strings.size()));
+  for (const auto &text : strings)
+  {
+    writeString(stream, text);
+  }
+  writeRaw<uint32_t>(stream, 0);
+  writeRaw<uint32_t>(stream, static_cast<uint32_t>(functions.size()));
+  for (const auto &function : functions)
+  {
+    writeString(stream, function.name);
+    writeRaw<uint32_t>(stream, function.stackSize);
+    writeRaw<uint32_t>(stream, function.parameterSize);
+    writeRaw<uint32_t>(stream,
+                       static_cast<uint32_t>(function.instructions.size()));
+    for (const auto &instruction : function.instructions)
+    {
+      writeRaw<uint16_t>(stream,
+                         static_cast<uint16_t>(instruction.id));
+      const unsigned int count =
+          instructions[static_cast<unsigned int>(instruction.id)].argCount;
+      for (unsigned int i = 0; i < count; ++i)
+      {
+        writeRaw<int32_t>(stream, instruction.args[i]);
+      }
+    }
+  }
+  return stream;
+}
+
+/**
+* \brief Loads hand built byte code and runs main, expecting RuntimeError.
+*/
+void requireCorrupt(const std::vector<std::string> &strings,
+                    const std::vector<FakeFunction> &functions)
+{
+  std::stringstream byteCode = buildByteCode(strings, functions);
+  CVirtualMachine vm(nullptr);
+  REQUIRE(vm.load(byteCode));
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
 }
 }
 
@@ -1028,4 +1118,148 @@ TEST_CASE("An empty runtime stack is not popped", "[integration][vm]")
   // The runtime stack only grows for the called function's locals, so calling
   // a function that never pushes anything leaves it empty at ret.
   REQUIRE(vm->callFunction("main"));
+}
+
+TEST_CASE("Movv with a corrupt destination index throws",
+          "[integration][vm][corrupt]")
+{
+  FakeFunction main;
+  main.instructions = {makeInstruction(EInstruction::Movv, 5, 0)};
+  requireCorrupt({}, {main});
+}
+
+TEST_CASE("Movv with a corrupt source index throws",
+          "[integration][vm][corrupt]")
+{
+  FakeFunction main;
+  main.stackSize = 1;
+  main.instructions = {makeInstruction(EInstruction::Movv, 0, 7)};
+  requireCorrupt({}, {main});
+}
+
+TEST_CASE("Movv with a negative index throws", "[integration][vm][corrupt]")
+{
+  FakeFunction main;
+  main.instructions = {makeInstruction(EInstruction::Movv, -1, 0)};
+  requireCorrupt({}, {main});
+}
+
+TEST_CASE("Movi with a corrupt destination index throws",
+          "[integration][vm][corrupt]")
+{
+  FakeFunction main;
+  main.instructions = {makeInstruction(EInstruction::Movi, 4, 10)};
+  requireCorrupt({}, {main});
+}
+
+TEST_CASE("Movf with a corrupt destination index throws",
+          "[integration][vm][corrupt]")
+{
+  FakeFunction main;
+  main.instructions = {makeInstruction(EInstruction::Movf, 4, 0)};
+  requireCorrupt({}, {main});
+}
+
+TEST_CASE("Movs with a corrupt string index throws",
+          "[integration][vm][corrupt]")
+{
+  FakeFunction main;
+  main.stackSize = 1;
+  main.instructions = {makeInstruction(EInstruction::Movs, 0, 4)};
+  requireCorrupt({}, {main});
+}
+
+TEST_CASE("Pushv with a corrupt variable index throws",
+          "[integration][vm][corrupt]")
+{
+  FakeFunction main;
+  main.instructions = {makeInstruction(EInstruction::Pushv, 2)};
+  requireCorrupt({}, {main});
+}
+
+TEST_CASE("Pushs with a corrupt string index throws",
+          "[integration][vm][corrupt]")
+{
+  FakeFunction main;
+  main.instructions = {makeInstruction(EInstruction::Pushs, 0)};
+  requireCorrupt({}, {main});
+}
+
+TEST_CASE("Popv with a corrupt destination index throws",
+          "[integration][vm][corrupt]")
+{
+  FakeFunction main;
+  main.instructions = {makeInstruction(EInstruction::Popv, 3)};
+  requireCorrupt({}, {main});
+}
+
+TEST_CASE("Call with a corrupt function index throws",
+          "[integration][vm][corrupt]")
+{
+  FakeFunction main;
+  main.instructions = {makeInstruction(EInstruction::Call, 7)};
+  requireCorrupt({}, {main});
+}
+
+TEST_CASE("Call with a negative function index throws",
+          "[integration][vm][corrupt]")
+{
+  FakeFunction main;
+  main.instructions = {makeInstruction(EInstruction::Call, -1)};
+  requireCorrupt({}, {main});
+}
+
+TEST_CASE("Call with more parameters than pushed values throws",
+          "[integration][vm][corrupt]")
+{
+  FakeFunction main;
+  main.instructions = {makeInstruction(EInstruction::Call, 1)};
+  FakeFunction callee;
+  callee.name = "callee";
+  callee.stackSize = 1;
+  callee.parameterSize = 5;
+  requireCorrupt({}, {main, callee});
+}
+
+TEST_CASE("Calle with a corrupt extern index throws",
+          "[integration][vm][corrupt]")
+{
+  FakeFunction main;
+  main.instructions = {makeInstruction(EInstruction::Calle, 3)};
+  requireCorrupt({}, {main});
+}
+
+TEST_CASE("Calle with a negative extern index throws",
+          "[integration][vm][corrupt]")
+{
+  FakeFunction main;
+  main.instructions = {makeInstruction(EInstruction::Calle, -1)};
+  requireCorrupt({}, {main});
+}
+
+TEST_CASE("Retv with a corrupt variable index throws",
+          "[integration][vm][corrupt]")
+{
+  FakeFunction main;
+  main.instructions = {makeInstruction(EInstruction::Pushi, 0),
+                       makeInstruction(EInstruction::Call, 1),
+                       makeInstruction(EInstruction::Ret)};
+  FakeFunction callee;
+  callee.name = "callee";
+  callee.stackSize = 1;
+  callee.instructions = {makeInstruction(EInstruction::Retv, 9)};
+  requireCorrupt({}, {main, callee});
+}
+
+TEST_CASE("Rets with a corrupt string index throws",
+          "[integration][vm][corrupt]")
+{
+  FakeFunction main;
+  main.instructions = {makeInstruction(EInstruction::Pushi, 0),
+                       makeInstruction(EInstruction::Call, 1),
+                       makeInstruction(EInstruction::Ret)};
+  FakeFunction callee;
+  callee.name = "callee";
+  callee.instructions = {makeInstruction(EInstruction::Rets, 0)};
+  requireCorrupt({}, {main, callee});
 }
