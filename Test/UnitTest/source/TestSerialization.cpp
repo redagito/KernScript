@@ -234,6 +234,17 @@ TEST_CASE("Deserialize clears the target on an empty string",
   REQUIRE(result.empty());
 }
 
+TEST_CASE("Default constructed Instruction has zero arguments",
+          "[unit][serialize][m6]")
+{
+  Instruction instruction;
+  REQUIRE(instruction.id == Opcode::Nop);
+  for (int i = 0; i < 4; ++i)
+  {
+    REQUIRE(instruction.args[i] == 0);
+  }
+}
+
 TEST_CASE("Serialize refuses an unknown instruction id", "[unit][serialize]")
 {
   Instruction instruction;

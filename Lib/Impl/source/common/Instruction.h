@@ -15,7 +15,9 @@ typedef int32_t ArgumentType;
 struct Instruction
 {
   Opcode id = Opcode::Nop; /**< Instruction id. */
-  ArgumentType args[4]; /**< Max 4 arguments supported per instruction. */
+  // Zero-initialized: instructions with fewer operands leave the remaining
+  // slots untouched, and unset slots must not carry garbage.
+  ArgumentType args[4] = {}; /**< Max 4 arguments supported per instruction. */
 };
 
 bool serialize(const Instruction &instruction, std::ostream &stream);
