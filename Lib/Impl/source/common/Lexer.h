@@ -32,6 +32,14 @@ public:
   LexerToken getToken() const;
 
   void addKeyword(const std::string &keyword);
+  /**
+   * NOTE: removeKeyword and ignoreNextLex below have no callers in Lib/;
+   * only the unit tests (Test/UnitTest/source/TestCLexer.cpp) exercise
+   * them. They are kept deliberately: removing them would break those
+   * tests, which are outside this change, and they round out the
+   * keyword/lookahead API beside addKeyword and ignoreNewLine (the
+   * latter used by Assembler). Revisit only together with the tests.
+   */
   void removeKeyword(const std::string &keyword);
 
   /**
