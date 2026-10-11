@@ -11,6 +11,16 @@ public:
   /**
    * \brief Constructs a parser.
    * \param logger Receives diagnostics. A null pointer discards them.
+   *
+   * NOTE: explicitly unimplemented stub. parse() dispatches top-level
+   * func/extern keywords, but every sub-parser (parseFunction,
+   * parseExternFunction, parseIf/Else/While/Return/Block, and
+   * parseVariableDeclaration) returns false, so no non-trivial source
+   * parses. The class is kept as Compiler's future frontend alongside
+   * Compiler.h, which the public kern::createCompiler() factory
+   * requires; removing the module would break that factory while
+   * saving nothing at runtime. Implementing a parser is out of scope
+   * here.
    */
   explicit Parser(kern::ILogger *logger);
 
