@@ -42,6 +42,20 @@ bool indexInRange(uint32_t base, int32_t rawIndex, size_t size) {
 }
 
 /**
+ * \brief Checks an index read from bytecode against the current frame.
+ *
+ * Like indexInRange, but bound to the frame end (base + frameSize) instead of
+ * the stack size, so a corrupt variable index cannot reach pushed temps above
+ * the frame. The stack size still bounds too: arithmetic opcodes can eat into
+ * the frame, leaving the end above the stack.
+ */
+bool frameIndexInRange(uint32_t base, int32_t rawIndex, uint32_t frameSize, size_t stackSize) {
+  const uint64_t index = static_cast<uint64_t>(base) + static_cast<uint64_t>(static_cast<uint32_t>(rawIndex));
+  const uint64_t frameEnd = static_cast<uint64_t>(base) + static_cast<uint64_t>(frameSize);
+  return index < frameEnd && index < static_cast<uint64_t>(stackSize);
+}
+
+/**
  * \brief Refuses a host call made outside an extern dispatch.
  *
  * popParameter and setReturnValue are the extern function interface: they
@@ -581,8 +595,10 @@ bool VirtualMachine::execute() {
     // Move variable to variable
     // Arg 0 is variable index of destination
     // Arg 1 is variable index of source
-    if (!indexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0], m_runtimeStack.size()) ||
-        !indexInRange(m_currentRuntimeStackBaseIndex, instruction.args[1], m_runtimeStack.size())) {
+    if (!frameIndexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0], currentFunction.stackSize,
+                           m_runtimeStack.size()) ||
+        !frameIndexInRange(m_currentRuntimeStackBaseIndex, instruction.args[1], currentFunction.stackSize,
+                           m_runtimeStack.size())) {
       throwRuntimeError(m_logger, "Movv variable index out of range.");
     }
     // Args hold raw bits, so copy them out instead of punning the pointer.
@@ -600,7 +616,8 @@ bool VirtualMachine::execute() {
     // Move integer to variable
     // Arg 0 is variable index of destination
     // Arg 1 is source integer value
-    if (!indexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0], m_runtimeStack.size())) {
+    if (!frameIndexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0], currentFunction.stackSize,
+                           m_runtimeStack.size())) {
       throwRuntimeError(m_logger, "Movi variable index out of range.");
     }
     uint32_t destIndex = 0;
@@ -614,7 +631,8 @@ bool VirtualMachine::execute() {
     // Move float to variable
     // Arg 0 is variable index of destination
     // Arg 1 is source float value
-    if (!indexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0], m_runtimeStack.size())) {
+    if (!frameIndexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0], currentFunction.stackSize,
+                           m_runtimeStack.size())) {
       throwRuntimeError(m_logger, "Movf variable index out of range.");
     }
     uint32_t destIndex = 0;
@@ -630,7 +648,8 @@ bool VirtualMachine::execute() {
     // Move string to variable
     // Arg 0 is variable index of destination
     // Arg 1 is source index of string
-    if (!indexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0], m_runtimeStack.size())) {
+    if (!frameIndexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0], currentFunction.stackSize,
+                           m_runtimeStack.size())) {
       throwRuntimeError(m_logger, "Movs variable index out of range.");
     }
     if (!indexInRange(0, instruction.args[1], m_strings.size())) {
@@ -683,7 +702,8 @@ bool VirtualMachine::execute() {
     // Arg 0 is variable index
     uint32_t varIndex = 0;
     memcpy(&varIndex, &instruction.args[0], sizeof(varIndex));
-    if (!indexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0], m_runtimeStack.size())) {
+    if (!frameIndexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0], currentFunction.stackSize,
+                           m_runtimeStack.size())) {
       throwRuntimeError(m_logger, "Pushv variable index out of range.");
     }
     pushValue(m_runtimeStack.at(m_currentRuntimeStackBaseIndex + varIndex));
@@ -713,7 +733,8 @@ bool VirtualMachine::execute() {
         static_cast<uint64_t>(m_currentRuntimeStackBaseIndex) + static_cast<uint64_t>(currentFunction.stackSize)) {
       throwRuntimeError(m_logger, "Popv would go below the frame.");
     }
-    if (!indexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0], m_runtimeStack.size())) {
+    if (!frameIndexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0], currentFunction.stackSize,
+                           m_runtimeStack.size())) {
       throwRuntimeError(m_logger, "Popv variable index out of range.");
     }
     // Copying would spread Invalid through assignment, so refuse it here
@@ -859,7 +880,8 @@ bool VirtualMachine::execute() {
       throwRuntimeError(m_logger, "Retv variable index out of range.");
     }
     if (varIndex != 0) {
-      if (!indexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0], m_runtimeStack.size())) {
+      if (!frameIndexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0], currentFunction.stackSize,
+                             m_runtimeStack.size())) {
         throwRuntimeError(m_logger, "Retv variable index out of range.");
       }
       m_runtimeStack[m_currentRuntimeStackBaseIndex] = m_runtimeStack.at(m_currentRuntimeStackBaseIndex + varIndex);

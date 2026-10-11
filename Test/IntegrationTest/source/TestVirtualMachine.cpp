@@ -1817,6 +1817,29 @@ TEST_CASE("Popv with a corrupt destination index throws", "[integration][vm][cor
   requireCorrupt({}, {main});
 }
 
+TEST_CASE("Movv into a pushed temp is refused", "[integration][vm][corrupt]") {
+  // One local lives in the frame and one value is pushed above it. Index 1
+  // addresses the temp, not a variable, so the move must throw.
+  FakeFunction main;
+  main.stackSize = 1;
+  main.instructions = {makeInstruction(Opcode::Pushi, 7), makeInstruction(Opcode::Movv, 1, 0)};
+  requireCorrupt({}, {main});
+}
+
+TEST_CASE("Pushv of a pushed temp is refused", "[integration][vm][corrupt]") {
+  FakeFunction main;
+  main.stackSize = 1;
+  main.instructions = {makeInstruction(Opcode::Pushi, 7), makeInstruction(Opcode::Pushv, 1)};
+  requireCorrupt({}, {main});
+}
+
+TEST_CASE("Popv into a pushed temp is refused", "[integration][vm][corrupt]") {
+  FakeFunction main;
+  main.stackSize = 1;
+  main.instructions = {makeInstruction(Opcode::Pushi, 7), makeInstruction(Opcode::Popv, 1)};
+  requireCorrupt({}, {main});
+}
+
 TEST_CASE("Call with a corrupt function index throws", "[integration][vm][corrupt]") {
   FakeFunction main;
   main.instructions = {makeInstruction(Opcode::Call, 7)};
@@ -1859,6 +1882,19 @@ TEST_CASE("Retv with a corrupt variable index throws", "[integration][vm][corrup
   callee.name = "callee";
   callee.stackSize = 1;
   callee.instructions = {makeInstruction(Opcode::Retv, 9)};
+  requireCorrupt({}, {main, callee});
+}
+
+TEST_CASE("Retv of a pushed temp is refused", "[integration][vm][corrupt]") {
+  // The callee pushes a temp above its one-local frame and returns it by
+  // index. Index 1 is not a variable, so the return must throw.
+  FakeFunction main;
+  main.instructions = {makeInstruction(Opcode::Pushi, 0), makeInstruction(Opcode::Call, 1),
+                       makeInstruction(Opcode::Ret)};
+  FakeFunction callee;
+  callee.name = "callee";
+  callee.stackSize = 1;
+  callee.instructions = {makeInstruction(Opcode::Pushi, 5), makeInstruction(Opcode::Retv, 1)};
   requireCorrupt({}, {main, callee});
 }
 
