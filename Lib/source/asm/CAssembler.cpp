@@ -23,6 +23,7 @@ CAssembler::CAssembler(kern::ILogger *logger)
 
   // Instructions
   m_lexer.addKeyword("nop");
+  m_lexer.addKeyword("break");
   m_lexer.addKeyword("exit");
 
   m_lexer.addKeyword("movv");
@@ -293,6 +294,15 @@ bool CAssembler::parseFunction(std::istream &stream)
       {
         // No operation
         instruction.id = EInstruction::Nop;
+
+        // Add assembled instruction
+        function.instructions.push_back(instruction);
+      }
+      else if (m_lexer.getLexeme() == "break")
+      {
+        // Breakpoint, for debugging. There is no debugger attached, so this
+        // intentionally does nothing and execution continues.
+        instruction.id = EInstruction::Break;
 
         // Add assembled instruction
         function.instructions.push_back(instruction);

@@ -255,7 +255,8 @@ bool CVirtualMachine::execute()
     break;
 
   case EInstruction::Break:
-    // Not implemented
+    // Breakpoint, for debugging. There is no debugger attached, so this
+    // intentionally does nothing and execution continues.
     ++m_currentInstructionIndex;
     break;
 

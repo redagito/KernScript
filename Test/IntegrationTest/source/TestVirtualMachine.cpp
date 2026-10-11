@@ -568,6 +568,17 @@ TEST_CASE("rets returns an empty string to the caller", "[integration][vm]")
   REQUIRE(recorder.text() == "\n");
 }
 
+TEST_CASE("Break continues execution", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 1\ncalle println\nbreak\n"
+                                  "pushi 2\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "1\n2\n");
+}
+
 TEST_CASE("A script function receives its parameter", "[integration][vm]")
 {
   const std::string source = "extern println 1\n\nfunc print\n{\nparam a\n"
