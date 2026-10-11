@@ -1526,6 +1526,23 @@ TEST_CASE("Calling an unknown function fails", "[integration][vm]")
   REQUIRE_FALSE(vm->callFunction("missing"));
 }
 
+TEST_CASE("A failed lookup leaves later calls working", "[integration][vm]")
+{
+  const std::string source = wrap("pushi 1\ncalle println\nret");
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+
+  // The failed lookup must not clobber the state the next call resolves.
+  REQUIRE_FALSE(vm->callFunction("missing"));
+  REQUIRE(vm->callFunction("main"));
+  REQUIRE(recorder.text() == "1\n");
+}
+
 TEST_CASE("Calling an unregistered extern function stops the script",
           "[integration][vm]")
 {

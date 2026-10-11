@@ -512,14 +512,18 @@ bool VirtualMachine::deserializeFunctions(std::istream &stream)
 bool VirtualMachine::getFunctionIndexByName(const std::string &functionName,
                                              uint32_t &index)
 {
-  index = 0;
+  // Preserve semantics: the out-param is only assigned on success, so a
+  // failed lookup leaves the caller's index (and a clean state) alone instead
+  // of clobbering it with one-past-the-end.
+  uint32_t found = 0;
   for (const auto &function : m_functions)
   {
     if (function.name == functionName)
     {
+      index = found;
       return true;
     }
-    ++index;
+    ++found;
   }
   return false;
 }
