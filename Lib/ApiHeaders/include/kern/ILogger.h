@@ -51,13 +51,4 @@ protected:
   */
   virtual void onError(const std::string &message) = 0;
 };
-
-/**
-* \brief Logger that discards everything given to it.
-*/
-class NullLogger : public ILogger
-{
-protected:
-  void onError(const std::string &message) override {}
-};
 }

@@ -6,6 +6,7 @@
 
 #include "kern/IExternFunction.h"
 #include "kern/ILogger.h"
+#include "kern/NullLogger.h"
 #include "kern/FunctionBinding.h"
 #include "kern/RuntimeError.h"
 #include "kern/VMConfig.h"

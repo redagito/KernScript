@@ -1,5 +1,7 @@
 #include "Logger.h"
 
+#include "kern/NullLogger.h"
+
 #include <spdlog/spdlog.h>
 
 kern::ILogger *nullLogger()
