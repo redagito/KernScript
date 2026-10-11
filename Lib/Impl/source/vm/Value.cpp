@@ -125,7 +125,13 @@ bool Value::convert(int32_t &value) const
     value = m_integer;
     return true;
   case Type::UnsignedInteger:
-    value = (int32_t)m_unsignedInteger;
+    if (m_unsignedInteger >
+        static_cast<uint32_t>(std::numeric_limits<int32_t>::max()))
+    {
+      throw kern::RuntimeError(
+          "Cannot convert out-of-range unsigned integer to integer.");
+    }
+    value = static_cast<int32_t>(m_unsignedInteger);
     return true;
   case Type::Float:
   {
@@ -146,7 +152,12 @@ bool Value::convert(uint32_t &value) const
   switch (m_type)
   {
   case Type::Integer:
-    value = (uint32_t)m_integer;
+    if (m_integer < 0)
+    {
+      throw kern::RuntimeError(
+          "Cannot convert out-of-range integer to unsigned integer.");
+    }
+    value = static_cast<uint32_t>(m_integer);
     return true;
   case Type::UnsignedInteger:
     value = m_unsignedInteger;

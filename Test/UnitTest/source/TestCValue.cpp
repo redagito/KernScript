@@ -415,6 +415,38 @@ TEST_CASE("Value converts unsigned integer", "[unit][Value]")
   REQUIRE(asString == "7");
 }
 
+TEST_CASE("Value converts unsigned out of signed range throws",
+          "[unit][Value][convert]")
+{
+  Value value(static_cast<uint32_t>(3000000000u));
+
+  int32_t asInteger = 0;
+  REQUIRE_THROWS_AS(value.convert(asInteger), kern::RuntimeError);
+}
+
+TEST_CASE("Value converts negative integer to unsigned throws",
+          "[unit][Value][convert]")
+{
+  Value value(static_cast<int32_t>(-1));
+
+  uint32_t asUnsigned = 0;
+  REQUIRE_THROWS_AS(value.convert(asUnsigned), kern::RuntimeError);
+}
+
+TEST_CASE("Value converts unsigned at the signed boundary",
+          "[unit][Value][convert]")
+{
+  Value maxSigned(static_cast<uint32_t>(2147483647u));
+  int32_t asInteger = 0;
+  REQUIRE(maxSigned.convert(asInteger));
+  REQUIRE(asInteger == 2147483647);
+
+  Value zero(static_cast<int32_t>(0));
+  uint32_t asUnsigned = 0;
+  REQUIRE(zero.convert(asUnsigned));
+  REQUIRE(asUnsigned == 0u);
+}
+
 TEST_CASE("Invalid Value does not convert", "[unit][Value]")
 {
   Value value;
