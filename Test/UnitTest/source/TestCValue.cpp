@@ -431,6 +431,30 @@ TEST_CASE("Value move leaves the moved-from value invalid", "[unit][Value][m7]")
   REQUIRE(result == 1);
 }
 
+TEST_CASE("Value mixed-type overflow throws", "[unit][Value][m8]")
+{
+  Value value(static_cast<int32_t>(2147483647));
+  Value operand(static_cast<uint32_t>(1));
+
+  // Widens to signed, whose range the true sum leaves.
+  REQUIRE_THROWS_AS(value += operand, kern::RuntimeError);
+}
+
+TEST_CASE("Value mixed-type arithmetic keeps float precision",
+          "[unit][Value][m8]")
+{
+  Value value(static_cast<int32_t>(16777217));
+  Value operand(0.0f);
+
+  value += operand;
+
+  // Float wins, so the result rounds to what a float can hold.
+  REQUIRE(value.getType() == Value::Type::Float);
+  float result = 0.f;
+  REQUIRE(value.convert(result));
+  REQUIRE(result == 16777216.f);
+}
+
 TEST_CASE("Value copies strings", "[unit][Value]")
 {
   Value value(std::string("copy"));

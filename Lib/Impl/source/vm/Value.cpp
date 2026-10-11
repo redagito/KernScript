@@ -398,6 +398,13 @@ namespace
 *
 * Float wins over the integers, matching how the conversions widen. Two
 * unsigned integers stay unsigned, everything else becomes signed.
+*
+* Language limits: mixed-type arithmetic runs through double, so integers
+* beyond 2^53 would lose precision, and results are float-precision whenever
+* either side is a float. A mixed-type result that no longer fits its target
+* type throws instead of narrowing: store() range-checks integer targets, so
+* INT_MAX + 1u fails rather than wraps. Same-type integers never touch
+* double; they widen to 64 bit and range-check before narrowing back.
 */
 Value::Type widen(Value::Type lhs, Value::Type rhs)
 {
