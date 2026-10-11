@@ -5,6 +5,16 @@ file (GLOB_RECURSE KERNSCRIPT_LIB_SOURCES CONFIGURE_DEPENDS
 
 add_library (KernScriptLib ${KERNSCRIPT_LIB_SOURCES})
 
+find_package (spdlog REQUIRED)
+find_package (fmt REQUIRED)
+
+# fmt is public because the ILogger interface includes it for message
+# formatting. spdlog is only used by the library internal default logger.
+target_link_libraries (KernScriptLib
+	PUBLIC fmt::fmt
+	PRIVATE spdlog::spdlog
+)
+
 target_include_directories (KernScriptLib
 	PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
 )

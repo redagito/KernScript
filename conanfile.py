@@ -12,6 +12,10 @@ class KernScriptConan(ConanFile):
 
     def requirements(self):
         self.requires("catch2/3.16.0")
+        self.requires("spdlog/1.17.0")
+        # Transitive dependency of spdlog, used by the ILogger interface for
+        # message formatting. Declared directly so the CMake target exists.
+        self.requires("fmt/12.1.0")
 
     def layout(self):
         cmake_layout(self)

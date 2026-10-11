@@ -1,0 +1,58 @@
+#pragma once
+
+#include <string>
+
+#include <fmt/format.h>
+
+namespace kern
+{
+
+/**
+* \brief Interface for receiving diagnostics from the library.
+*
+* The library does not write to the standard streams itself. Diagnostics are
+* passed to a logger instead, which the host application supplies and owns, so
+* that where they end up stays under control of whoever embeds the library.
+*
+* Messages are formatted with fmt, so the format string has to be a compile
+* time literal, as with spdlog:
+*
+*     logger->error("Unknown variable: {}", name);
+*
+* The logger is owned by the caller and has to outlive every object it is
+* passed to. Passing a null pointer selects the null logger, which discards
+* everything.
+*/
+class ILogger
+{
+public:
+  virtual ~ILogger() = default;
+
+  /**
+  * \brief Logs a formatted error message.
+  */
+  template <typename... Args>
+  void error(fmt::format_string<Args...> format, Args &&...args)
+  {
+    log(fmt::format(format, std::forward<Args>(args)...));
+  }
+
+protected:
+  /**
+  * \brief Receives an already formatted error message.
+  *
+  * Implement this instead of error(). The formatting entry point is not
+  * virtual so that every implementation goes through fmt.
+  */
+  virtual void log(const std::string &message) = 0;
+};
+
+/**
+* \brief Logger that discards everything given to it.
+*/
+class NullLogger : public ILogger
+{
+protected:
+  void log(const std::string &message) override {}
+};
+}
