@@ -25,5 +25,5 @@ kern::ILogger *nullLogger();
 class CLogger : public kern::ILogger
 {
 protected:
-  void log(const std::string &message) override;
+  void onError(const std::string &message) override;
 };

@@ -84,7 +84,7 @@ std::string testutil::RecordingLogger::text() const
 
 void testutil::RecordingLogger::clear() { m_messages.clear(); }
 
-void testutil::RecordingLogger::log(const std::string &message)
+void testutil::RecordingLogger::onError(const std::string &message)
 {
   m_messages.push_back(message);
 }

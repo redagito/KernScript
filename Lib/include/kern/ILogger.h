@@ -34,7 +34,7 @@ public:
   template <typename... Args>
   void error(fmt::format_string<Args...> format, Args &&...args)
   {
-    log(fmt::format(format, std::forward<Args>(args)...));
+    onError(fmt::format(format, std::forward<Args>(args)...));
   }
 
 protected:
@@ -43,8 +43,13 @@ protected:
   *
   * Implement this instead of error(). The formatting entry point is not
   * virtual so that every implementation goes through fmt.
+  *
+  * One pure virtual per level. A new level adds another one, which is
+  * intentionally a breaking change: it forces every implementation to decide
+  * what to do with the new level instead of silently routing it into an
+  * existing one.
   */
-  virtual void log(const std::string &message) = 0;
+  virtual void onError(const std::string &message) = 0;
 };
 
 /**
@@ -53,6 +58,6 @@ protected:
 class NullLogger : public ILogger
 {
 protected:
-  void log(const std::string &message) override {}
+  void onError(const std::string &message) override {}
 };
 }

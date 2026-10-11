@@ -8,7 +8,7 @@ kern::ILogger *nullLogger()
   return &logger;
 }
 
-void CLogger::log(const std::string &message)
+void CLogger::onError(const std::string &message)
 {
   // The message arrives already formatted, so it is passed as an argument
   // rather than as the format string.

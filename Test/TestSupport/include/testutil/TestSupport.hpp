@@ -28,7 +28,7 @@ public:
   void clear();
 
 protected:
-  void log(const std::string &message) override;
+  void onError(const std::string &message) override;
 
 private:
   std::vector<std::string> m_messages;
