@@ -1,4 +1,4 @@
-file (GLOB_RECURSE KERNSCRIPT_LIB_SOURCES
+file (GLOB_RECURSE KERNSCRIPT_LIB_SOURCES CONFIGURE_DEPENDS
 	${CMAKE_CURRENT_SOURCE_DIR}/source/*.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/source/*.cxx
 )
@@ -19,3 +19,4 @@ target_include_directories (KernScriptLibInternal INTERFACE
 )
 
 target_link_libraries (KernScriptLib PUBLIC KernScriptLibInternal)
+

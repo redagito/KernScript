@@ -2,7 +2,7 @@
 # module, so tests are registered per executable. Tag the cases with
 # "[unit]" to filter a subset.
 
-file (GLOB_RECURSE UNIT_TEST_SOURCES
+file (GLOB_RECURSE UNIT_TEST_SOURCES CONFIGURE_DEPENDS
 	${CMAKE_CURRENT_SOURCE_DIR}/source/*.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/source/*.cxx
 )
