@@ -1,0 +1,43 @@
+// Exercises mul, div, inc and dec in one program, including widening and
+// unsigned wrap around.
+extern println 1
+
+func main
+{
+  // ((6 * 7) + 8) / 2 - 1 = 24
+  pushi 6
+  pushi 7
+  mul
+  pushi 8
+  add
+  pushi 2
+  div
+  pushi 1
+  sub
+  calle println
+
+  // 3 * 0.5 + 1.5 widens to float, prints as 3
+  pushi 3
+  pushf 0.5
+  mul
+  pushf 1.5
+  add
+  calle println
+
+  // inc and dec chain: 10 -> 11, then 11 -> 10 -> 9
+  // (println consumes the value, so push again before dec)
+  pushi 10
+  inc
+  calle println
+  pushi 11
+  dec
+  dec
+  calle println
+
+  // unsigned wrap: 4294967295 + 1 = 0
+  pushu 4294967295
+  pushu 1
+  add
+  calle println
+  ret
+}

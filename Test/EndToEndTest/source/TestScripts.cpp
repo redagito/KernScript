@@ -26,6 +26,13 @@ testutil::StringRecorder runFixture(const std::string &name)
 }
 }
 
+TEST_CASE("arithmetic chains mul div inc and dec", "[e2e][fixture]")
+{
+  const testutil::StringRecorder recorder = runFixture("arithmetic");
+
+  REQUIRE(recorder.text() == "24\n3\n11\n9\n0\n");
+}
+
 TEST_CASE("test1 prints its values and calls a two argument extern function",
           "[e2e][fixture]")
 {
