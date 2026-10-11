@@ -412,6 +412,25 @@ TEST_CASE("Value subtracts integers", "[unit][Value]")
   REQUIRE(result == 3);
 }
 
+TEST_CASE("Value move leaves the moved-from value invalid", "[unit][Value][m7]")
+{
+  Value value(std::string("move"));
+  Value moved(std::move(value));
+
+  std::string text;
+  REQUIRE(moved.convert(text));
+  REQUIRE(text == "move");
+
+  // The source must have given up its string, so it reports invalid and can
+  // be destroyed and reassigned without freeing anything twice.
+  REQUIRE(value.getType() == Value::Type::Invalid);
+
+  value = Value(static_cast<int32_t>(1));
+  int32_t result = 0;
+  REQUIRE(value.convert(result));
+  REQUIRE(result == 1);
+}
+
 TEST_CASE("Value copies strings", "[unit][Value]")
 {
   Value value(std::string("copy"));

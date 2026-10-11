@@ -7,6 +7,7 @@
 #include <sstream>
 #include <cassert>
 #include <limits>
+#include <utility>
 
 namespace
 {
@@ -65,7 +66,7 @@ Value::Value()
 
 Value::Value(const Value &value) { (*this) = value; }
 
-Value::Value(Value &&value) { (*this) = value; }
+Value::Value(Value &&value) { (*this) = std::move(value); }
 
 Value::Value(int32_t value)
 {
