@@ -666,9 +666,12 @@ bool CVirtualMachine::execute()
   break;
 
   case EInstruction::Jmp:
-    // Not implemented
-    return false;
-    break;
+  {
+    // Arg 0 is target instruction index for jump
+    uint32_t jumpIndex = *((uint32_t *)&instruction.args[0]);
+    m_currentInstructionIndex = jumpIndex;
+  }
+  break;
   case EInstruction::Je:
   {
     // Compare top 2 values from stack, x == y

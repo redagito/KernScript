@@ -366,6 +366,26 @@ TEST_CASE("Jump if less or equal is not taken", "[integration][vm]")
   REQUIRE(testutil::runScript(source, "main", recorder));
 }
 
+TEST_CASE("Jmp transfers control unconditionally", "[integration][vm]")
+{
+  const std::string source = wrap("jmp done\n"
+                                  "pushi 20\ncalle println\n"
+                                  "label done\npushi 10\ncalle println\nret");
+
+  testutil::StringRecorder recorder;
+  REQUIRE(testutil::runScript(source, "main", recorder));
+
+  REQUIRE(recorder.text() == "10\n");
+}
+
+TEST_CASE("Jmp to an unknown label fails to assemble", "[integration][vm]")
+{
+  const std::string source = wrap("jmp missing\nret");
+
+  std::stringstream byteCode;
+  REQUIRE_FALSE(testutil::assemble(source, byteCode));
+}
+
 TEST_CASE("A script function receives its parameter", "[integration][vm]")
 {
   const std::string source = "extern println 1\n\nfunc print\n{\nparam a\n"

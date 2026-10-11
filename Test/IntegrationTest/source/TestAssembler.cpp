@@ -99,10 +99,10 @@ TEST_CASE("Assembler rejects a keyword it does not know",
   // instruction is silently dropped, which produces bytecode that runs with
   // wrong semantics rather than an error.
   //
-  // jmp is a registered keyword without a branch yet, so it exercises the
+  // jg is a registered keyword without a branch yet, so it exercises the
   // safety net. This test has to be re-pointed at another unimplemented
-  // keyword once jmp gets its branch.
-  const std::string source = wrap("jmp");
+  // keyword once jg gets its branch.
+  const std::string source = wrap("jg");
   std::stringstream byteCode;
 
   REQUIRE_FALSE(testutil::assemble(source, byteCode));
