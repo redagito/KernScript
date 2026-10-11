@@ -62,7 +62,9 @@ public:
    *        On failure (a reentrant call, an empty name or a null function)
    *        ownership stays with
    *        the caller, which must delete it. Anything the function refers to
-   *        must outlive the virtual machine.
+   *        must outlive the virtual machine. Registering a name again
+   *        replaces the previous registration: the virtual machine deletes
+   *        the previously registered object.
    */
   virtual void addFunction(const ::std::string &functionName, IExternFunction *function) = 0;
   virtual void removeFunction(const ::std::string &functionName) = 0;
