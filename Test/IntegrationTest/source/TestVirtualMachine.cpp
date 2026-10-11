@@ -85,15 +85,12 @@ TEST_CASE("Inc on an empty stack stops the script", "[integration][vm]")
   std::stringstream byteCode;
   REQUIRE(testutil::assemble(source, byteCode));
 
-  testutil::RecordingLogger logger;
-  CVirtualMachine vm(&logger);
+  CVirtualMachine vm(nullptr);
   testutil::DiscardRecorder recorder;
   testutil::registerHostFunctions(vm, recorder);
   REQUIRE(vm.load(byteCode));
 
-  vm.callFunction("main");
-
-  REQUIRE( logger.loggedContaining("Inc needs a value") );
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
 }
 
 TEST_CASE("Inc on a string operand is refused", "[integration][vm]")
@@ -103,15 +100,12 @@ TEST_CASE("Inc on a string operand is refused", "[integration][vm]")
   std::stringstream byteCode;
   REQUIRE(testutil::assemble(source, byteCode));
 
-  testutil::RecordingLogger logger;
-  CVirtualMachine vm(&logger);
+  CVirtualMachine vm(nullptr);
   testutil::DiscardRecorder recorder;
   testutil::registerHostFunctions(vm, recorder);
   REQUIRE(vm.load(byteCode));
 
-  vm.callFunction("main");
-
-  REQUIRE( logger.loggedContaining("Inc needs a numeric value") );
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
 }
 
 TEST_CASE("Dec on an empty stack stops the script", "[integration][vm]")
@@ -121,15 +115,12 @@ TEST_CASE("Dec on an empty stack stops the script", "[integration][vm]")
   std::stringstream byteCode;
   REQUIRE(testutil::assemble(source, byteCode));
 
-  testutil::RecordingLogger logger;
-  CVirtualMachine vm(&logger);
+  CVirtualMachine vm(nullptr);
   testutil::DiscardRecorder recorder;
   testutil::registerHostFunctions(vm, recorder);
   REQUIRE(vm.load(byteCode));
 
-  vm.callFunction("main");
-
-  REQUIRE( logger.loggedContaining("Dec needs a value") );
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
 }
 
 TEST_CASE("And produces the logical conjunction of two values",
@@ -272,15 +263,12 @@ TEST_CASE("Or on strings is refused", "[integration][vm]")
   std::stringstream byteCode;
   REQUIRE(testutil::assemble(source, byteCode));
 
-  testutil::RecordingLogger logger;
-  CVirtualMachine vm(&logger);
+  CVirtualMachine vm(nullptr);
   testutil::DiscardRecorder recorder;
   testutil::registerHostFunctions(vm, recorder);
   REQUIRE(vm.load(byteCode));
 
-  vm.callFunction("main");
-
-  REQUIRE( logger.loggedContaining("Or needs numeric values") );
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
 }
 
 TEST_CASE("Not on an empty stack stops the script", "[integration][vm]")
@@ -290,15 +278,12 @@ TEST_CASE("Not on an empty stack stops the script", "[integration][vm]")
   std::stringstream byteCode;
   REQUIRE(testutil::assemble(source, byteCode));
 
-  testutil::RecordingLogger logger;
-  CVirtualMachine vm(&logger);
+  CVirtualMachine vm(nullptr);
   testutil::DiscardRecorder recorder;
   testutil::registerHostFunctions(vm, recorder);
   REQUIRE(vm.load(byteCode));
 
-  vm.callFunction("main");
-
-  REQUIRE( logger.loggedContaining("Not needs a value") );
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
 }
 
 TEST_CASE("And on a short stack stops the script", "[integration][vm]")
@@ -308,15 +293,12 @@ TEST_CASE("And on a short stack stops the script", "[integration][vm]")
   std::stringstream byteCode;
   REQUIRE(testutil::assemble(source, byteCode));
 
-  testutil::RecordingLogger logger;
-  CVirtualMachine vm(&logger);
+  CVirtualMachine vm(nullptr);
   testutil::DiscardRecorder recorder;
   testutil::registerHostFunctions(vm, recorder);
   REQUIRE(vm.load(byteCode));
 
-  vm.callFunction("main");
-
-  REQUIRE( logger.loggedContaining("And needs two values") );
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
 }
 
 TEST_CASE("A script function returns from ret", "[integration][vm]")
@@ -599,15 +581,31 @@ TEST_CASE("Pop on an empty stack stops the script", "[integration][vm]")
   std::stringstream byteCode;
   REQUIRE(testutil::assemble(source, byteCode));
 
-  testutil::RecordingLogger logger;
-  CVirtualMachine vm(&logger);
+  CVirtualMachine vm(nullptr);
   testutil::DiscardRecorder recorder;
   testutil::registerHostFunctions(vm, recorder);
   REQUIRE(vm.load(byteCode));
 
-  vm.callFunction("main");
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
+}
 
-  REQUIRE(logger.loggedContaining("Pop needs a value"));
+TEST_CASE("Calling an extern function without arguments stops the script",
+          "[integration][vm]")
+{
+  const std::string source = wrap("calle println\npushi 99\n"
+                                  "calle println\nret");
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(source, byteCode));
+
+  CVirtualMachine vm(nullptr);
+  testutil::DiscardRecorder recorder;
+  testutil::registerHostFunctions(vm, recorder);
+  REQUIRE(vm.load(byteCode));
+
+  // The first call has nothing to pop, so the script stops there instead of
+  // continuing to the push of 99.
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
 }
 
 TEST_CASE("A script function receives its parameter", "[integration][vm]")
@@ -761,19 +759,14 @@ TEST_CASE("Div by zero stops the script and logs an error",
   std::stringstream byteCode;
   REQUIRE(testutil::assemble(source, byteCode));
 
-  // Built directly rather than through the factory, so the diagnostics can be
-  // captured through the recording logger.
-  testutil::RecordingLogger logger;
-  CVirtualMachine vm(&logger);
+  CVirtualMachine vm(nullptr);
   testutil::DiscardRecorder recorder;
   testutil::registerHostFunctions(vm, recorder);
 
   REQUIRE(vm.load(byteCode));
 
   // The script stops at the division instead of producing a value.
-  vm.callFunction("main");
-
-  REQUIRE( logger.loggedContaining("Division by zero") );
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
 }
 
 TEST_CASE("Arithmetic on a string operand is refused", "[integration][vm]")
@@ -784,16 +777,13 @@ TEST_CASE("Arithmetic on a string operand is refused", "[integration][vm]")
   std::stringstream byteCode;
   REQUIRE(testutil::assemble(source, byteCode));
 
-  testutil::RecordingLogger logger;
-  CVirtualMachine vm(&logger);
+  CVirtualMachine vm(nullptr);
   testutil::DiscardRecorder recorder;
   testutil::registerHostFunctions(vm, recorder);
   REQUIRE(vm.load(byteCode));
 
   // The script stops at the multiplication instead of producing a value.
-  vm.callFunction("main");
-
-  REQUIRE( logger.loggedContaining("numeric operands") );
+  REQUIRE_THROWS_AS(vm.callFunction("main"), kern::RuntimeError);
 }
 
 TEST_CASE("Movs advances the instruction pointer", "[integration][vm]")
@@ -925,15 +915,12 @@ TEST_CASE("Calling an unregistered extern function stops the script",
   REQUIRE(vm->load(byteCode));
 
   // The extern function is not registered, so the script stops at the calle
-  // instead of continuing to the pushv that would follow it. callFunction's
-  // own return value carries no information about that, so the observable
-  // effect is asserted instead.
+  // instead of continuing.
   testutil::StringRecorder recorder;
   testutil::registerHostFunctions(*vm, recorder);
   vm->removeFunction("println");
-  vm->callFunction("main");
 
-  REQUIRE(recorder.text().empty());
+  REQUIRE_THROWS_AS(vm->callFunction("main"), kern::RuntimeError);
 }
 
 TEST_CASE("clearScripts removes the loaded script", "[integration][vm]")
@@ -994,10 +981,9 @@ TEST_CASE("removeFunction unregisters an extern function", "[integration][vm]")
   REQUIRE(testutil::assemble(source, reloaded));
   REQUIRE(vm->load(reloaded));
 
-  // The script stops at the missing extern function, so nothing after the
-  // failing calle runs. callFunction's own return value carries no information
-  // about that, so the observable effect is asserted instead.
-  vm->callFunction("main");
+  // The script stops at the missing extern function, which now throws
+  // instead of silently ending.
+  REQUIRE_THROWS_AS(vm->callFunction("main"), kern::RuntimeError);
 
   REQUIRE(recorder.text() == "1\n");
 }

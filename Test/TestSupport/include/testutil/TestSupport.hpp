@@ -13,14 +13,9 @@ namespace testutil
 /**
 * \brief Logger that records every message it receives.
 *
-* Tests assert on the diagnostics the library emits, which cannot be observed
-* through the standard streams once the library logs through ILogger.
-*
-* Assert through loggedAny() and loggedContaining() rather than matching
-* messages by hand. Matching exact wording couples a test to prose that can be
-* reworded without any change in behaviour, and a case sensitive substring
-* check on that prose is a third source of drift. The durable facts are that a
-* message arrived at all, and optionally that it mentions a given subject.
+* Tests use it to observe that diagnostics flow through ILogger without
+* depending on message wording. Error paths are asserted by exception type,
+* this class only proves that a diagnostic arrived.
 */
 class RecordingLogger : public kern::ILogger
 {
@@ -28,23 +23,6 @@ public:
   const std::vector<std::string> &messages() const;
 
   bool empty() const;
-
-  std::string text() const;
-
-  void clear();
-
-  /**
-  * \brief Returns true if at least one message was logged.
-  */
-  bool loggedAny() const;
-
-  /**
-  * \brief Returns true if any message contains the given subject.
-  *
-  * \param subject Text to look for, matched case insensitively. Keep it to a
-  *        stable keyword such as "zero" or "numeric", never a full sentence.
-  */
-  bool loggedContaining(const std::string &subject) const;
 
 protected:
   void onError(const std::string &message) override;

@@ -2,9 +2,33 @@
 
 #include "CVirtualMachine.h"
 
+#include "kern/RuntimeError.h"
+
 #include "common/Instructions.h"
 #include "common/Deserialize.h"
 #include "logging/CLogger.h"
+
+namespace
+{
+
+/**
+* \brief Logs a runtime error and throws it.
+*
+* Every error path in execute() goes through here, so diagnostics keep flowing
+* to the logger while the failure itself is a typed exception that tests and
+* hosts assert on instead of matching message text.
+*/
+template <typename... Args>
+[[noreturn]] void throwRuntimeError(kern::ILogger *logger,
+                                    fmt::format_string<Args...> format,
+                                    Args &&...args)
+{
+  std::string message = fmt::format(format, std::forward<Args>(args)...);
+  logger->error("{}", message);
+  throw kern::RuntimeError(message);
+}
+
+}
 
 CVirtualMachine::SFunctionFrame::SFunctionFrame() {}
 
@@ -89,6 +113,11 @@ void CVirtualMachine::removeFunction(const ::std::string &functionName)
 
 bool CVirtualMachine::popParameter(int &value)
 {
+  if (m_runtimeStack.empty())
+  {
+    throwRuntimeError(m_logger,
+                      "popParameter needs a value on the runtime stack.");
+  }
   bool ret = m_runtimeStack.back().convert(value);
   m_runtimeStack.pop_back();
   return ret;
@@ -96,6 +125,11 @@ bool CVirtualMachine::popParameter(int &value)
 
 bool CVirtualMachine::popParameter(float &value)
 {
+  if (m_runtimeStack.empty())
+  {
+    throwRuntimeError(m_logger,
+                      "popParameter needs a value on the runtime stack.");
+  }
   bool ret = m_runtimeStack.back().convert(value);
   m_runtimeStack.pop_back();
   return ret;
@@ -103,6 +137,11 @@ bool CVirtualMachine::popParameter(float &value)
 
 bool CVirtualMachine::popParameter(::std::string &value)
 {
+  if (m_runtimeStack.empty())
+  {
+    throwRuntimeError(m_logger,
+                      "popParameter needs a value on the runtime stack.");
+  }
   bool ret = m_runtimeStack.back().convert(value);
   m_runtimeStack.pop_back();
   return ret;
@@ -341,8 +380,7 @@ bool CVirtualMachine::execute()
     // Remove top element from runtime stack
     if (m_runtimeStack.empty())
     {
-      m_logger->error("Pop needs a value on the runtime stack.");
-      return false;
+      throwRuntimeError(m_logger, "Pop needs a value on the runtime stack.");
     }
     m_runtimeStack.pop_back();
     ++m_currentInstructionIndex;
@@ -396,11 +434,16 @@ bool CVirtualMachine::execute()
     if (entry == m_externFunctionsMap.end())
     {
       // Function does not exist
-      m_logger->error("The extern function '{}' does not exist.", externFunction.name);
-      return false;
+      throwRuntimeError(m_logger, "The extern function '{}' does not exist.",
+                        externFunction.name);
     }
-    // Call if found
-    entry->second->call(*this);
+    // Call if found, a failing call stops the script instead of continuing
+    // with missing values on the stack.
+    if (!entry->second->call(*this))
+    {
+      throwRuntimeError(m_logger, "The extern function '{}' reported failure.",
+                        externFunction.name);
+    }
     ++m_currentInstructionIndex;
     break;
   }
@@ -428,8 +471,8 @@ bool CVirtualMachine::execute()
     // Returns variable from script function
     if (m_callStack.empty())
     {
-      // Empty stack indicates either error state or end of script
-      return false;
+      // No caller exists to receive the value
+      throwRuntimeError(m_logger, "Retv without a caller.");
     }
     // Arg 0 is local variable index
     // The caller's stack ends at the runtime stack base index, so slot base
@@ -461,8 +504,8 @@ bool CVirtualMachine::execute()
     // Returns variable from script function
     if (m_callStack.empty())
     {
-      // Empty stack indicates either error state or end of script
-      return false;
+      // No caller exists to receive the value
+      throwRuntimeError(m_logger, "Reti without a caller.");
     }
     // Arg 0 is integer constant
     // The caller's stack ends at the runtime stack base index, so slot base
@@ -488,8 +531,8 @@ bool CVirtualMachine::execute()
     // Returns float from script function
     if (m_callStack.empty())
     {
-      // Empty stack indicates either error state or end of script
-      return false;
+      // No caller exists to receive the value
+      throwRuntimeError(m_logger, "Retf without a caller.");
     }
     // Arg 0 is float constant
     // The caller's stack ends at the runtime stack base index, so slot base
@@ -515,8 +558,8 @@ bool CVirtualMachine::execute()
     // Returns string from script function
     if (m_callStack.empty())
     {
-      // Empty stack indicates either error state or end of script
-      return false;
+      // No caller exists to receive the value
+      throwRuntimeError(m_logger, "Rets without a caller.");
     }
     // Arg 0 is index of string
     // The caller's stack ends at the runtime stack base index, so slot base
@@ -543,7 +586,7 @@ bool CVirtualMachine::execute()
     // 2 Values needed
     if (!popValue(x) || m_runtimeStack.empty())
     {
-      return false;
+      throwRuntimeError(m_logger, "Add needs two values on the runtime stack.");
     }
     m_runtimeStack.back() += x;
     ++m_currentInstructionIndex;
@@ -556,7 +599,7 @@ bool CVirtualMachine::execute()
     // 2 Values needed
     if (!popValue(x) || m_runtimeStack.empty())
     {
-      return false;
+      throwRuntimeError(m_logger, "Sub needs two values on the runtime stack.");
     }
     m_runtimeStack.back() -= x;
     ++m_currentInstructionIndex;
@@ -569,13 +612,11 @@ bool CVirtualMachine::execute()
     // 2 values needed
     if (!popValue(x) || m_runtimeStack.empty())
     {
-      m_logger->error("Mul needs two values on the runtime stack.");
-      return false;
+      throwRuntimeError(m_logger, "Mul needs two values on the runtime stack.");
     }
     if (!m_runtimeStack.back().isNumeric() || !x.isNumeric())
     {
-      m_logger->error("Mul needs numeric operands.");
-      return false;
+      throwRuntimeError(m_logger, "Mul needs numeric operands.");
     }
     m_runtimeStack.back() *= x;
     ++m_currentInstructionIndex;
@@ -588,20 +629,17 @@ bool CVirtualMachine::execute()
     // 2 values needed
     if (!popValue(x) || m_runtimeStack.empty())
     {
-      m_logger->error("Div needs two values on the runtime stack.");
-      return false;
+      throwRuntimeError(m_logger, "Div needs two values on the runtime stack.");
     }
     if (!m_runtimeStack.back().isNumeric() || !x.isNumeric())
     {
-      m_logger->error("Div needs numeric operands.");
-      return false;
+      throwRuntimeError(m_logger, "Div needs numeric operands.");
     }
     // CValue leaves the operand unchanged on a zero divisor instead of
     // dividing, so the check belongs to the caller.
     if (x.isZero())
     {
-      m_logger->error("Division by zero.");
-      return false;
+      throwRuntimeError(m_logger, "Division by zero.");
     }
     m_runtimeStack.back() /= x;
     ++m_currentInstructionIndex;
@@ -613,14 +651,12 @@ bool CVirtualMachine::execute()
     // Increments the top of the runtime stack in place.
     if (m_runtimeStack.empty())
     {
-      m_logger->error("Inc needs a value on the runtime stack.");
-      return false;
+      throwRuntimeError(m_logger, "Inc needs a value on the runtime stack.");
     }
     CValue &top = m_runtimeStack.back();
     if (!top.isNumeric())
     {
-      m_logger->error("Inc needs a numeric value.");
-      return false;
+      throwRuntimeError(m_logger, "Inc needs a numeric value.");
     }
     top += CValue(static_cast<int32_t>(1));
     ++m_currentInstructionIndex;
@@ -632,14 +668,12 @@ bool CVirtualMachine::execute()
     // Decrements the top of the runtime stack in place.
     if (m_runtimeStack.empty())
     {
-      m_logger->error("Dec needs a value on the runtime stack.");
-      return false;
+      throwRuntimeError(m_logger, "Dec needs a value on the runtime stack.");
     }
     CValue &top = m_runtimeStack.back();
     if (!top.isNumeric())
     {
-      m_logger->error("Dec needs a numeric value.");
-      return false;
+      throwRuntimeError(m_logger, "Dec needs a numeric value.");
     }
     top -= CValue(static_cast<int32_t>(1));
     ++m_currentInstructionIndex;
@@ -652,13 +686,11 @@ bool CVirtualMachine::execute()
     CValue y;
     if (!popValue(x) || !popValue(y))
     {
-      m_logger->error("And needs two values on the runtime stack.");
-      return false;
+      throwRuntimeError(m_logger, "And needs two values on the runtime stack.");
     }
     if (!x.isNumeric() || !y.isNumeric())
     {
-      m_logger->error("And needs numeric values.");
-      return false;
+      throwRuntimeError(m_logger, "And needs numeric values.");
     }
     // Zero is the only false value, any other value is true.
     pushValue(CValue(static_cast<int32_t>(!x.isZero() && !y.isZero())));
@@ -672,13 +704,11 @@ bool CVirtualMachine::execute()
     CValue y;
     if (!popValue(x) || !popValue(y))
     {
-      m_logger->error("Or needs two values on the runtime stack.");
-      return false;
+      throwRuntimeError(m_logger, "Or needs two values on the runtime stack.");
     }
     if (!x.isNumeric() || !y.isNumeric())
     {
-      m_logger->error("Or needs numeric values.");
-      return false;
+      throwRuntimeError(m_logger, "Or needs numeric values.");
     }
     pushValue(CValue(static_cast<int32_t>(!x.isZero() || !y.isZero())));
     ++m_currentInstructionIndex;
@@ -689,13 +719,11 @@ bool CVirtualMachine::execute()
   {
     if (m_runtimeStack.empty())
     {
-      m_logger->error("Not needs a value on the runtime stack.");
-      return false;
+      throwRuntimeError(m_logger, "Not needs a value on the runtime stack.");
     }
     if (!m_runtimeStack.back().isNumeric())
     {
-      m_logger->error("Not needs a numeric value.");
-      return false;
+      throwRuntimeError(m_logger, "Not needs a numeric value.");
     }
     const bool truth = !m_runtimeStack.back().isZero();
     m_runtimeStack.back() = CValue(static_cast<int32_t>(!truth));
@@ -708,13 +736,11 @@ bool CVirtualMachine::execute()
     CValue y;
     if (!popValue(x) || !popValue(y))
     {
-      m_logger->error("Xor needs two values on the runtime stack.");
-      return false;
+      throwRuntimeError(m_logger, "Xor needs two values on the runtime stack.");
     }
     if (!x.isNumeric() || !y.isNumeric())
     {
-      m_logger->error("Xor needs numeric values.");
-      return false;
+      throwRuntimeError(m_logger, "Xor needs numeric values.");
     }
     // True only when exactly one side is true.
     const bool truth = (!x.isZero()) != (!y.isZero());
@@ -737,8 +763,7 @@ bool CVirtualMachine::execute()
     CValue x;
     if (!popValue(y) || !popValue(x))
     {
-      // Not enough values on stack
-      return false;
+      throwRuntimeError(m_logger, "Je needs two values on the runtime stack.");
     }
     if (x == y)
     {
@@ -759,8 +784,7 @@ bool CVirtualMachine::execute()
     CValue x;
     if (!popValue(y) || !popValue(x))
     {
-      // Not enough values on stack
-      return false;
+      throwRuntimeError(m_logger, "Jne needs two values on the runtime stack.");
     }
     if (x != y)
     {
@@ -781,8 +805,7 @@ bool CVirtualMachine::execute()
     CValue x;
     if (!popValue(y) || !popValue(x))
     {
-      // Not enough values on stack
-      return false;
+      throwRuntimeError(m_logger, "Jle needs two values on the runtime stack.");
     }
     if (x <= y)
     {
@@ -803,8 +826,7 @@ bool CVirtualMachine::execute()
     CValue x;
     if (!popValue(y) || !popValue(x))
     {
-      // Not enough values on stack
-      return false;
+      throwRuntimeError(m_logger, "Jg needs two values on the runtime stack.");
     }
     if (x > y)
     {
@@ -825,8 +847,7 @@ bool CVirtualMachine::execute()
     CValue x;
     if (!popValue(y) || !popValue(x))
     {
-      // Not enough values on stack
-      return false;
+      throwRuntimeError(m_logger, "Jge needs two values on the runtime stack.");
     }
     if (x >= y)
     {
@@ -847,8 +868,7 @@ bool CVirtualMachine::execute()
     CValue x;
     if (!popValue(y) || !popValue(x))
     {
-      // Not enough values on stack
-      return false;
+      throwRuntimeError(m_logger, "Jl needs two values on the runtime stack.");
     }
     if (x < y)
     {
@@ -864,8 +884,9 @@ bool CVirtualMachine::execute()
   break;
 
   default:
-    assert(false);
-    return false;
+    // Unreachable through assembled code, reachable through corrupt bytecode
+    throwRuntimeError(m_logger, "Unknown instruction id {}.",
+                      static_cast<int>(instruction.id));
   }
 
   return true;

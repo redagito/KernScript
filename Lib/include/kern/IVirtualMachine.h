@@ -37,6 +37,11 @@ public:
 
   /**
   * \brief Calls script function.
+  *
+  * Returns false when the function does not exist. Throws kern::RuntimeError
+  * when the script cannot continue, for example on stack underflow, a type
+  * mismatch or division by zero. Normal termination through ret or exit does
+  * not throw.
   */
   virtual bool callFunction(const std::string &functionName) = 0;
 
@@ -49,6 +54,10 @@ public:
 
   /**
   * \brief Interface for extern functions.
+  *
+  * Each overload pops one value from the runtime stack. Returns false when
+  * the value cannot be converted. Throws kern::RuntimeError when the stack
+  * is empty.
   */
   virtual bool popParameter(int &value) = 0;
   virtual bool popParameter(float &value) = 0;
