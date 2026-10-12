@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "common/LexerToken.h"
+#include "comp/Ast.h"
 #include "comp/Lower.h"
 #include "comp/Parser.h"
 #include "logging/Logger.h"
@@ -34,6 +35,16 @@ Ctx makeCtx(const std::vector<Tok> &toks, std::map<std::string, unsigned int> &e
     ctx.externUse = &externUse;
     ctx.logger = nullLogger();
     return ctx;
+}
+
+bool parseAstSource(const std::string &source, std::vector<Tok> &toks, ast::Program &program)
+{
+    std::istringstream input(source);
+    if (!tokenize(input, nullLogger(), toks))
+    {
+        return false;
+    }
+    return ast::parseProgram(toks, nullLogger(), program);
 }
 
 } // namespace
@@ -238,4 +249,186 @@ TEST_CASE("Diagnostic format renders file line col with a note", "[integration][
     reportError(&plain, "<input>", SrcPos{1, 1}, "Expected ';'.");
     REQUIRE(plain.messages().size() == 1);
     REQUIRE(plain.messages()[0] == "<input>:1:1: error: Expected ';'.");
+}
+
+TEST_CASE("AST builds extern and valued func with spans", "[integration][compiler][parser]")
+{
+    const std::string source = "extern putc(c);\nfunc main(x) {\nvar r = x + 1;\nreturn r;\n}\n";
+    std::vector<Tok> toks;
+    ast::Program program;
+    REQUIRE(parseAstSource(source, toks, program));
+
+    REQUIRE(program.externs.size() == 1);
+    REQUIRE(program.externs[0].name == "putc");
+    REQUIRE(program.externs[0].params == std::vector<std::string>{"c"});
+    REQUIRE(program.externs[0].pos.line == 1);
+    REQUIRE(program.externs[0].pos.col == 1);
+    REQUIRE(program.externs[0].end.line == 1);
+    REQUIRE(program.externs[0].end.col == 15);
+
+    REQUIRE(program.funcs.size() == 1);
+    const ast::Func &func = program.funcs[0];
+    REQUIRE(func.name == "main");
+    REQUIRE(func.params == std::vector<std::string>{"x"});
+    REQUIRE(func.pos.line == 2);
+    REQUIRE(func.pos.col == 1);
+    REQUIRE(func.end.line == 5);
+    REQUIRE(func.end.col == 1);
+    REQUIRE(func.hasValuedReturn);
+    REQUIRE_FALSE(func.hasBareReturn);
+    REQUIRE(func.body.size() == 2);
+
+    const auto *varDecl = std::get_if<ast::Stmt::VarDecl>(&func.body[0].node);
+    REQUIRE(varDecl != nullptr);
+    REQUIRE(varDecl->name == "r");
+    REQUIRE(varDecl->namePos.line == 3);
+    REQUIRE(varDecl->namePos.col == 5);
+    REQUIRE(func.body[0].pos.line == 3);
+    REQUIRE(func.body[0].pos.col == 1);
+    REQUIRE(func.body[0].end.line == 3);
+    REQUIRE(func.body[0].end.col == 14);
+    REQUIRE(varDecl->init != nullptr);
+    const auto *add = std::get_if<ast::Expr::Binary>(&varDecl->init->node);
+    REQUIRE(add != nullptr);
+    REQUIRE(add->op == "+");
+    const auto *left = std::get_if<ast::Expr::VarRef>(&add->left->node);
+    REQUIRE(left != nullptr);
+    REQUIRE(left->name == "x");
+    const auto *right = std::get_if<ast::Expr::IntLit>(&add->right->node);
+    REQUIRE(right != nullptr);
+    REQUIRE(right->text == "1");
+
+    const auto *ret = std::get_if<ast::Stmt::Return>(&func.body[1].node);
+    REQUIRE(ret != nullptr);
+    REQUIRE(ret->value != nullptr);
+    const auto *retVar = std::get_if<ast::Expr::VarRef>(&ret->value->node);
+    REQUIRE(retVar != nullptr);
+    REQUIRE(retVar->name == "r");
+    REQUIRE(func.body[1].pos.line == 4);
+    REQUIRE(func.body[1].pos.col == 1);
+
+    // The old string-emitting path still accepts the same program.
+    Program oldProgram;
+    REQUIRE(parseProgram(toks, nullLogger(), oldProgram));
+}
+
+TEST_CASE("AST builds if else while with logic precedence", "[integration][compiler][parser]")
+{
+    const std::string source = "func main(a) {\nif (a == 1 or a == 2) {\nputc(a);\n} else {\nputc(0);\n}\n"
+                               "while (a > 0) {\na = a - 1;\n}\n}\n";
+    std::vector<Tok> toks;
+    ast::Program program;
+    REQUIRE(parseAstSource(source, toks, program));
+
+    REQUIRE(program.funcs.size() == 1);
+    const ast::Func &func = program.funcs[0];
+    REQUIRE(func.body.size() == 2);
+
+    const auto *branch = std::get_if<ast::Stmt::If>(&func.body[0].node);
+    REQUIRE(branch != nullptr);
+    REQUIRE(func.body[0].pos.line == 2);
+    REQUIRE(func.body[0].pos.col == 1);
+    const auto *orExpr = std::get_if<ast::Expr::Binary>(&branch->cond->node);
+    REQUIRE(orExpr != nullptr);
+    REQUIRE(orExpr->op == "or");
+    const auto *first = std::get_if<ast::Expr::Binary>(&orExpr->left->node);
+    REQUIRE(first != nullptr);
+    REQUIRE(first->op == "==");
+    const auto *second = std::get_if<ast::Expr::Binary>(&orExpr->right->node);
+    REQUIRE(second != nullptr);
+    REQUIRE(second->op == "==");
+    REQUIRE(branch->hasElse);
+    REQUIRE(branch->thenBranch.size() == 1);
+    REQUIRE(branch->elseBranch.size() == 1);
+    const auto *thenCall = std::get_if<ast::Stmt::ExprStmt>(&branch->thenBranch[0].node);
+    REQUIRE(thenCall != nullptr);
+    const auto *thenTarget = std::get_if<ast::Expr::Call>(&thenCall->expr->node);
+    REQUIRE(thenTarget != nullptr);
+    REQUIRE(thenTarget->name == "putc");
+    REQUIRE(thenTarget->args.size() == 1);
+
+    const auto *loop = std::get_if<ast::Stmt::While>(&func.body[1].node);
+    REQUIRE(loop != nullptr);
+    const auto *cond = std::get_if<ast::Expr::Binary>(&loop->cond->node);
+    REQUIRE(cond != nullptr);
+    REQUIRE(cond->op == ">");
+    REQUIRE(loop->body.size() == 1);
+    const auto *assign = std::get_if<ast::Stmt::Assign>(&loop->body[0].node);
+    REQUIRE(assign != nullptr);
+    REQUIRE(assign->name == "a");
+    const auto *sub = std::get_if<ast::Expr::Binary>(&assign->value->node);
+    REQUIRE(sub != nullptr);
+    REQUIRE(sub->op == "-");
+}
+
+TEST_CASE("AST builds strings calls and unary with spans", "[integration][compiler][parser]")
+{
+    const std::string source = "func double(v) {\nreturn v * 2;\n}\nfunc main {\nvar s = \"hi\";\n"
+                               "var r = not double(21) + 1;\ndouble(r);\n}\n";
+    std::vector<Tok> toks;
+    ast::Program program;
+    REQUIRE(parseAstSource(source, toks, program));
+
+    REQUIRE(program.funcs.size() == 2);
+    REQUIRE(program.funcs[0].name == "double");
+    REQUIRE(program.funcs[0].pos.line == 1);
+    REQUIRE(program.funcs[0].pos.col == 1);
+    const ast::Func &main = program.funcs[1];
+    REQUIRE(main.pos.line == 4);
+    REQUIRE(main.pos.col == 1);
+    REQUIRE(main.body.size() == 3);
+
+    const auto *strDecl = std::get_if<ast::Stmt::VarDecl>(&main.body[0].node);
+    REQUIRE(strDecl != nullptr);
+    REQUIRE(strDecl->name == "s");
+    const auto *str = std::get_if<ast::Expr::StrLit>(&strDecl->init->node);
+    REQUIRE(str != nullptr);
+    REQUIRE(str->text == "hi");
+
+    const auto *numDecl = std::get_if<ast::Stmt::VarDecl>(&main.body[1].node);
+    REQUIRE(numDecl != nullptr);
+    const auto *add = std::get_if<ast::Expr::Binary>(&numDecl->init->node);
+    REQUIRE(add != nullptr);
+    REQUIRE(add->op == "+");
+    const auto *neg = std::get_if<ast::Expr::Unary>(&add->left->node);
+    REQUIRE(neg != nullptr);
+    REQUIRE(neg->op == "not");
+    const auto *call = std::get_if<ast::Expr::Call>(&neg->operand->node);
+    REQUIRE(call != nullptr);
+    REQUIRE(call->name == "double");
+    REQUIRE(call->args.size() == 1);
+    const auto *arg = std::get_if<ast::Expr::IntLit>(&call->args[0]->node);
+    REQUIRE(arg != nullptr);
+    REQUIRE(arg->text == "21");
+    const auto *one = std::get_if<ast::Expr::IntLit>(&add->right->node);
+    REQUIRE(one != nullptr);
+
+    const auto *callStmt = std::get_if<ast::Stmt::ExprStmt>(&main.body[2].node);
+    REQUIRE(callStmt != nullptr);
+    const auto *stmtCall = std::get_if<ast::Expr::Call>(&callStmt->expr->node);
+    REQUIRE(stmtCall != nullptr);
+    REQUIRE(stmtCall->name == "double");
+    REQUIRE(stmtCall->args.size() == 1);
+    REQUIRE(std::get_if<ast::Expr::VarRef>(&stmtCall->args[0]->node) != nullptr);
+}
+
+TEST_CASE("AST rejects malformed input", "[integration][compiler][parser]")
+{
+    const std::string missingSemi = "func main {\nvar x = 1\n}\n";
+    const std::string missingParen = "func main {\nvar x = (1;\n}\n";
+    const std::string missingBrace = "func main {\nvar x = 1;\n";
+    const std::string noFunc = "extern putc(c);\n";
+    const std::string badLiteral = "func main {\nvar x = 4294967296;\n}\n";
+    const std::string duplicate = "func main {\n}\nfunc main {\n}\n";
+    const std::string mixed = "func main {\nreturn 1;\nreturn;\n}\n";
+    for (const std::string *source :
+         {&missingSemi, &missingParen, &missingBrace, &noFunc, &badLiteral, &duplicate, &mixed})
+    {
+        std::vector<Tok> toks;
+        ast::Program program;
+        REQUIRE_FALSE(parseAstSource(*source, toks, program));
+    }
+    std::vector<Tok> emptyToks;
+    ast::Program emptyProgram;
+    REQUIRE_FALSE(parseAstSource("", emptyToks, emptyProgram));
 }
