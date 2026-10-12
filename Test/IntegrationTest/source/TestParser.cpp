@@ -5,8 +5,8 @@
 #include <string>
 #include <vector>
 
-#include "../../../Lib/Impl/source/comp/Lower.h"
 #include "common/LexerToken.h"
+#include "comp/Lower.h"
 #include "comp/Parser.h"
 #include "logging/Logger.h"
 

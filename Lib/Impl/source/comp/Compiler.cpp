@@ -5,7 +5,7 @@
 #include "comp/Parser.h"
 #include "logging/Logger.h"
 
-#include "Lower.h"
+#include "comp/Lower.h"
 
 Compiler::Compiler(kern::ILogger *logger) : m_logger(logger != nullptr ? logger : nullLogger()) {
   // Empty
