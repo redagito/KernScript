@@ -1,8 +1,10 @@
 #pragma once
 
 #include <cstddef>
+#include <istream>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <kern/ILogger.h>
@@ -20,6 +22,9 @@
  * emitted body lines, label counter, logger). Expression lowering is
  * Or > Xor > And > Cmp > Add > Mul > Unary > Primary; statement lowering
  * covers VarDecl, Assign, If/Else, While, Return, and ExprStmt/call forms.
+ * tokenize buffers significant tokens from source text, Program is the
+ * collected extern/function bookkeeping, and parseProgram fills it by
+ * scanning top-level declarations and classifying valued/void returns.
  */
 
 struct Tok {
@@ -35,6 +40,18 @@ struct FuncInfo {
   bool hasValuedReturn = false;
   bool hasBareReturn = false;
 };
+
+struct Program {
+  std::map<std::string, unsigned int> externs;
+  std::vector<std::pair<std::string, unsigned int>> externOrder;
+  std::vector<FuncInfo> funcOrder;
+  std::map<std::string, FuncInfo> funcs;
+};
+
+bool tokenize(std::istream &sourceCode, kern::ILogger *logger, std::vector<Tok> &toks);
+bool topAtEnd(std::size_t pos, const std::vector<Tok> &toks);
+LexerToken topPeek(std::size_t pos, std::size_t off, const std::vector<Tok> &toks);
+bool parseProgram(const std::vector<Tok> &toks, kern::ILogger *logger, Program &program);
 
 struct Ctx {
   const std::vector<Tok> *toks = nullptr;

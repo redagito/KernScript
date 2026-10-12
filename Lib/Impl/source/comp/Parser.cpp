@@ -4,6 +4,225 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <istream>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "common/Lexer.h"
+
+bool tokenize(std::istream &sourceCode, kern::ILogger *logger, std::vector<Tok> &toks) {
+  Lexer lexer(logger);
+  lexer.addKeyword("func");
+  lexer.addKeyword("extern");
+  lexer.addKeyword("var");
+  lexer.addKeyword("if");
+  lexer.addKeyword("else");
+  lexer.addKeyword("while");
+  lexer.addKeyword("return");
+  // Reserved logic operators: recognized so misuse fails with a clean
+  // keyword error instead of parsing as an identifier.
+  lexer.addKeyword("and");
+  lexer.addKeyword("or");
+  lexer.addKeyword("xor");
+  lexer.addKeyword("not");
+
+  // Buffer significant tokens for lookahead.
+  toks.clear();
+  while (true) {
+    lexer.lex(sourceCode);
+    const LexerToken type = lexer.getToken();
+    if (type == LexerToken::End) {
+      break;
+    }
+    if (type == LexerToken::Invalid) {
+      logger->error("Invalid source.");
+      return false;
+    }
+    if (type == LexerToken::NewLine || type == LexerToken::Comment) {
+      continue;
+    }
+    Tok tok;
+    tok.type = type;
+    tok.text = lexer.getLexeme();
+    toks.push_back(tok);
+  }
+  return true;
+}
+
+bool topAtEnd(std::size_t pos, const std::vector<Tok> &toks) { return pos >= toks.size(); }
+
+LexerToken topPeek(std::size_t pos, std::size_t off, const std::vector<Tok> &toks) {
+  if (pos + off >= toks.size()) {
+    return LexerToken::End;
+  }
+  return toks[pos + off].type;
+}
+
+bool parseProgram(const std::vector<Tok> &toks, kern::ILogger *logger, Program &program) {
+  // Slice 7: ExternDecl* + FuncDecl* where each FuncDecl is
+  // 'func' Ident ['(' [Ident (',' Ident)*] ')'] '{' Stmt* '}'. Signatures
+  // and classification are collected before any body lowers, so forward
+  // references resolve.
+  program = Program{};
+  std::size_t pos = 0;
+  bool haveFunc = false;
+  while (!topAtEnd(pos, toks)) {
+    if (toks[pos].type != LexerToken::Keyword) {
+      logger->error("Expected 'extern' or 'func'.");
+      return false;
+    }
+    const std::string keyword = toks[pos].text;
+    if (keyword == "extern") {
+      ++pos;
+      if (haveFunc) {
+        logger->error("Extern declarations must precede the function.");
+        return false;
+      }
+      if (topPeek(pos, 0, toks) != LexerToken::Identifier) {
+        logger->error("Expected an extern name.");
+        return false;
+      }
+      const std::string name = toks[pos].text;
+      ++pos;
+      if (program.externs.find(name) != program.externs.end() || program.funcs.find(name) != program.funcs.end()) {
+        logger->error("Duplicate extern name.");
+        return false;
+      }
+      if (topPeek(pos, 0, toks) != LexerToken::OpenParenthesis) {
+        logger->error("Expected '('.");
+        return false;
+      }
+      ++pos;
+      unsigned int arity = 0;
+      if (topPeek(pos, 0, toks) == LexerToken::Identifier) {
+        ++pos;
+        arity = 1;
+        while (topPeek(pos, 0, toks) == LexerToken::Comma) {
+          ++pos;
+          if (topPeek(pos, 0, toks) != LexerToken::Identifier) {
+            logger->error("Expected a parameter name.");
+            return false;
+          }
+          ++pos;
+          ++arity;
+        }
+      }
+      if (topPeek(pos, 0, toks) != LexerToken::CloseParenthesis) {
+        logger->error("Expected ')'.");
+        return false;
+      }
+      ++pos;
+      if (topPeek(pos, 0, toks) != LexerToken::Semicolon) {
+        logger->error("Expected ';'.");
+        return false;
+      }
+      ++pos;
+      program.externs[name] = arity;
+      program.externOrder.push_back({name, arity});
+    } else if (keyword == "func") {
+      ++pos;
+      if (topPeek(pos, 0, toks) != LexerToken::Identifier) {
+        logger->error("Expected a function name.");
+        return false;
+      }
+      const std::string name = toks[pos].text;
+      ++pos;
+      if (program.externs.find(name) != program.externs.end() || program.funcs.find(name) != program.funcs.end()) {
+        logger->error("Duplicate function name.");
+        return false;
+      }
+      FuncInfo info;
+      info.name = name;
+      if (topPeek(pos, 0, toks) == LexerToken::OpenParenthesis) {
+        ++pos;
+        if (topPeek(pos, 0, toks) == LexerToken::Identifier) {
+          while (true) {
+            const std::string param = toks[pos].text;
+            for (const auto &seen : info.params) {
+              if (seen == param) {
+                logger->error("Duplicate parameter name.");
+                return false;
+              }
+            }
+            info.params.push_back(param);
+            ++pos;
+            if (topPeek(pos, 0, toks) == LexerToken::Comma) {
+              ++pos;
+              if (topPeek(pos, 0, toks) != LexerToken::Identifier) {
+                logger->error("Expected a parameter name.");
+                return false;
+              }
+              continue;
+            }
+            break;
+          }
+        }
+        if (topPeek(pos, 0, toks) != LexerToken::CloseParenthesis) {
+          logger->error("Expected ')'.");
+          return false;
+        }
+        ++pos;
+      }
+      if (topPeek(pos, 0, toks) != LexerToken::OpenBrace) {
+        logger->error("Expected '{{'.");
+        return false;
+      }
+      ++pos;
+      info.bodyBegin = pos;
+      unsigned int depth = 1;
+      while (!topAtEnd(pos, toks) && depth > 0) {
+        if (toks[pos].type == LexerToken::OpenBrace) {
+          ++depth;
+        } else if (toks[pos].type == LexerToken::CloseBrace) {
+          --depth;
+        }
+        ++pos;
+      }
+      if (depth != 0) {
+        logger->error("Expected '}}'.");
+        return false;
+      }
+      info.bodyEnd = pos - 1;
+      program.funcs[name] = info;
+      program.funcOrder.push_back(info);
+      haveFunc = true;
+    } else {
+      logger->error("Expected 'extern' or 'func'.");
+      return false;
+    }
+  }
+
+  if (!haveFunc) {
+    logger->error("Expected 'func'.");
+    return false;
+  }
+
+  // Classify valued/void per function before lowering any body so forward
+  // references check against the final classification.
+  for (auto &entry : program.funcOrder) {
+    bool valued = false;
+    bool bare = false;
+    for (std::size_t i = entry.bodyBegin; i < entry.bodyEnd; ++i) {
+      if (toks[i].type == LexerToken::Keyword && toks[i].text == "return") {
+        if (i + 1 < entry.bodyEnd && toks[i + 1].type == LexerToken::Semicolon) {
+          bare = true;
+        } else {
+          valued = true;
+        }
+      }
+    }
+    entry.hasValuedReturn = valued;
+    entry.hasBareReturn = bare;
+    program.funcs[entry.name].hasValuedReturn = valued;
+    program.funcs[entry.name].hasBareReturn = bare;
+    if (valued && bare) {
+      logger->error("Mixed valued and void returns.");
+      return false;
+    }
+  }
+  return true;
+}
 
 bool atEnd(const Ctx &ctx) { return ctx.pos >= ctx.end; }
 
