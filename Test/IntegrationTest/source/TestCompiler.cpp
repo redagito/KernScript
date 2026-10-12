@@ -353,3 +353,178 @@ TEST_CASE("Compiler rejects call to undeclared extern", "[integration][compiler]
   std::stringstream asmCode;
   REQUIRE_FALSE(compiler->compile(input, asmCode));
 }
+
+TEST_CASE("Compiler calls script function with param and return end-to-end", "[integration][compiler]") {
+  const std::string source =
+      "extern println(x);\nfunc double(v) {\n  return v * 2;\n}\nfunc main {\n  println(double(21));\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE(compiler->compile(input, asmCode));
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+  REQUIRE(vm->callFunction("main"));
+  REQUIRE(recorder.text() == "42\n");
+}
+
+TEST_CASE("Compiler calls void function as statement with bare return", "[integration][compiler]") {
+  const std::string source =
+      "extern println(x);\nfunc show(v) {\n  println(v);\n  return;\n}\n"
+      "func main {\n  show(7);\n  println(9);\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE(compiler->compile(input, asmCode));
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+  REQUIRE(vm->callFunction("main"));
+  REQUIRE(recorder.text() == "7\n9\n");
+}
+
+TEST_CASE("Compiler evaluates nested calls as arguments end-to-end", "[integration][compiler]") {
+  const std::string source =
+      "extern println(x);\nfunc double(v) {\n  return v * 2;\n}\n"
+      "func main {\n  println(double(double(2)));\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE(compiler->compile(input, asmCode));
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+  REQUIRE(vm->callFunction("main"));
+  REQUIRE(recorder.text() == "8\n");
+}
+
+TEST_CASE("Compiler runs shallow void recursion end-to-end", "[integration][compiler]") {
+  const std::string source =
+      "extern println(x);\nfunc count(n) {\n"
+      "  if (n == 0) {\n    return;\n  }\n"
+      "  println(n);\n"
+      "  count(n - 1);\n"
+      "}\nfunc main {\n  count(5);\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE(compiler->compile(input, asmCode));
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+  REQUIRE(vm->callFunction("main"));
+  REQUIRE(recorder.text() == "5\n4\n3\n2\n1\n");
+}
+
+TEST_CASE("Compiler runs recursive valued function end-to-end", "[integration][compiler]") {
+  const std::string source =
+      "extern println(x);\nfunc fact(n) {\n"
+      "  if (n == 1) {\n    return 1;\n  }\n"
+      "  var m = n - 1;\n"
+      "  var r = fact(m);\n"
+      "  return n * r;\n"
+      "}\nfunc main {\n  println(fact(5));\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE(compiler->compile(input, asmCode));
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+  REQUIRE(vm->callFunction("main"));
+  REQUIRE(recorder.text() == "120\n");
+}
+
+TEST_CASE("Compiler resolves forward script function references", "[integration][compiler]") {
+  const std::string source =
+      "extern println(x);\nfunc main {\n  println(double(21));\n}\n"
+      "func double(v) {\n  return v * 2;\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE(compiler->compile(input, asmCode));
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+  REQUIRE(vm->callFunction("main"));
+  REQUIRE(recorder.text() == "42\n");
+}
+
+TEST_CASE("Compiler rejects mixed valued and void returns", "[integration][compiler]") {
+  const std::string source =
+      "extern println(x);\nfunc f(v) {\n  if (v == 1) {\n    return 1;\n  }\n  return;\n}\n"
+      "func main {\n  println(f(2));\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE_FALSE(compiler->compile(input, asmCode));
+}
+
+TEST_CASE("Compiler rejects void call used as a value", "[integration][compiler]") {
+  const std::string source =
+      "extern println(x);\nfunc show(v) {\n  println(v);\n}\n"
+      "func main {\n  var r = show(1);\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE_FALSE(compiler->compile(input, asmCode));
+}
+
+TEST_CASE("Compiler rejects script call with wrong argument count", "[integration][compiler]") {
+  const std::string source =
+      "extern println(x);\nfunc double(v) {\n  return v * 2;\n}\n"
+      "func main {\n  println(double(1, 2));\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE_FALSE(compiler->compile(input, asmCode));
+}
+
+TEST_CASE("Compiler rejects inconsistent extern use", "[integration][compiler]") {
+  const std::string source =
+      "extern println(x);\nfunc main {\n  var r = println(1);\n  println(2);\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE_FALSE(compiler->compile(input, asmCode));
+}
