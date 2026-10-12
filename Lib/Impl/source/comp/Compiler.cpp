@@ -1,6 +1,9 @@
 #include "Compiler.h"
 
+#include <cerrno>
+#include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <map>
 #include <string>
 #include <vector>
@@ -234,6 +237,13 @@ bool parsePrimary(Ctx &ctx, std::vector<std::string> &out, bool &isString) {
   }
   if (tok.type == LexerToken::Float) {
     ++ctx.pos;
+    errno = 0;
+    char *end = nullptr;
+    const float value = std::strtof(tok.text.c_str(), &end);
+    if (end == nullptr || *end != '\0' || !std::isfinite(value)) {
+      ctx.logger->error("Float literal out of range.");
+      return false;
+    }
     out.push_back("pushf " + tok.text);
     return true;
   }

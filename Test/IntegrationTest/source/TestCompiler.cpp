@@ -69,6 +69,161 @@ TEST_CASE("Compiler evaluates arithmetic precedence end-to-end", "[integration][
   REQUIRE(recorder.text() == "9\n");
 }
 
+TEST_CASE("Compiler rejects duplicate func declaration", "[integration][compiler]") {
+  const std::string source = "extern println(x);\nfunc foo {\n  println(1);\n}\nfunc foo {\n  println(2);\n}\nfunc main {\n  foo();\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE_FALSE(compiler->compile(input, asmCode));
+}
+
+TEST_CASE("Compiler rejects duplicate extern declaration", "[integration][compiler]") {
+  const std::string source = "extern println(x);\nextern println(x);\nfunc main {\n  println(1);\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE_FALSE(compiler->compile(input, asmCode));
+}
+
+TEST_CASE("Compiler rejects duplicate param name", "[integration][compiler]") {
+  const std::string source =
+      "extern println(x);\nfunc foo(a, a) {\n  println(a);\n}\nfunc main {\n  foo(1, 2);\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE_FALSE(compiler->compile(input, asmCode));
+}
+
+TEST_CASE("Compiler rejects func name colliding with extern", "[integration][compiler]") {
+  const std::string source = "extern foo(x);\nfunc foo(x) {\n  return x;\n}\nfunc main {\n  foo(1);\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE_FALSE(compiler->compile(input, asmCode));
+}
+
+TEST_CASE("Compiler rejects read of undeclared variable", "[integration][compiler]") {
+  const std::string source = "extern println(x);\nfunc main {\n  println(q);\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE_FALSE(compiler->compile(input, asmCode));
+}
+
+TEST_CASE("Compiler rejects call to undeclared script function as value", "[integration][compiler]") {
+  const std::string source = "extern println(x);\nfunc main {\n  var r = foo(1);\n  println(r);\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE_FALSE(compiler->compile(input, asmCode));
+}
+
+TEST_CASE("Compiler rejects extern call with wrong argument count as statement", "[integration][compiler]") {
+  const std::string source = "extern println(x);\nfunc main {\n  println(1, 2);\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE_FALSE(compiler->compile(input, asmCode));
+}
+
+TEST_CASE("Compiler rejects extern call with wrong argument count as value", "[integration][compiler]") {
+  const std::string source = "extern println(x);\nfunc main {\n  var r = println(1, 2);\n  println(r);\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE_FALSE(compiler->compile(input, asmCode));
+}
+
+TEST_CASE("Compiler rejects inconsistent extern use statement then value", "[integration][compiler]") {
+  const std::string source =
+      "extern println(x);\nfunc main {\n  println(1);\n  var r = println(2);\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE_FALSE(compiler->compile(input, asmCode));
+}
+
+TEST_CASE("Compiler rejects overflowing integer literal", "[integration][compiler]") {
+  const std::string source = "extern println(x);\nfunc main {\n  var x = 4294967296;\n  println(x);\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE_FALSE(compiler->compile(input, asmCode));
+}
+
+TEST_CASE("Compiler rejects overflowing float literal", "[integration][compiler]") {
+  const std::string source =
+      "extern println(x);\nfunc main {\n  var f = 100000000000000000000000000000000000000000.0;\n  println(f);\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE_FALSE(compiler->compile(input, asmCode));
+}
+
+TEST_CASE("Compiler rejects unterminated string literal", "[integration][compiler]") {
+  const std::string source = "extern println(x);\nfunc main {\n  var s = \"hello;\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE_FALSE(compiler->compile(input, asmCode));
+}
+
+TEST_CASE("Compiler rejects return outside a function", "[integration][compiler]") {
+  const std::string source = "extern println(x);\nfunc main {\n  println(1);\n}\nreturn 1;\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE_FALSE(compiler->compile(input, asmCode));
+}
+
+TEST_CASE("Compiler runs factorial and summation acceptance end-to-end", "[integration][compiler]") {
+  const std::string source =
+      "extern println(x);\nfunc fact(n) {\n"
+      "  if (n == 1) {\n    return 1;\n  } else {\n"
+      "    var m = n - 1;\n"
+      "    var r = fact(m);\n"
+      "    return n * r;\n"
+      "  }\n"
+      "}\nfunc main {\n"
+      "  println(fact(5));\n"
+      "  var i = 1;\n"
+      "  var total = 0;\n"
+      "  while (i <= 10) {\n"
+      "    total = total + i;\n"
+      "    i = i + 1;\n"
+      "  }\n"
+      "  println(total);\n"
+      "}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE(compiler->compile(input, asmCode));
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+  REQUIRE(vm->callFunction("main"));
+  REQUIRE(recorder.text() == "120\n55\n");
+}
+
 TEST_CASE("Compiler supports bare var declaration with later assignment", "[integration][compiler]") {
   const std::string source = "extern println(x);\nfunc main {\n  var q;\n  q = 40 + 2;\n  println(q);\n}\n";
 
