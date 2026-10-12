@@ -10,15 +10,17 @@
 namespace
 {
 
-constexpr int kButtonId = 1;
-constexpr int kClicks = 12;
+constexpr int kClickButtonId = 1;
+constexpr int kResetButtonId = 2;
+
+constexpr const char *kWindowTitle = "KernScript Clicker";
+constexpr const char *kReadyText = "Ready - press Click me";
 
 int g_count = 0;
 int g_code = 0;
 int g_next = 0;
 HWND g_label = nullptr;
 kern::IVirtualMachine *g_vm = nullptr;
-bool g_failed = false;
 
 int get_count() { return g_count; }
 
@@ -28,51 +30,81 @@ void emit(int code, int next)
     g_next = next;
 }
 
-void pumpMessages()
+bool callScript(const char *name)
 {
-    MSG message;
-    while (PeekMessage(&message, nullptr, 0, 0, PM_REMOVE))
+    try
     {
-        TranslateMessage(&message);
-        DispatchMessage(&message);
+        if (!g_vm->callFunction(name))
+        {
+            std::cerr << "function " << name << " not found\n";
+            return false;
+        }
     }
+    catch (const kern::RuntimeError &error)
+    {
+        std::cerr << "runtime error: " << error.what() << '\n';
+        return false;
+    }
+    return true;
+}
+
+void showCount(int count)
+{
+    const std::string text = "Clicks: " + std::to_string(count);
+    SetWindowTextA(g_label, text.c_str());
+}
+
+void logClick()
+{
+    std::cout << "click " << g_next << ": count " << g_next;
+    if (g_code == 1)
+    {
+        std::cout << " first click";
+    }
+    else if (g_code == 2)
+    {
+        std::cout << " milestone";
+    }
+    std::cout << '\n';
+}
+
+void onClick()
+{
+    if (!callScript("on_click"))
+    {
+        return;
+    }
+    g_count = g_next;
+    showCount(g_count);
+    logClick();
+}
+
+void onReset()
+{
+    g_count = 0;
+    if (!callScript("on_reset"))
+    {
+        return;
+    }
+    SetWindowTextA(g_label, kReadyText);
+    std::cout << "reset: count 0\n";
 }
 
 LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 {
-    if (message == WM_COMMAND && LOWORD(wparam) == kButtonId)
+    if (message == WM_COMMAND)
     {
-        try
+        const int id = LOWORD(wparam);
+        if (id == kClickButtonId)
         {
-            if (!g_vm->callFunction("on_click"))
-            {
-                std::cerr << "function on_click not found\n";
-                g_failed = true;
-                PostQuitMessage(1);
-                return 0;
-            }
-        }
-        catch (const kern::RuntimeError &error)
-        {
-            std::cerr << "runtime error: " << error.what() << '\n';
-            g_failed = true;
-            PostQuitMessage(1);
+            onClick();
             return 0;
         }
-        g_count = g_next;
-        const std::string text = "Clicks: " + std::to_string(g_count);
-        SetWindowTextA(g_label, text.c_str());
-        std::cout << "click " << g_next << ": count " << g_next;
-        if (g_code == 1)
+        if (id == kResetButtonId)
         {
-            std::cout << " first click";
+            onReset();
+            return 0;
         }
-        else if (g_code == 2)
-        {
-            std::cout << " milestone";
-        }
-        std::cout << '\n';
-        return 0;
     }
     if (message == WM_DESTROY)
     {
@@ -95,13 +127,16 @@ func on_click() {
   if (next == 1) {
     code = 1;
   } else {
-    if (next == 10) {
+    if (next / 10 * 10 == next) {
       code = 2;
     } else {
       code = 0;
     }
   }
   emit(code, next);
+}
+func on_reset() {
+  emit(0, 0);
 }
 )";
 
@@ -143,29 +178,38 @@ func on_click() {
         WNDCLASSA windowClass = {};
         windowClass.lpfnWndProc = windowProc;
         windowClass.hInstance = instance;
-        windowClass.lpszClassName = "ScriptGuiHidden";
+        windowClass.lpszClassName = "ScriptGuiClicker";
         if (!RegisterClassA(&windowClass))
         {
             std::cerr << "register class failed\n";
             return 1;
         }
-        HWND window = CreateWindowExA(0, "ScriptGuiHidden", "ScriptGui", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT,
-                                      CW_USEDEFAULT, 320, 160, nullptr, nullptr, instance, nullptr);
+        HWND window = CreateWindowExA(0, "ScriptGuiClicker", kWindowTitle, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT,
+                                      CW_USEDEFAULT, 340, 180, nullptr, nullptr, instance, nullptr);
         if (!window)
         {
             std::cerr << "create window failed\n";
             return 1;
         }
-        HWND button =
+        HWND clickButton =
             CreateWindowExA(0, "BUTTON", "Click me", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 20, 20, 120, 30, window,
-                            reinterpret_cast<HMENU>(static_cast<INT_PTR>(kButtonId)), instance, nullptr);
-        if (!button)
+                            reinterpret_cast<HMENU>(static_cast<INT_PTR>(kClickButtonId)), instance, nullptr);
+        if (!clickButton)
         {
-            std::cerr << "create button failed\n";
+            std::cerr << "create click button failed\n";
             DestroyWindow(window);
             return 1;
         }
-        g_label = CreateWindowExA(0, "STATIC", "Clicks: 0", WS_CHILD | WS_VISIBLE | SS_LEFT, 20, 70, 260, 24, window,
+        HWND resetButton =
+            CreateWindowExA(0, "BUTTON", "Reset", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 150, 20, 120, 30, window,
+                            reinterpret_cast<HMENU>(static_cast<INT_PTR>(kResetButtonId)), instance, nullptr);
+        if (!resetButton)
+        {
+            std::cerr << "create reset button failed\n";
+            DestroyWindow(window);
+            return 1;
+        }
+        g_label = CreateWindowExA(0, "STATIC", kReadyText, WS_CHILD | WS_VISIBLE | SS_LEFT, 20, 70, 280, 24, window,
                                   nullptr, instance, nullptr);
         if (!g_label)
         {
@@ -173,19 +217,16 @@ func on_click() {
             DestroyWindow(window);
             return 1;
         }
-        for (int i = 0; i < kClicks; ++i)
+
+        ShowWindow(window, SW_SHOW);
+        UpdateWindow(window);
+
+        MSG message;
+        while (GetMessage(&message, nullptr, 0, 0) > 0)
         {
-            SendMessage(button, BM_CLICK, 0, 0);
-            pumpMessages();
-            if (g_failed)
-            {
-                DestroyWindow(window);
-                return 1;
-            }
+            TranslateMessage(&message);
+            DispatchMessage(&message);
         }
-        pumpMessages();
-        DestroyWindow(window);
-        pumpMessages();
     }
     catch (const kern::RuntimeError &error)
     {
