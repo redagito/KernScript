@@ -31,6 +31,20 @@ public:
      */
     const std::string &getLexeme() const;
     LexerToken getToken() const;
+    /**
+     * \brief Returns the 1-based line where the current token starts.
+     *
+     * Updated by every lex() call, including End and Invalid. Stays
+     * unchanged when ignoreNextLex() defers the next lex.
+     */
+    unsigned getLine() const;
+    /**
+     * \brief Returns the 1-based column where the current token starts.
+     *
+     * Updated by every lex() call, including End and Invalid. Stays
+     * unchanged when ignoreNextLex() defers the next lex.
+     */
+    unsigned getColumn() const;
 
     void addKeyword(const std::string &keyword);
     /**
@@ -63,6 +77,18 @@ protected:
     void lexString(std::istream &stream);
     void lexComment(std::istream &stream);
 
+    /**
+     * \brief Reads one char and advances the line/column cursor.
+     *
+     * A '\n' moves to the next line; any other char moves one column.
+     * A failed extraction leaves the cursor unchanged.
+     */
+    void takeChar(std::istream &stream, char &c);
+    /**
+     * \brief Discards one already-peeked char, advancing line/column.
+     */
+    void skipChar(std::istream &stream, int ch);
+
 private:
     std::unordered_set<std::string> m_keywords;      /**< Registered keywords. */
     std::string m_currentLexeme;                     /**< Currently parsed lexeme. */
@@ -70,5 +96,9 @@ private:
     bool m_ignoreNewLine = false;
     bool m_ignoreLex = false;
     unsigned int m_blankSkipped = 0;
+    unsigned m_line = 1;               /**< 1-based line of the next char to read. */
+    unsigned m_column = 1;             /**< 1-based column of the next char to read. */
+    unsigned m_tokenLine = 1;          /**< 1-based line where the current token starts. */
+    unsigned m_tokenColumn = 1;        /**< 1-based column where the current token starts. */
     kern::ILogger *m_logger = nullptr; /**< Receives diagnostics. */
 };

@@ -14,6 +14,14 @@ Compiler::Compiler(kern::ILogger *logger) : m_logger(logger != nullptr ? logger 
 
 bool Compiler::compile(std::istream &sourceCode, std::ostream &asmCode)
 {
+    return compile(sourceCode, asmCode, "<input>");
+}
+
+bool Compiler::compile(std::istream &sourceCode, std::ostream &asmCode, const std::string &sourceName)
+{
+    // S1: the name is accepted for diagnostics but not yet threaded;
+    // positions are recorded on tokens but unused elsewhere yet.
+    (void)sourceName;
     // Orchestration only: tokenize, scan/classify, lower, emit. The language
     // contract lives on the ctor (see Compiler.h); each phase lives in its
     // own module (see Parser.h and Lower.h).

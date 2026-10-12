@@ -2,6 +2,7 @@
 
 #include <istream>
 #include <ostream>
+#include <string>
 
 namespace kern
 {
@@ -25,5 +26,12 @@ public:
      * \return True on success and false on error.
      */
     virtual bool compile(std::istream &sourceCode, std::ostream &asmCode) = 0;
+
+    /**
+     * \brief Compiles script source code into assembly source code.
+     * \param sourceName File name used in diagnostics (no file is read).
+     * \return True on success and false on error.
+     */
+    virtual bool compile(std::istream &sourceCode, std::ostream &asmCode, const std::string &sourceName) = 0;
 };
 } // namespace kern

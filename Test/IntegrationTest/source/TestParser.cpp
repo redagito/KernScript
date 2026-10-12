@@ -9,6 +9,7 @@
 #include "comp/Lower.h"
 #include "comp/Parser.h"
 #include "logging/Logger.h"
+#include "testutil/TestSupport.hpp"
 
 namespace
 {
@@ -198,4 +199,43 @@ TEST_CASE("Compiler lowerProgram and emitProgram shape on tiny program", "[integ
     std::ostringstream asmCode;
     emitProgram(program, lowered, asmCode);
     REQUIRE(asmCode.str() == "func main\n{\nvar x\npushi 1\npopv x\nret\n}\n");
+}
+
+TEST_CASE("Compiler tokenize records token positions", "[integration][compiler][parser]")
+{
+    std::istringstream input("func main() {\nvar x = 1;\n}\n");
+    std::vector<Tok> toks;
+    REQUIRE(tokenize(input, nullLogger(), toks));
+    REQUIRE(toks.size() == 11);
+    REQUIRE(toks[0].text == "func");
+    REQUIRE(toks[0].pos.line == 1);
+    REQUIRE(toks[0].pos.col == 1);
+    REQUIRE(toks[1].text == "main");
+    REQUIRE(toks[1].pos.line == 1);
+    REQUIRE(toks[1].pos.col == 6);
+    REQUIRE(toks[5].text == "var");
+    REQUIRE(toks[5].pos.line == 2);
+    REQUIRE(toks[5].pos.col == 1);
+    REQUIRE(toks[7].text == "=");
+    REQUIRE(toks[7].pos.line == 2);
+    REQUIRE(toks[7].pos.col == 7);
+}
+
+TEST_CASE("Diagnostic format renders file line col with a note", "[integration][compiler][parser]")
+{
+    REQUIRE(formatDiagnostic("test.ks", SrcPos{2, 5}, "Use of undeclared variable.") ==
+            "test.ks:2:5: error: Use of undeclared variable.");
+    REQUIRE(formatHint("declare it with var or as a parameter") == "note: declare it with var or as a parameter");
+
+    testutil::RecordingLogger logger;
+    reportError(&logger, "test.ks", SrcPos{2, 5}, "Use of undeclared variable.",
+                "declare it with var or as a parameter");
+    REQUIRE(logger.messages().size() == 2);
+    REQUIRE(logger.messages()[0] == "test.ks:2:5: error: Use of undeclared variable.");
+    REQUIRE(logger.messages()[1] == "note: declare it with var or as a parameter");
+
+    testutil::RecordingLogger plain;
+    reportError(&plain, "<input>", SrcPos{1, 1}, "Expected ';'.");
+    REQUIRE(plain.messages().size() == 1);
+    REQUIRE(plain.messages()[0] == "<input>:1:1: error: Expected ';'.");
 }

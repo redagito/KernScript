@@ -25,12 +25,23 @@
  * tokenize buffers significant tokens from source text, Program is the
  * collected extern/function bookkeeping, and parseProgram fills it by
  * scanning top-level declarations and classifying valued/void returns.
+ * SrcPos is a 1-based line/column; every Tok carries the position where
+ * its lexeme starts. formatDiagnostic renders the clang-style
+ * "<file>:<line>:<col>: error: <message>" line and reportError logs it,
+ * followed by a "note: <hint>" line when a hint is given.
  */
+
+struct SrcPos
+{
+    unsigned line = 1;
+    unsigned col = 1;
+};
 
 struct Tok
 {
     LexerToken type = LexerToken::Invalid;
     std::string text;
+    SrcPos pos;
 };
 
 struct FuncInfo
@@ -54,6 +65,10 @@ struct Program
 bool tokenize(std::istream &sourceCode, kern::ILogger *logger, std::vector<Tok> &toks);
 bool topAtEnd(std::size_t pos, const std::vector<Tok> &toks);
 LexerToken topPeek(std::size_t pos, std::size_t off, const std::vector<Tok> &toks);
+std::string formatDiagnostic(const std::string &sourceName, SrcPos pos, const std::string &message);
+std::string formatHint(const std::string &hint);
+void reportError(kern::ILogger *logger, const std::string &sourceName, SrcPos pos, const std::string &message,
+                 const std::string &hint = "");
 bool parseProgram(const std::vector<Tok> &toks, kern::ILogger *logger, Program &program);
 
 struct Ctx

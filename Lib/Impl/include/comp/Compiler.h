@@ -36,7 +36,8 @@ public:
      */
     explicit Compiler(kern::ILogger *logger);
 
-    bool compile(std::istream &sourceCode, std::ostream &asmCode);
+    bool compile(std::istream &sourceCode, std::ostream &asmCode) override;
+    bool compile(std::istream &sourceCode, std::ostream &asmCode, const std::string &sourceName) override;
 
 private:
     kern::ILogger *m_logger;

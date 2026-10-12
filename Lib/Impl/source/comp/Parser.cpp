@@ -50,12 +50,31 @@ bool tokenize(std::istream &sourceCode, kern::ILogger *logger, std::vector<Tok> 
         Tok tok;
         tok.type = type;
         tok.text = lexer.getLexeme();
+        tok.pos.line = lexer.getLine();
+        tok.pos.col = lexer.getColumn();
         toks.push_back(tok);
     }
     return true;
 }
 
 bool topAtEnd(std::size_t pos, const std::vector<Tok> &toks) { return pos >= toks.size(); }
+
+std::string formatDiagnostic(const std::string &sourceName, SrcPos pos, const std::string &message)
+{
+    return sourceName + ":" + std::to_string(pos.line) + ":" + std::to_string(pos.col) + ": error: " + message;
+}
+
+std::string formatHint(const std::string &hint) { return "note: " + hint; }
+
+void reportError(kern::ILogger *logger, const std::string &sourceName, SrcPos pos, const std::string &message,
+                 const std::string &hint)
+{
+    logger->error("{}", formatDiagnostic(sourceName, pos, message));
+    if (!hint.empty())
+    {
+        logger->error("{}", formatHint(hint));
+    }
+}
 
 LexerToken topPeek(std::size_t pos, std::size_t off, const std::vector<Tok> &toks)
 {

@@ -34,7 +34,7 @@ unsigned int Lexer::lex(std::istream &stream)
     while (next == ' ' || next == '\t' || next == '\r' || (m_ignoreNewLine && next == '\n'))
     {
         // Skip blank
-        stream.get();
+        skipChar(stream, next);
         if (next != '\n' && next != '\r')
         {
             ++m_blankSkipped;
@@ -42,6 +42,10 @@ unsigned int Lexer::lex(std::istream &stream)
         // Peek next
         next = stream.peek();
     }
+
+    // The token starts after the skipped blanks.
+    m_tokenLine = m_line;
+    m_tokenColumn = m_column;
 
     // End of stream is decided on the int, before any narrowing.
     if (next == EOF)
@@ -183,6 +187,10 @@ const std::string &Lexer::getLexeme() const { return m_currentLexeme; }
 
 LexerToken Lexer::getToken() const { return m_currentToken; }
 
+unsigned Lexer::getLine() const { return m_tokenLine; }
+
+unsigned Lexer::getColumn() const { return m_tokenColumn; }
+
 void Lexer::addKeyword(const std::string &keyword) { m_keywords.insert(keyword); }
 
 void Lexer::removeKeyword(const std::string &keyword) { m_keywords.erase(keyword); }
@@ -197,7 +205,7 @@ void Lexer::lexSingleCharLexeme(std::istream &stream, LexerToken tokenType)
 {
     // Retrieve next char
     char c;
-    stream.get(c);
+    takeChar(stream, c);
     // Store
     m_currentLexeme.push_back(c);
     // Set token
@@ -209,14 +217,14 @@ void Lexer::lexSingleOrDoubleCharLexeme(std::istream &stream, LexerToken singleT
 {
     // Retrieve char and store
     char c;
-    stream.get(c);
+    takeChar(stream, c);
     m_currentLexeme.push_back(c);
 
     // Look ahead and check if lexeme is double char sequence
     if (stream.peek() == nextPossible)
     {
         // Add next char to lexeme
-        stream.get(c);
+        takeChar(stream, c);
         m_currentLexeme.push_back(c);
         // Set token to double token type
         m_currentToken = doubleToken;
@@ -233,14 +241,14 @@ void Lexer::lexSingleOrDoubleCharLexeme(std::istream &stream, LexerToken singleT
 {
     // Retrieve char and store
     char c;
-    stream.get(c);
+    takeChar(stream, c);
     m_currentLexeme.push_back(c);
 
     // Look ahead and check if lexeme is double char sequence
     if (stream.peek() == nextPossible0)
     {
         // Add next char to lexeme
-        stream.get(c);
+        takeChar(stream, c);
         m_currentLexeme.push_back(c);
         // Set token to double token type
         m_currentToken = doubleToken0;
@@ -248,7 +256,7 @@ void Lexer::lexSingleOrDoubleCharLexeme(std::istream &stream, LexerToken singleT
     else if (stream.peek() == nextPossible1)
     {
         // Add next char to lexeme
-        stream.get(c);
+        takeChar(stream, c);
         m_currentLexeme.push_back(c);
         // Set token to double token type
         m_currentToken = doubleToken1;
@@ -269,7 +277,7 @@ void Lexer::lexNumeric(std::istream &stream)
     while (std::isdigit(stream.peek()))
     {
         char c;
-        stream.get(c);
+        takeChar(stream, c);
         m_currentLexeme.push_back(c);
     }
 
@@ -285,7 +293,7 @@ void Lexer::lexNumeric(std::istream &stream)
     m_currentToken = LexerToken::Invalid;
 
     char c;
-    stream.get(c);
+    takeChar(stream, c);
     m_currentLexeme.push_back(c);
 
     // Read remaining digits
@@ -294,7 +302,7 @@ void Lexer::lexNumeric(std::istream &stream)
         // Valid float found
         m_currentToken = LexerToken::Float;
         char c;
-        stream.get(c);
+        takeChar(stream, c);
         m_currentLexeme.push_back(c);
     }
 }
@@ -307,7 +315,7 @@ void Lexer::lexIdentifierOrKeyword(std::istream &stream)
     {
         // Build lexeme
         char c;
-        stream.get(c);
+        takeChar(stream, c);
         m_currentLexeme.push_back(c);
     }
 
@@ -325,12 +333,12 @@ void Lexer::lexString(std::istream &stream)
     // Throw away first quote
     assert(stream.peek() == '"');
     char c;
-    stream.get(c);
+    takeChar(stream, c);
 
     bool escaped = false;
     while (!(stream.peek() == '"' && !escaped))
     {
-        stream.get(c);
+        takeChar(stream, c);
         // A failed extraction (EOF or stream error) leaves c holding stale
         // content. The string is unterminated, so stop instead of processing it.
         if (stream.fail())
@@ -361,7 +369,7 @@ void Lexer::lexString(std::istream &stream)
     }
     // Throw away last quote
     assert(stream.peek() == '"');
-    stream.get(c);
+    takeChar(stream, c);
     m_currentToken = LexerToken::String;
 }
 
@@ -373,7 +381,39 @@ void Lexer::lexComment(std::istream &stream)
     while (!(stream.peek() == '\n' || stream.peek() == EOF))
     {
         char c;
-        stream.get(c);
+        takeChar(stream, c);
         m_currentLexeme.push_back(c);
+    }
+}
+
+void Lexer::takeChar(std::istream &stream, char &c)
+{
+    stream.get(c);
+    if (stream.fail())
+    {
+        return;
+    }
+    if (c == '\n')
+    {
+        ++m_line;
+        m_column = 1;
+    }
+    else
+    {
+        ++m_column;
+    }
+}
+
+void Lexer::skipChar(std::istream &stream, int ch)
+{
+    stream.get();
+    if (ch == '\n')
+    {
+        ++m_line;
+        m_column = 1;
+    }
+    else
+    {
+        ++m_column;
     }
 }

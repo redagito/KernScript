@@ -265,3 +265,61 @@ TEST_CASE("Lexer keeps the current token when the next lex is ignored", "[unit][
     REQUIRE(lexer.getToken() == LexerToken::Identifier);
     REQUIRE(lexer.getLexeme() == "name");
 }
+
+TEST_CASE("Lexer tracks line and column of each token", "[unit][Lexer]")
+{
+    std::istringstream stream("ab cd\n  ef");
+    Lexer lexer(nullptr);
+
+    lexer.lex(stream);
+    REQUIRE(lexer.getLexeme() == "ab");
+    REQUIRE(lexer.getLine() == 1);
+    REQUIRE(lexer.getColumn() == 1);
+
+    lexer.lex(stream);
+    REQUIRE(lexer.getLexeme() == "cd");
+    REQUIRE(lexer.getLine() == 1);
+    REQUIRE(lexer.getColumn() == 4);
+
+    lexer.lex(stream);
+    REQUIRE(lexer.getToken() == LexerToken::NewLine);
+    REQUIRE(lexer.getLine() == 1);
+    REQUIRE(lexer.getColumn() == 6);
+
+    lexer.lex(stream);
+    REQUIRE(lexer.getLexeme() == "ef");
+    REQUIRE(lexer.getLine() == 2);
+    REQUIRE(lexer.getColumn() == 3);
+}
+
+TEST_CASE("Lexer starts the next line at column one", "[unit][Lexer]")
+{
+    std::istringstream stream("\nvar");
+    Lexer lexer(nullptr);
+
+    lexer.lex(stream);
+    REQUIRE(lexer.getToken() == LexerToken::NewLine);
+    REQUIRE(lexer.getLine() == 1);
+    REQUIRE(lexer.getColumn() == 1);
+
+    lexer.lex(stream);
+    REQUIRE(lexer.getLexeme() == "var");
+    REQUIRE(lexer.getLine() == 2);
+    REQUIRE(lexer.getColumn() == 1);
+}
+
+TEST_CASE("Lexer end token carries the end position", "[unit][Lexer]")
+{
+    std::istringstream stream("a");
+    Lexer lexer(nullptr);
+
+    lexer.lex(stream);
+    REQUIRE(lexer.getToken() == LexerToken::Identifier);
+    REQUIRE(lexer.getLine() == 1);
+    REQUIRE(lexer.getColumn() == 1);
+
+    lexer.lex(stream);
+    REQUIRE(lexer.getToken() == LexerToken::End);
+    REQUIRE(lexer.getLine() == 1);
+    REQUIRE(lexer.getColumn() == 2);
+}
