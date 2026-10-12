@@ -20,3 +20,5 @@ add_subdirectory (ScriptLife)
 add_subdirectory (ScriptBoard)
 # Formula grid on FLTK. No system guard: cross-platform like ScriptBoard.
 add_subdirectory (ScriptSheet)
+# Eliza-style scripted therapist on FLTK. No system guard: cross-platform like ScriptSheet.
+add_subdirectory (ScriptShrink)
