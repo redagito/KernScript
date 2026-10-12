@@ -1,50 +1,46 @@
 // ScriptUi brain: the SCRIPT builds the whole UI from a bare host shell.
 //
 // Host protocol (tiny, fixed):
-//   create_label(text) value-use: returns an integer handle (1-based).
-//   create_field() value-use: returns an integer handle for a text field.
-//   create_button(caption) value-use: returns an integer handle for a button.
-//   on_click(button, handler) statement-use: attaches a script func BY NAME.
-//   get_text(field) value-use: reads a field.
-//   set_text(field, text) statement-use: writes a field.
+//   create_label(name, text) statement-use: registers a label under name.
+//   create_field(name) statement-use: registers a text field under name.
+//   create_button(name, caption) statement-use: registers a button under name.
+//   on_click(name, handler) statement-use: attaches a script func BY NAME.
+//   get_text(name) value-use: reads a field by name.
+//   set_text(name, text) statement-use: writes a field by name.
 //   upper(text) value-use: ASCII uppercase transform.
 //   quit() statement-use: ends the app.
 //
-// Layout is creation order, vertical stack (host-side). Handles are
-// sequential in creation order starting at 1, so this script runs:
-//   1 = label, 2 = first field, 3 = second field,
-//   4 = Close, 5 = Transform, 6 = Clear.
-// Handlers below use those well-known ids because the language has no
-// globals: build() locals cannot be seen from other funcs, so the order
-// doubles as the shared address book. No string arithmetic anywhere;
-// handler names are plain strings dispatched host-side.
-extern create_label(text);
-extern create_field();
-extern create_button(caption);
-extern on_click(button, handler);
-extern get_text(field);
-extern set_text(field, text);
+// Layout is creation order, vertical stack (host-side). Widgets are known
+// by name everywhere: handlers use the same names build() registered, so
+// no address book of integer handles is needed. Duplicate creation names
+// and unknown names in get/set/on_click fail the run loudly.
+extern create_label(name, text);
+extern create_field(name);
+extern create_button(name, caption);
+extern on_click(name, handler);
+extern get_text(name);
+extern set_text(name, text);
 extern upper(text);
 extern quit();
 func build() {
-  var title = create_label("Enter text, Transform copies UPPER case");
-  var f1 = create_field();
-  var f2 = create_field();
-  var closeBtn = create_button("Close");
-  var transBtn = create_button("Transform");
-  var clearBtn = create_button("Clear");
-  on_click(closeBtn, "on_close");
-  on_click(transBtn, "on_transform");
-  on_click(clearBtn, "on_clear");
+  create_label("title", "Enter text, Transform copies UPPER case");
+  create_field("input");
+  create_field("output");
+  create_button("close", "Close");
+  create_button("transform", "Transform");
+  create_button("clear", "Clear");
+  on_click("close", "on_close");
+  on_click("transform", "on_transform");
+  on_click("clear", "on_clear");
 }
 func on_transform() {
-  var t = get_text(2);
+  var t = get_text("input");
   var u = upper(t);
-  set_text(3, u);
+  set_text("output", u);
 }
 func on_clear() {
-  set_text(2, "");
-  set_text(3, "");
+  set_text("input", "");
+  set_text("output", "");
 }
 func on_close() {
   quit();

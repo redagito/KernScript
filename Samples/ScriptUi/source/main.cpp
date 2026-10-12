@@ -1,4 +1,3 @@
-#include <cctype>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -28,15 +27,9 @@ constexpr int kMargin = 20;
 constexpr int kRowH = 30;
 constexpr int kGap = 12;
 
-// Handles are 1-based creation-order ids: 1 label, 2 field, 3 field,
-// 4 Close, 5 Transform, 6 Clear. The script hardcodes 2/3 in handlers
-// because the language has no globals to share build() locals.
-constexpr int kFirstField = 2;
-constexpr int kSecondField = 3;
-constexpr int kCloseButton = 4;
-constexpr int kTransformButton = 5;
-constexpr int kClearButton = 6;
-
+// Named registry: every widget is known by name everywhere, so script
+// functions share names instead of hardcoded integer handles (the language
+// has no globals to share build() locals through).
 enum class Kind
 {
     Label,
@@ -47,18 +40,28 @@ enum class Kind
 struct WidgetEntry
 {
     Kind kind;
+    std::string name;
     Fl_Widget *widget;
 };
 
 std::string g_argv0;
 kern::IVirtualMachine *g_vm = nullptr;
 Fl_Window *g_window = nullptr;
-std::vector<WidgetEntry> g_widgets;
-std::unordered_map<int, std::string> g_handlers;
+std::vector<WidgetEntry> g_widgets;                      // creation order: the vertical stack
+std::unordered_map<std::string, std::size_t> g_registry; // name -> g_widgets index
+std::unordered_map<std::string, std::string> g_handlers; // button name -> script func
 int g_nextY = kMargin;
 bool g_quitRequested = false;
 
-bool validHandle(int id) { return id >= 1 && id <= static_cast<int>(g_widgets.size()); }
+const WidgetEntry *findEntry(const std::string &name)
+{
+    auto found = g_registry.find(name);
+    if (found == g_registry.end() || found->second >= g_widgets.size())
+    {
+        return nullptr;
+    }
+    return &g_widgets[found->second];
+}
 
 int nextRowY()
 {
@@ -69,11 +72,17 @@ int nextRowY()
 
 // Bare shell: every factory appends one full-width row in creation order.
 // No pixel-pushing in script; this vertical stack is the minimal host side.
-int create_label_value(std::string text)
+// Each returns false on a duplicate name; the extern wrapper turns that
+// into a VM RuntimeError (loud failure, never silent).
+bool doCreateLabel(const std::string &name, const std::string &text)
 {
     if (g_window == nullptr)
     {
         throw kern::RuntimeError("create_label before window exists");
+    }
+    if (name.empty() || g_registry.count(name) != 0)
+    {
+        return false;
     }
     const int w = g_window->w() - kMargin * 2;
     auto *box = new Fl_Box(kMargin, nextRowY(), w, kRowH);
@@ -81,79 +90,96 @@ int create_label_value(std::string text)
     box->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
     g_window->add(box);
     g_window->redraw();
-    g_widgets.push_back({Kind::Label, box});
-    return static_cast<int>(g_widgets.size());
+    g_registry[name] = g_widgets.size();
+    g_widgets.push_back({Kind::Label, name, box});
+    return true;
 }
 
-int create_field_value()
+bool doCreateField(const std::string &name)
 {
     if (g_window == nullptr)
     {
         throw kern::RuntimeError("create_field before window exists");
+    }
+    if (name.empty() || g_registry.count(name) != 0)
+    {
+        return false;
     }
     const int w = g_window->w() - kMargin * 2;
     auto *input = new Fl_Input(kMargin, nextRowY(), w, kRowH, "");
     input->value("");
     g_window->add(input);
     g_window->redraw();
-    g_widgets.push_back({Kind::Field, input});
-    return static_cast<int>(g_widgets.size());
+    g_registry[name] = g_widgets.size();
+    g_widgets.push_back({Kind::Field, name, input});
+    return true;
 }
 
 void onButton(Fl_Widget * /*widget*/, void *data);
 
-int create_button_value(std::string caption)
+bool doCreateButton(const std::string &name, const std::string &caption)
 {
     if (g_window == nullptr)
     {
         throw kern::RuntimeError("create_button before window exists");
     }
+    if (name.empty() || g_registry.count(name) != 0)
+    {
+        return false;
+    }
     const int w = g_window->w() - kMargin * 2;
-    const int id = static_cast<int>(g_widgets.size()) + 1;
+    const std::size_t index = g_widgets.size();
     auto *button = new Fl_Button(kMargin, nextRowY(), w, kRowH);
     button->copy_label(caption.c_str());
-    button->callback(onButton, reinterpret_cast<void *>(static_cast<intptr_t>(id)));
+    button->callback(onButton, reinterpret_cast<void *>(static_cast<uintptr_t>(index)));
     g_window->add(button);
     g_window->redraw();
-    g_widgets.push_back({Kind::Button, button});
-    return id;
+    g_registry[name] = index;
+    g_widgets.push_back({Kind::Button, name, button});
+    return true;
 }
 
-void on_click_attach(int button, std::string handler)
+bool doOnClick(const std::string &name, const std::string &handler)
 {
-    if (!validHandle(button) || g_widgets[button - 1].kind != Kind::Button)
+    const WidgetEntry *entry = findEntry(name);
+    if (entry == nullptr || entry->kind != Kind::Button)
     {
-        throw kern::RuntimeError("on_click needs a button handle");
+        return false;
     }
     if (handler.empty())
     {
-        throw kern::RuntimeError("on_click needs a handler name");
+        return false;
     }
-    g_handlers[button] = handler;
+    g_handlers[name] = handler;
+    return true;
 }
 
-std::string get_text_value(int field)
+bool doGetText(const std::string &name, std::string &out)
 {
-    if (!validHandle(field) || g_widgets[field - 1].kind != Kind::Field)
+    const WidgetEntry *entry = findEntry(name);
+    if (entry == nullptr || entry->kind != Kind::Field)
     {
-        throw kern::RuntimeError("get_text needs a field handle");
+        return false;
     }
-    auto *input = static_cast<Fl_Input *>(g_widgets[field - 1].widget);
+    auto *input = static_cast<Fl_Input *>(entry->widget);
     const char *value = input->value();
-    return value != nullptr ? value : "";
+    out = value != nullptr ? value : "";
+    return true;
 }
 
-void set_text_value(int field, std::string text)
+bool doSetText(const std::string &name, const std::string &text)
 {
-    if (!validHandle(field) || g_widgets[field - 1].kind != Kind::Field)
+    const WidgetEntry *entry = findEntry(name);
+    if (entry == nullptr || entry->kind != Kind::Field)
     {
-        throw kern::RuntimeError("set_text needs a field handle");
+        return false;
     }
-    auto *input = static_cast<Fl_Input *>(g_widgets[field - 1].widget);
+    auto *input = static_cast<Fl_Input *>(entry->widget);
     input->value(text.c_str());
+    return true;
 }
 
-std::string upper_value(std::string text)
+std::string upperText(std::string text)
 {
     for (char &c : text)
     {
@@ -165,13 +191,196 @@ std::string upper_value(std::string text)
     return text;
 }
 
-void quit_request()
+void quitRequest()
 {
     g_quitRequested = true;
     if (g_window != nullptr)
     {
         g_window->hide();
     }
+}
+
+// Statement-use externs (create_*, on_click, set_text, quit): a false host
+// outcome becomes a false extern call, which the VM turns into RuntimeError.
+class CreateLabelExtern : public kern::IExternFunction
+{
+public:
+    unsigned int getArgumentCount() const override { return 2; }
+    bool call(kern::IVirtualMachine &vm) override
+    {
+        std::string text;
+        if (!vm.popParameter(text))
+        {
+            return false;
+        }
+        std::string name;
+        if (!vm.popParameter(name))
+        {
+            return false;
+        }
+        if (!doCreateLabel(name, text))
+        {
+            return false;
+        }
+        vm.setReturnValue();
+        return true;
+    }
+};
+
+class CreateFieldExtern : public kern::IExternFunction
+{
+public:
+    unsigned int getArgumentCount() const override { return 1; }
+    bool call(kern::IVirtualMachine &vm) override
+    {
+        std::string name;
+        if (!vm.popParameter(name))
+        {
+            return false;
+        }
+        if (!doCreateField(name))
+        {
+            return false;
+        }
+        vm.setReturnValue();
+        return true;
+    }
+};
+
+class CreateButtonExtern : public kern::IExternFunction
+{
+public:
+    unsigned int getArgumentCount() const override { return 2; }
+    bool call(kern::IVirtualMachine &vm) override
+    {
+        std::string caption;
+        if (!vm.popParameter(caption))
+        {
+            return false;
+        }
+        std::string name;
+        if (!vm.popParameter(name))
+        {
+            return false;
+        }
+        if (!doCreateButton(name, caption))
+        {
+            return false;
+        }
+        vm.setReturnValue();
+        return true;
+    }
+};
+
+class OnClickExtern : public kern::IExternFunction
+{
+public:
+    unsigned int getArgumentCount() const override { return 2; }
+    bool call(kern::IVirtualMachine &vm) override
+    {
+        std::string handler;
+        if (!vm.popParameter(handler))
+        {
+            return false;
+        }
+        std::string name;
+        if (!vm.popParameter(name))
+        {
+            return false;
+        }
+        if (!doOnClick(name, handler))
+        {
+            return false;
+        }
+        vm.setReturnValue();
+        return true;
+    }
+};
+
+class GetTextExtern : public kern::IExternFunction
+{
+public:
+    unsigned int getArgumentCount() const override { return 1; }
+    bool call(kern::IVirtualMachine &vm) override
+    {
+        std::string name;
+        if (!vm.popParameter(name))
+        {
+            return false;
+        }
+        std::string out;
+        if (!doGetText(name, out))
+        {
+            return false;
+        }
+        vm.setReturnValue(out);
+        return true;
+    }
+};
+
+class SetTextExtern : public kern::IExternFunction
+{
+public:
+    unsigned int getArgumentCount() const override { return 2; }
+    bool call(kern::IVirtualMachine &vm) override
+    {
+        std::string text;
+        if (!vm.popParameter(text))
+        {
+            return false;
+        }
+        std::string name;
+        if (!vm.popParameter(name))
+        {
+            return false;
+        }
+        if (!doSetText(name, text))
+        {
+            return false;
+        }
+        vm.setReturnValue();
+        return true;
+    }
+};
+
+class UpperExtern : public kern::IExternFunction
+{
+public:
+    unsigned int getArgumentCount() const override { return 1; }
+    bool call(kern::IVirtualMachine &vm) override
+    {
+        std::string text;
+        if (!vm.popParameter(text))
+        {
+            return false;
+        }
+        vm.setReturnValue(upperText(text));
+        return true;
+    }
+};
+
+class QuitExtern : public kern::IExternFunction
+{
+public:
+    unsigned int getArgumentCount() const override { return 0; }
+    bool call(kern::IVirtualMachine &vm) override
+    {
+        quitRequest();
+        vm.setReturnValue();
+        return true;
+    }
+};
+
+void registerExterns(kern::IVirtualMachine &vm)
+{
+    vm.addFunction("create_label", new CreateLabelExtern());
+    vm.addFunction("create_field", new CreateFieldExtern());
+    vm.addFunction("create_button", new CreateButtonExtern());
+    vm.addFunction("on_click", new OnClickExtern());
+    vm.addFunction("get_text", new GetTextExtern());
+    vm.addFunction("set_text", new SetTextExtern());
+    vm.addFunction("upper", new UpperExtern());
+    vm.addFunction("quit", new QuitExtern());
 }
 
 bool callByName(const std::string &name)
@@ -194,14 +403,20 @@ bool callByName(const std::string &name)
 
 void onButton(Fl_Widget * /*widget*/, void *data)
 {
-    const int id = static_cast<int>(reinterpret_cast<intptr_t>(data));
-    auto found = g_handlers.find(id);
-    if (found == g_handlers.end())
+    const std::size_t index = static_cast<std::size_t>(reinterpret_cast<uintptr_t>(data));
+    if (index >= g_widgets.size() || g_widgets[index].kind != Kind::Button)
     {
-        std::cerr << "button " << id << " has no handler\n";
+        std::cerr << "button callback without a known button\n";
         return;
     }
-    std::cout << "button " << id << " -> " << found->second << '\n';
+    const std::string &name = g_widgets[index].name;
+    auto found = g_handlers.find(name);
+    if (found == g_handlers.end())
+    {
+        std::cerr << "button " << name << " has no handler\n";
+        return;
+    }
+    std::cout << "button " << name << " -> " << found->second << '\n';
     callByName(found->second);
 }
 
@@ -303,22 +518,87 @@ bool loadScript()
     return true;
 }
 
-Fl_Input *fieldBox(int id)
+Fl_Input *fieldBox(const std::string &name)
 {
-    if (!validHandle(id) || g_widgets[id - 1].kind != Kind::Field)
+    auto found = g_registry.find(name);
+    if (found == g_registry.end() || found->second >= g_widgets.size())
     {
         return nullptr;
     }
-    return static_cast<Fl_Input *>(g_widgets[id - 1].widget);
+    if (g_widgets[found->second].kind != Kind::Field)
+    {
+        return nullptr;
+    }
+    return static_cast<Fl_Input *>(g_widgets[found->second].widget);
 }
 
-Fl_Button *pushButton(int id)
+Fl_Button *pushButton(const std::string &name)
 {
-    if (!validHandle(id) || g_widgets[id - 1].kind != Kind::Button)
+    auto found = g_registry.find(name);
+    if (found == g_registry.end() || found->second >= g_widgets.size())
     {
         return nullptr;
     }
-    return static_cast<Fl_Button *>(g_widgets[id - 1].widget);
+    if (g_widgets[found->second].kind != Kind::Button)
+    {
+        return nullptr;
+    }
+    return static_cast<Fl_Button *>(g_widgets[found->second].widget);
+}
+
+// Runs a one-func probe script on a fresh VM sharing this registry and
+// expects the VM to throw: the probe's extern must return false, which the
+// VM turns into RuntimeError. Success (no throw) means the rejection is
+// missing. The detail string carries the RuntimeError text or the failure.
+bool probeExpectsFailure(const std::string &decls, const std::string &body, std::string &detail)
+{
+    const std::string source = decls + "func probe() { " + body + " }\n";
+    std::stringstream asmCode;
+    {
+        std::istringstream input(source);
+        std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+        if (!compiler->compile(input, asmCode, "<verify-probe>"))
+        {
+            detail = "compile failed";
+            return false;
+        }
+    }
+    std::stringstream byteCode;
+    {
+        std::istringstream input(asmCode.str());
+        std::unique_ptr<kern::IAssembler> assembler(kern::createAssembler());
+        if (!assembler->assemble(input, byteCode))
+        {
+            detail = "assemble failed";
+            return false;
+        }
+    }
+    std::unique_ptr<kern::IVirtualMachine> probe(kern::createVirtualMachine());
+    registerExterns(*probe);
+    try
+    {
+        if (!probe->load(byteCode))
+        {
+            detail = "load failed";
+            return false;
+        }
+    }
+    catch (const kern::RuntimeError &error)
+    {
+        detail = error.what();
+        return false;
+    }
+    try
+    {
+        probe->callFunction("probe");
+    }
+    catch (const kern::RuntimeError &error)
+    {
+        detail = error.what();
+        return true;
+    }
+    detail = "probe ran without a RuntimeError";
+    return false;
 }
 
 int runVerify()
@@ -357,15 +637,47 @@ int runVerify()
         std::cout << "MISMATCH: want 1 label, 2 fields, 3 buttons in creation order\n";
         ok = false;
     }
+    bool stacked = true;
+    for (std::size_t i = 1; i < g_widgets.size(); ++i)
+    {
+        if (g_widgets[i].widget->y() < g_widgets[i - 1].widget->y())
+        {
+            stacked = false;
+        }
+    }
+    std::cout << "layout: creation-order vertical stack: " << (stacked ? "yes" : "no") << '\n';
+    if (!stacked)
+    {
+        std::cout << "MISMATCH: widgets are not stacked in creation order\n";
+        ok = false;
+    }
 
-    Fl_Input *first = fieldBox(kFirstField);
-    Fl_Input *second = fieldBox(kSecondField);
-    Fl_Button *closeBtn = pushButton(kCloseButton);
-    Fl_Button *transBtn = pushButton(kTransformButton);
-    Fl_Button *clearBtn = pushButton(kClearButton);
+    const WidgetEntry *title = findEntry("title");
+    const WidgetEntry *input = findEntry("input");
+    const WidgetEntry *output = findEntry("output");
+    const WidgetEntry *close = findEntry("close");
+    const WidgetEntry *transform = findEntry("transform");
+    const WidgetEntry *clear = findEntry("clear");
+    if (title == nullptr || title->kind != Kind::Label || input == nullptr || input->kind != Kind::Field ||
+        output == nullptr || output->kind != Kind::Field || close == nullptr || close->kind != Kind::Button ||
+        transform == nullptr || transform->kind != Kind::Button || clear == nullptr || clear->kind != Kind::Button)
+    {
+        std::cout << "MISMATCH: named registry misses title/input/output/close/transform/clear\n";
+        ok = false;
+    }
+    else
+    {
+        std::cout << "registry: title/input/output/close/transform/clear all named\n";
+    }
+
+    Fl_Input *first = fieldBox("input");
+    Fl_Input *second = fieldBox("output");
+    Fl_Button *closeBtn = pushButton("close");
+    Fl_Button *transBtn = pushButton("transform");
+    Fl_Button *clearBtn = pushButton("clear");
     if (first == nullptr || second == nullptr || closeBtn == nullptr || transBtn == nullptr || clearBtn == nullptr)
     {
-        std::cout << "MISMATCH: creation-order handles do not map to widgets\n";
+        std::cout << "MISMATCH: named lookup does not map to widgets\n";
         ok = false;
     }
     if (!ok)
@@ -377,10 +689,10 @@ int runVerify()
 
     // Real button callbacks from here on: preset, press, read back.
     first->value("hello World 123");
-    std::cout << "preset f1 to 'hello World 123'\n";
+    std::cout << "preset input to 'hello World 123'\n";
     transBtn->do_callback();
     const std::string afterTransform = second->value() != nullptr ? second->value() : "";
-    std::cout << "after Transform: f1='" << first->value() << "' f2='" << afterTransform << "'\n";
+    std::cout << "after Transform: input='" << first->value() << "' output='" << afterTransform << "'\n";
     if (afterTransform != "HELLO WORLD 123")
     {
         std::cout << "MISMATCH transform: got '" << afterTransform << "' want 'HELLO WORLD 123'\n";
@@ -388,13 +700,13 @@ int runVerify()
     }
     else
     {
-        std::cout << "transform: f2 == upper(f1)\n";
+        std::cout << "transform: output == upper(input)\n";
     }
 
     clearBtn->do_callback();
     const std::string afterClear1 = first->value() != nullptr ? first->value() : "";
     const std::string afterClear2 = second->value() != nullptr ? second->value() : "";
-    std::cout << "after Clear: f1='" << afterClear1 << "' f2='" << afterClear2 << "'\n";
+    std::cout << "after Clear: input='" << afterClear1 << "' output='" << afterClear2 << "'\n";
     if (!afterClear1.empty() || !afterClear2.empty())
     {
         std::cout << "MISMATCH clear: fields are not both empty\n";
@@ -403,6 +715,31 @@ int runVerify()
     else
     {
         std::cout << "clear: both fields empty\n";
+    }
+
+    // Rejections: duplicate names and unknown names must surface as errors.
+    // Each probe runs through a real extern call, so a missing rejection
+    // (extern returning true) shows up as a clean run instead of a throw.
+    const std::pair<const char *, const char *> rejections[] = {
+        {"extern create_label(name, text);", "create_label(\"input\", \"dup\");"},
+        {"extern create_field(name);", "create_field(\"input\");"},
+        {"extern create_button(name, caption);", "create_button(\"transform\", \"Dup\");"},
+        {"extern get_text(name);", "var x = get_text(\"nope\");"},
+        {"extern set_text(name, text);", "set_text(\"nope\", \"x\");"},
+        {"extern on_click(name, handler);", "on_click(\"nope\", \"on_transform\");"},
+    };
+    for (const auto &rejection : rejections)
+    {
+        std::string detail;
+        if (!probeExpectsFailure(rejection.first, rejection.second, detail))
+        {
+            std::cout << "MISMATCH rejection [" << rejection.second << "]: " << detail << '\n';
+            ok = false;
+        }
+        else
+        {
+            std::cout << "reject ok [" << rejection.second << "]: " << detail << '\n';
+        }
     }
 
     // Close/quit path must end the app with code 0.
@@ -444,14 +781,7 @@ int main(int argc, char **argv)
     try
     {
         std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
-        vm->addFunction("create_label", kern::createExternFunction(&create_label_value));
-        vm->addFunction("create_field", kern::createExternFunction(&create_field_value));
-        vm->addFunction("create_button", kern::createExternFunction(&create_button_value));
-        vm->addFunction("on_click", kern::createExternFunction(&on_click_attach));
-        vm->addFunction("get_text", kern::createExternFunction(&get_text_value));
-        vm->addFunction("set_text", kern::createExternFunction(&set_text_value));
-        vm->addFunction("upper", kern::createExternFunction(&upper_value));
-        vm->addFunction("quit", kern::createExternFunction(&quit_request));
+        registerExterns(*vm);
         g_vm = vm.get();
         if (!loadScript())
         {
