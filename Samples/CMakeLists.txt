@@ -6,4 +6,8 @@ add_subdirectory (HelloScript)
 add_subdirectory (Calc)
 add_subdirectory (TextPipe)
 add_subdirectory (RuleEngine)
-add_subdirectory (ScriptGui)
+# Native Win32 sample: Windows only. Cross-platform UI samples live in
+# their own folders without a system guard.
+if (WIN32)
+    add_subdirectory (ScriptGui)
+endif ()
