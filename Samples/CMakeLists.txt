@@ -18,3 +18,5 @@ add_subdirectory (ScriptFltk)
 add_subdirectory (ScriptLife)
 # Script-filtered task board on FLTK. No system guard: cross-platform like ScriptLife.
 add_subdirectory (ScriptBoard)
+# Formula grid on FLTK. No system guard: cross-platform like ScriptBoard.
+add_subdirectory (ScriptSheet)
