@@ -81,3 +81,4 @@ use, bad literals, `return` outside a function. Runtime failures (wrong
 operand types, division by zero, overflow, reading a never-assigned
 variable, missing host function, runaway execution past its bounded
 instruction count) fail the run.
+Diagnostics print as `<file>:<line>:<col>: error: <message>`, followed by a `note: <hint>` line when a hint applies.

@@ -138,8 +138,9 @@ struct Program
 
 /**
  * \brief Parses buffered tokens into an AST, one Program per EBNF Decl*.
+ * \param sourceName File name used in diagnostics (no file is read).
  * \return True on success and false on the first syntax error.
  */
-bool parseProgram(const std::vector<Tok> &toks, kern::ILogger *logger, Program &program);
+bool parseProgram(const std::vector<Tok> &toks, kern::ILogger *logger, const std::string &sourceName, Program &program);
 
 } // namespace ast

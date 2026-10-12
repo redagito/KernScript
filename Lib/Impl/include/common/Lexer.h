@@ -62,6 +62,13 @@ public:
      */
     void ignoreNextLex();
     void ignoreNewLine(bool state);
+    /**
+     * \brief Sets the file name used in diagnostics.
+     *
+     * Defaults to "<input>". The compiler frontend sets the real name so
+     * character errors carry the same file prefix as other diagnostics.
+     */
+    void setSourceName(const std::string &sourceName);
 
 protected:
     bool isKeyword(const std::string &text) const;
@@ -96,9 +103,10 @@ private:
     bool m_ignoreNewLine = false;
     bool m_ignoreLex = false;
     unsigned int m_blankSkipped = 0;
-    unsigned m_line = 1;               /**< 1-based line of the next char to read. */
-    unsigned m_column = 1;             /**< 1-based column of the next char to read. */
-    unsigned m_tokenLine = 1;          /**< 1-based line where the current token starts. */
-    unsigned m_tokenColumn = 1;        /**< 1-based column where the current token starts. */
-    kern::ILogger *m_logger = nullptr; /**< Receives diagnostics. */
+    unsigned m_line = 1;                  /**< 1-based line of the next char to read. */
+    unsigned m_column = 1;                /**< 1-based column of the next char to read. */
+    unsigned m_tokenLine = 1;             /**< 1-based line where the current token starts. */
+    unsigned m_tokenColumn = 1;           /**< 1-based column where the current token starts. */
+    std::string m_sourceName = "<input>"; /**< File name used in diagnostics. */
+    kern::ILogger *m_logger = nullptr;    /**< Receives diagnostics. */
 };

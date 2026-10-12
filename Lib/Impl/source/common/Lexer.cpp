@@ -176,7 +176,8 @@ unsigned int Lexer::lex(std::istream &stream)
         default:
             // Error. EOF is handled before the switch, so everything landing here
             // is a genuinely unexpected byte, logged as a character.
-            m_logger->error("Lexer error: Invalid character '{}' encountered.", static_cast<char>(next));
+            m_logger->error("{}:{}:{}: error: Invalid character '{}' encountered.", m_sourceName, m_tokenLine,
+                            m_tokenColumn, static_cast<char>(next));
             break;
         }
     }
@@ -198,6 +199,8 @@ void Lexer::removeKeyword(const std::string &keyword) { m_keywords.erase(keyword
 void Lexer::ignoreNextLex() { m_ignoreLex = true; }
 
 void Lexer::ignoreNewLine(bool state) { m_ignoreNewLine = state; }
+
+void Lexer::setSourceName(const std::string &sourceName) { m_sourceName = sourceName; }
 
 bool Lexer::isKeyword(const std::string &text) const { return m_keywords.find(text) != m_keywords.end(); }
 

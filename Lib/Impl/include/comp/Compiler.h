@@ -31,8 +31,10 @@ public:
      * to pushs/pushf; arithmetic on a statically known string (literals,
      * including parenthesized) is a compile error, while string operands
      * held in variables still fail at runtime. Anything else
-     * returns false. The Parser module remains the future frontend
-     * (see Parser.h) for later slices.
+     * returns false. Diagnostics use the clang-style
+     * "<file>:<line>:<col>: error: <message>" form with a "note: <hint>"
+     * follow-up where a hint exists; the two-argument compile() reports
+     * "<input>" as the file name.
      */
     explicit Compiler(kern::ILogger *logger);
 

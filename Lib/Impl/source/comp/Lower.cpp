@@ -31,9 +31,17 @@ struct LowerCtx
     bool funcHasBare = false;
     unsigned labelCounter = 0;
     kern::ILogger *logger = nullptr;
+    std::string sourceName;
 };
 
-bool markExternUse(LowerCtx &ctx, const std::string &name, bool valueUse)
+std::string arityHint(unsigned expected) { return "declared " + std::to_string(expected) + " parameters here"; }
+
+void lowerError(LowerCtx &ctx, SrcPos pos, const std::string &message, const std::string &hint = "")
+{
+    reportError(ctx.logger, ctx.sourceName, pos, message, hint);
+}
+
+bool markExternUse(LowerCtx &ctx, SrcPos pos, const std::string &name, bool valueUse)
 {
     const int want = valueUse ? 1 : 2;
     auto it = ctx.externUse->find(name);
@@ -44,7 +52,7 @@ bool markExternUse(LowerCtx &ctx, const std::string &name, bool valueUse)
     }
     if (it->second != want)
     {
-        ctx.logger->error("Inconsistent extern use.");
+        lowerError(ctx, pos, "Inconsistent extern use.", "use it always as a value or always as a statement");
         return false;
     }
     return true;
@@ -52,20 +60,20 @@ bool markExternUse(LowerCtx &ctx, const std::string &name, bool valueUse)
 
 // Emits one integer push for an unsigned magnitude (no sign). Rejects
 // magnitudes above 4294967295. Uses pushi up to 2147483647, pushu above.
-bool emitPushUint(LowerCtx &ctx, const std::string &digits, std::vector<std::string> &out)
+bool emitPushUint(LowerCtx &ctx, SrcPos pos, const std::string &digits, std::vector<std::string> &out)
 {
     unsigned long long value = 0;
     for (char c : digits)
     {
         if (c < '0' || c > '9')
         {
-            ctx.logger->error("Invalid integer literal.");
+            lowerError(ctx, pos, "Invalid integer literal.");
             return false;
         }
         value = value * 10 + static_cast<unsigned long long>(c - '0');
         if (value > 4294967295ULL)
         {
-            ctx.logger->error("Integer literal out of range.");
+            lowerError(ctx, pos, "Integer literal out of range.", "use 0 to 4294967295");
             return false;
         }
     }
@@ -84,8 +92,8 @@ bool lowerExpr(LowerCtx &ctx, const ast::Expr &expr, std::vector<std::string> &o
 
 // Lowers a call used as a value. Extern calls mark value-use; script calls
 // require a valued callee and leave the return value on the stack.
-bool lowerValueCall(LowerCtx &ctx, const std::string &name, const std::vector<std::unique_ptr<ast::Expr>> &args,
-                    std::vector<std::string> &out)
+bool lowerValueCall(LowerCtx &ctx, SrcPos namePos, const std::string &name,
+                    const std::vector<std::unique_ptr<ast::Expr>> &args, std::vector<std::string> &out)
 {
     std::vector<std::string> lowered;
     for (const auto &arg : args)
@@ -102,10 +110,10 @@ bool lowerValueCall(LowerCtx &ctx, const std::string &name, const std::vector<st
     {
         if (count != ext->second)
         {
-            ctx.logger->error("Wrong argument count.");
+            lowerError(ctx, namePos, "Wrong argument count.", arityHint(ext->second));
             return false;
         }
-        if (!markExternUse(ctx, name, true))
+        if (!markExternUse(ctx, namePos, name, true))
         {
             return false;
         }
@@ -116,28 +124,29 @@ bool lowerValueCall(LowerCtx &ctx, const std::string &name, const std::vector<st
     const auto fn = ctx.funcs->find(name);
     if (fn != ctx.funcs->end())
     {
-        if (count != fn->second->params.size())
+        const unsigned expected = static_cast<unsigned>(fn->second->params.size());
+        if (count != expected)
         {
-            ctx.logger->error("Wrong argument count.");
+            lowerError(ctx, namePos, "Wrong argument count.", arityHint(expected));
             return false;
         }
         if (!fn->second->hasValuedReturn)
         {
-            ctx.logger->error("Void call used as a value.");
+            lowerError(ctx, namePos, "Void call used as a value.", "use it as a statement instead");
             return false;
         }
         out.insert(out.end(), lowered.begin(), lowered.end());
         out.push_back("call " + name);
         return true;
     }
-    ctx.logger->error("Call to undeclared function.");
+    lowerError(ctx, namePos, "Call to undeclared function.", "declare it with extern or func");
     return false;
 }
 
 // Lowers a call used as a statement. Valued script calls discard the return
 // value with pop; extern calls mark statement-use and emit a bare calle.
-bool lowerCallStmt(LowerCtx &ctx, const std::string &name, const std::vector<std::unique_ptr<ast::Expr>> &args,
-                   std::vector<std::string> &out)
+bool lowerCallStmt(LowerCtx &ctx, SrcPos namePos, const std::string &name,
+                   const std::vector<std::unique_ptr<ast::Expr>> &args, std::vector<std::string> &out)
 {
     std::vector<std::string> lowered;
     for (const auto &arg : args)
@@ -154,10 +163,10 @@ bool lowerCallStmt(LowerCtx &ctx, const std::string &name, const std::vector<std
     {
         if (count != ext->second)
         {
-            ctx.logger->error("Wrong argument count.");
+            lowerError(ctx, namePos, "Wrong argument count.", arityHint(ext->second));
             return false;
         }
-        if (!markExternUse(ctx, name, false))
+        if (!markExternUse(ctx, namePos, name, false))
         {
             return false;
         }
@@ -168,9 +177,10 @@ bool lowerCallStmt(LowerCtx &ctx, const std::string &name, const std::vector<std
     const auto fn = ctx.funcs->find(name);
     if (fn != ctx.funcs->end())
     {
-        if (count != fn->second->params.size())
+        const unsigned expected = static_cast<unsigned>(fn->second->params.size());
+        if (count != expected)
         {
-            ctx.logger->error("Wrong argument count.");
+            lowerError(ctx, namePos, "Wrong argument count.", arityHint(expected));
             return false;
         }
         out.insert(out.end(), lowered.begin(), lowered.end());
@@ -181,7 +191,7 @@ bool lowerCallStmt(LowerCtx &ctx, const std::string &name, const std::vector<std
         }
         return true;
     }
-    ctx.logger->error("Call to undeclared function.");
+    lowerError(ctx, namePos, "Call to undeclared function.", "declare it with extern or func");
     return false;
 }
 
@@ -248,12 +258,12 @@ bool lowerExpr(LowerCtx &ctx, const ast::Expr &expr, std::vector<std::string> &o
     if (const auto *lit = std::get_if<ast::Expr::IntLit>(&expr.node))
     {
         isString = false;
-        return emitPushUint(ctx, lit->text, out);
+        return emitPushUint(ctx, expr.pos, lit->text, out);
     }
     if (const auto *lit = std::get_if<ast::Expr::UIntLit>(&expr.node))
     {
         isString = false;
-        return emitPushUint(ctx, lit->text, out);
+        return emitPushUint(ctx, expr.pos, lit->text, out);
     }
     if (const auto *lit = std::get_if<ast::Expr::FloatLit>(&expr.node))
     {
@@ -263,7 +273,7 @@ bool lowerExpr(LowerCtx &ctx, const ast::Expr &expr, std::vector<std::string> &o
         const float value = std::strtof(lit->text.c_str(), &end);
         if (end == nullptr || *end != '\0' || !std::isfinite(value))
         {
-            ctx.logger->error("Float literal out of range.");
+            lowerError(ctx, expr.pos, "Float literal out of range.", "use a 32-bit float");
             return false;
         }
         out.push_back("pushf " + lit->text);
@@ -279,7 +289,7 @@ bool lowerExpr(LowerCtx &ctx, const ast::Expr &expr, std::vector<std::string> &o
     {
         if (ctx.vars.find(ref->name) == ctx.vars.end())
         {
-            ctx.logger->error("Use of undeclared variable.");
+            lowerError(ctx, expr.pos, "Use of undeclared variable.", "declare it with var or as a parameter");
             return false;
         }
         out.push_back("pushv " + ref->name);
@@ -289,7 +299,7 @@ bool lowerExpr(LowerCtx &ctx, const ast::Expr &expr, std::vector<std::string> &o
     if (const auto *call = std::get_if<ast::Expr::Call>(&expr.node))
     {
         isString = false;
-        return lowerValueCall(ctx, call->name, call->args, out);
+        return lowerValueCall(ctx, call->namePos, call->name, call->args, out);
     }
     if (const auto *unary = std::get_if<ast::Expr::Unary>(&expr.node))
     {
@@ -303,7 +313,7 @@ bool lowerExpr(LowerCtx &ctx, const ast::Expr &expr, std::vector<std::string> &o
             }
             if (rhsIsString)
             {
-                ctx.logger->error("Arithmetic on strings.");
+                lowerError(ctx, expr.pos, "Arithmetic on strings.", "arithmetic needs numbers");
                 return false;
             }
             // Unary minus as 0 - x: push 0, push x, sub = 0 - x.
@@ -327,7 +337,7 @@ bool lowerExpr(LowerCtx &ctx, const ast::Expr &expr, std::vector<std::string> &o
     const auto *binary = std::get_if<ast::Expr::Binary>(&expr.node);
     if (binary == nullptr)
     {
-        ctx.logger->error("Expected an expression.");
+        lowerError(ctx, expr.pos, "Expected an expression.");
         return false;
     }
     const std::string &op = binary->op;
@@ -352,7 +362,7 @@ bool lowerExpr(LowerCtx &ctx, const ast::Expr &expr, std::vector<std::string> &o
     {
         if (leftIsString || rightIsString)
         {
-            ctx.logger->error("Arithmetic on strings.");
+            lowerError(ctx, expr.pos, "Arithmetic on strings.", "arithmetic needs numbers");
             return false;
         }
         // Stack discipline: left already pushed, push right, then combine as
@@ -483,13 +493,13 @@ bool lowerWhile(LowerCtx &ctx, const ast::Stmt::While &node, std::vector<std::st
 // Lowers 'return [Expr]'. A valued return evaluates the expression above
 // the frame, spills it to the hidden return slot and returns it with retv;
 // a bare return emits ret. Mixing both forms in one function is rejected.
-bool lowerReturn(LowerCtx &ctx, const ast::Stmt::Return &node, std::vector<std::string> &out)
+bool lowerReturn(LowerCtx &ctx, SrcPos pos, const ast::Stmt::Return &node, std::vector<std::string> &out)
 {
     if (node.value == nullptr)
     {
         if (ctx.funcValued)
         {
-            ctx.logger->error("Mixed valued and void returns.");
+            lowerError(ctx, pos, "Mixed valued and void returns.", "use one return form in each function");
             return false;
         }
         out.push_back("ret");
@@ -497,7 +507,7 @@ bool lowerReturn(LowerCtx &ctx, const ast::Stmt::Return &node, std::vector<std::
     }
     if (ctx.funcHasBare || !ctx.funcValued)
     {
-        ctx.logger->error("Mixed valued and void returns.");
+        lowerError(ctx, pos, "Mixed valued and void returns.", "use one return form in each function");
         return false;
     }
     std::vector<std::string> value;
@@ -524,13 +534,13 @@ bool lowerStmt(LowerCtx &ctx, const ast::Stmt &stmt, std::vector<std::string> &o
     }
     if (const auto *node = std::get_if<ast::Stmt::Return>(&stmt.node))
     {
-        return lowerReturn(ctx, *node, out);
+        return lowerReturn(ctx, stmt.pos, *node, out);
     }
     if (const auto *node = std::get_if<ast::Stmt::VarDecl>(&stmt.node))
     {
         if (ctx.vars.find(node->name) != ctx.vars.end())
         {
-            ctx.logger->error("Duplicate variable name.");
+            lowerError(ctx, node->namePos, "Duplicate variable name.", "use a different name");
             return false;
         }
         ctx.vars[node->name] = static_cast<unsigned>(ctx.paramOrder.size() + ctx.varOrder.size());
@@ -552,7 +562,8 @@ bool lowerStmt(LowerCtx &ctx, const ast::Stmt &stmt, std::vector<std::string> &o
     {
         if (ctx.vars.find(node->name) == ctx.vars.end())
         {
-            ctx.logger->error("Assignment to undeclared variable.");
+            lowerError(ctx, node->namePos, "Assignment to undeclared variable.",
+                       "declare it with var or as a parameter");
             return false;
         }
         std::vector<std::string> rhs;
@@ -568,14 +579,14 @@ bool lowerStmt(LowerCtx &ctx, const ast::Stmt &stmt, std::vector<std::string> &o
     const auto *node = std::get_if<ast::Stmt::ExprStmt>(&stmt.node);
     if (node == nullptr)
     {
-        ctx.logger->error("Expected a statement.");
+        lowerError(ctx, stmt.pos, "Expected a statement.");
         return false;
     }
     // A call used as a statement keeps extern statement-use; anything else
     // is a general expression statement whose value is discarded.
     if (const auto *call = std::get_if<ast::Expr::Call>(&node->expr->node))
     {
-        return lowerCallStmt(ctx, call->name, call->args, out);
+        return lowerCallStmt(ctx, call->namePos, call->name, call->args, out);
     }
     std::vector<std::string> value;
     bool valueIsString = false;
@@ -590,7 +601,8 @@ bool lowerStmt(LowerCtx &ctx, const ast::Stmt &stmt, std::vector<std::string> &o
 
 } // namespace
 
-bool lowerProgram(const ast::Program &program, kern::ILogger *logger, std::vector<Lowered> &lowered)
+bool lowerProgram(const ast::Program &program, kern::ILogger *logger, const std::string &sourceName,
+                  std::vector<Lowered> &lowered)
 {
     lowered.clear();
     std::map<std::string, unsigned> externArity;
@@ -611,6 +623,7 @@ bool lowerProgram(const ast::Program &program, kern::ILogger *logger, std::vecto
         ctx.funcs = &funcs;
         ctx.externUse = &externUse;
         ctx.logger = logger;
+        ctx.sourceName = sourceName;
         ctx.funcValued = func.hasValuedReturn;
         ctx.funcHasBare = func.hasBareReturn;
         for (const auto &param : func.params)

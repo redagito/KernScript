@@ -14,9 +14,10 @@
 
 #include "comp/Ast.h"
 
-bool tokenize(std::istream &sourceCode, kern::ILogger *logger, std::vector<Tok> &toks)
+bool tokenize(std::istream &sourceCode, kern::ILogger *logger, std::vector<Tok> &toks, const std::string &sourceName)
 {
     Lexer lexer(logger);
+    lexer.setSourceName(sourceName);
     lexer.addKeyword("func");
     lexer.addKeyword("extern");
     lexer.addKeyword("var");
@@ -43,7 +44,10 @@ bool tokenize(std::istream &sourceCode, kern::ILogger *logger, std::vector<Tok> 
         }
         if (type == LexerToken::Invalid)
         {
-            logger->error("Invalid source.");
+            SrcPos pos;
+            pos.line = lexer.getLine();
+            pos.col = lexer.getColumn();
+            reportError(logger, sourceName, pos, "Invalid source.");
             return false;
         }
         if (type == LexerToken::NewLine || type == LexerToken::Comment)
@@ -87,7 +91,29 @@ struct AstBuild
     const std::vector<Tok> *toks = nullptr;
     std::size_t pos = 0;
     kern::ILogger *logger = nullptr;
+    std::string sourceName;
 };
+
+// Position of the current token, the last token at end of input, or 1:1
+// for empty input. Fail-fast keeps only the first error, so pointing an
+// end-of-input expectation at the last token is enough to locate it.
+SrcPos astHere(const AstBuild &build)
+{
+    if (build.pos < build.toks->size())
+    {
+        return (*build.toks)[build.pos].pos;
+    }
+    if (!build.toks->empty())
+    {
+        return build.toks->back().pos;
+    }
+    return SrcPos{};
+}
+
+void astError(AstBuild &build, const std::string &message, const std::string &hint = "")
+{
+    reportError(build.logger, build.sourceName, astHere(build), message, hint);
+}
 
 bool astAtEnd(const AstBuild &build) { return build.pos >= build.toks->size(); }
 
@@ -106,7 +132,7 @@ bool astExpect(AstBuild &build, LexerToken type, const std::string &what)
 {
     if (astPeek(build) != type)
     {
-        build.logger->error("Expected {}.", what);
+        astError(build, "Expected " + what + ".");
         return false;
     }
     ++build.pos;
@@ -128,13 +154,14 @@ bool makeIntNode(AstBuild &build, const Tok &tok, std::unique_ptr<ast::Expr> &ex
     {
         if (c < '0' || c > '9')
         {
-            build.logger->error("Invalid integer literal.");
+            reportError(build.logger, build.sourceName, tok.pos, "Invalid integer literal.");
             return false;
         }
         value = value * 10 + static_cast<unsigned long long>(c - '0');
         if (value > 4294967295ULL)
         {
-            build.logger->error("Integer literal out of range.");
+            reportError(build.logger, build.sourceName, tok.pos, "Integer literal out of range.",
+                        "use 0 to 4294967295");
             return false;
         }
     }
@@ -160,7 +187,7 @@ bool makeFloatNode(AstBuild &build, const Tok &tok, std::unique_ptr<ast::Expr> &
     const float value = std::strtof(tok.text.c_str(), &end);
     if (end == nullptr || *end != '\0' || !std::isfinite(value))
     {
-        build.logger->error("Float literal out of range.");
+        reportError(build.logger, build.sourceName, tok.pos, "Float literal out of range.", "use a 32-bit float");
         return false;
     }
     auto node = std::make_unique<ast::Expr>();
@@ -223,7 +250,7 @@ bool parseAstPrimary(AstBuild &build, std::unique_ptr<ast::Expr> &expr)
 {
     if (astAtEnd(build))
     {
-        build.logger->error("Expected an expression.");
+        astError(build, "Expected an expression.");
         return false;
     }
     const Tok tok = astTok(build);
@@ -283,7 +310,7 @@ bool parseAstPrimary(AstBuild &build, std::unique_ptr<ast::Expr> &expr)
         }
         return astExpect(build, LexerToken::CloseParenthesis, "')'");
     }
-    build.logger->error("Expected an expression.");
+    astError(build, "Expected an expression.");
     return false;
 }
 
@@ -599,7 +626,7 @@ bool parseAstStmt(AstBuild &build, ast::Stmt &stmt)
         ++build.pos;
         if (astPeek(build) != LexerToken::Identifier)
         {
-            build.logger->error("Expected a variable name.");
+            astError(build, "Expected a variable name.");
             return false;
         }
         ast::Stmt::VarDecl node;
@@ -662,7 +689,7 @@ bool parseAstStmt(AstBuild &build, ast::Stmt &stmt)
         stmt.node = std::move(node);
         return true;
     }
-    build.logger->error("Expected a statement.");
+    astError(build, "Expected a statement.");
     return false;
 }
 
@@ -673,7 +700,7 @@ bool parseAstBlock(AstBuild &build, std::vector<ast::Stmt> &body)
     {
         if (astAtEnd(build))
         {
-            build.logger->error("Expected '}}'.");
+            astError(build, "Expected '}'.");
             return false;
         }
         ast::Stmt stmt;
@@ -687,8 +714,9 @@ bool parseAstBlock(AstBuild &build, std::vector<ast::Stmt> &body)
 }
 
 // Walks one function body collecting valued/bare returns from the Return
-// nodes, including nested if/while branches.
-void classifyAstBody(const std::vector<ast::Stmt> &body, bool &valued, bool &bare)
+// nodes, including nested if/while branches, remembering the first
+// position of each form so a mix points at the later return.
+void classifyAstBody(const std::vector<ast::Stmt> &body, bool &valued, bool &bare, SrcPos &valuedPos, SrcPos &barePos)
 {
     for (const auto &stmt : body)
     {
@@ -696,23 +724,40 @@ void classifyAstBody(const std::vector<ast::Stmt> &body, bool &valued, bool &bar
         {
             if (ret->value)
             {
+                if (!valued)
+                {
+                    valuedPos = stmt.pos;
+                }
                 valued = true;
             }
             else
             {
+                if (!bare)
+                {
+                    barePos = stmt.pos;
+                }
                 bare = true;
             }
         }
         else if (const auto *branch = std::get_if<ast::Stmt::If>(&stmt.node))
         {
-            classifyAstBody(branch->thenBranch, valued, bare);
-            classifyAstBody(branch->elseBranch, valued, bare);
+            classifyAstBody(branch->thenBranch, valued, bare, valuedPos, barePos);
+            classifyAstBody(branch->elseBranch, valued, bare, valuedPos, barePos);
         }
         else if (const auto *loop = std::get_if<ast::Stmt::While>(&stmt.node))
         {
-            classifyAstBody(loop->body, valued, bare);
+            classifyAstBody(loop->body, valued, bare, valuedPos, barePos);
         }
     }
+}
+
+bool laterPos(SrcPos a, SrcPos b)
+{
+    if (a.line != b.line)
+    {
+        return a.line > b.line;
+    }
+    return a.col > b.col;
 }
 
 bool parseAstExternDecl(AstBuild &build, ast::Extern &ext, bool haveFunc, const std::vector<ast::Extern> &externs,
@@ -722,21 +767,23 @@ bool parseAstExternDecl(AstBuild &build, ast::Extern &ext, bool haveFunc, const 
     ++build.pos; // consume 'extern'
     if (haveFunc)
     {
-        build.logger->error("Extern declarations must precede the function.");
+        reportError(build.logger, build.sourceName, start, "Extern declarations must precede the function.",
+                    "move extern declarations above func");
         return false;
     }
     if (astPeek(build) != LexerToken::Identifier)
     {
-        build.logger->error("Expected an extern name.");
+        astError(build, "Expected an extern name.");
         return false;
     }
     ext.name = astTok(build).text;
+    const SrcPos namePos = astTok(build).pos;
     ++build.pos;
     for (const auto &seen : externs)
     {
         if (seen.name == ext.name)
         {
-            build.logger->error("Duplicate extern name.");
+            reportError(build.logger, build.sourceName, namePos, "Duplicate extern name.", "use a different name");
             return false;
         }
     }
@@ -744,7 +791,7 @@ bool parseAstExternDecl(AstBuild &build, ast::Extern &ext, bool haveFunc, const 
     {
         if (seen.name == ext.name)
         {
-            build.logger->error("Duplicate extern name.");
+            reportError(build.logger, build.sourceName, namePos, "Duplicate extern name.", "use a different name");
             return false;
         }
     }
@@ -761,7 +808,7 @@ bool parseAstExternDecl(AstBuild &build, ast::Extern &ext, bool haveFunc, const 
             ++build.pos;
             if (astPeek(build) != LexerToken::Identifier)
             {
-                build.logger->error("Expected a parameter name.");
+                astError(build, "Expected a parameter name.");
                 return false;
             }
             ext.params.push_back(astTok(build).text);
@@ -788,16 +835,17 @@ bool parseAstFuncDecl(AstBuild &build, ast::Func &func, const std::vector<ast::E
     ++build.pos; // consume 'func'
     if (astPeek(build) != LexerToken::Identifier)
     {
-        build.logger->error("Expected a function name.");
+        astError(build, "Expected a function name.");
         return false;
     }
     func.name = astTok(build).text;
+    const SrcPos namePos = astTok(build).pos;
     ++build.pos;
     for (const auto &seen : externs)
     {
         if (seen.name == func.name)
         {
-            build.logger->error("Duplicate function name.");
+            reportError(build.logger, build.sourceName, namePos, "Duplicate function name.", "use a different name");
             return false;
         }
     }
@@ -805,7 +853,7 @@ bool parseAstFuncDecl(AstBuild &build, ast::Func &func, const std::vector<ast::E
     {
         if (seen.name == func.name)
         {
-            build.logger->error("Duplicate function name.");
+            reportError(build.logger, build.sourceName, namePos, "Duplicate function name.", "use a different name");
             return false;
         }
     }
@@ -817,11 +865,13 @@ bool parseAstFuncDecl(AstBuild &build, ast::Func &func, const std::vector<ast::E
             while (true)
             {
                 const std::string param = astTok(build).text;
+                const SrcPos paramPos = astTok(build).pos;
                 for (const auto &seen : func.params)
                 {
                     if (seen == param)
                     {
-                        build.logger->error("Duplicate parameter name.");
+                        reportError(build.logger, build.sourceName, paramPos, "Duplicate parameter name.",
+                                    "use a different name");
                         return false;
                     }
                 }
@@ -832,7 +882,7 @@ bool parseAstFuncDecl(AstBuild &build, ast::Func &func, const std::vector<ast::E
                     ++build.pos;
                     if (astPeek(build) != LexerToken::Identifier)
                     {
-                        build.logger->error("Expected a parameter name.");
+                        astError(build, "Expected a parameter name.");
                         return false;
                     }
                     continue;
@@ -864,18 +914,20 @@ bool parseAstFuncDecl(AstBuild &build, ast::Func &func, const std::vector<ast::E
 
 } // namespace
 
-bool ast::parseProgram(const std::vector<Tok> &toks, kern::ILogger *logger, ast::Program &program)
+bool ast::parseProgram(const std::vector<Tok> &toks, kern::ILogger *logger, const std::string &sourceName,
+                       ast::Program &program)
 {
     program = ast::Program{};
     AstBuild build;
     build.toks = &toks;
     build.logger = logger;
+    build.sourceName = sourceName;
     bool haveFunc = false;
     while (!astAtEnd(build))
     {
         if (astPeek(build) != LexerToken::Keyword)
         {
-            logger->error("Expected 'extern' or 'func'.");
+            astError(build, "Expected 'extern' or 'func'.");
             return false;
         }
         const std::string keyword = astTok(build).text;
@@ -900,21 +952,25 @@ bool ast::parseProgram(const std::vector<Tok> &toks, kern::ILogger *logger, ast:
         }
         else
         {
-            logger->error("Expected 'extern' or 'func'.");
+            astError(build, "Expected 'extern' or 'func'.");
             return false;
         }
     }
     if (!haveFunc)
     {
-        logger->error("Expected 'func'.");
+        astError(build, "Expected 'func'.");
         return false;
     }
     for (auto &func : program.funcs)
     {
-        classifyAstBody(func.body, func.hasValuedReturn, func.hasBareReturn);
+        SrcPos valuedPos{};
+        SrcPos barePos{};
+        classifyAstBody(func.body, func.hasValuedReturn, func.hasBareReturn, valuedPos, barePos);
         if (func.hasValuedReturn && func.hasBareReturn)
         {
-            logger->error("Mixed valued and void returns.");
+            const SrcPos at = laterPos(valuedPos, barePos) ? valuedPos : barePos;
+            reportError(logger, sourceName, at, "Mixed valued and void returns.",
+                        "use one return form in each function");
             return false;
         }
     }

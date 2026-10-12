@@ -27,5 +27,6 @@ struct Lowered
     std::vector<std::string> body;
 };
 
-bool lowerProgram(const ast::Program &program, kern::ILogger *logger, std::vector<Lowered> &lowered);
+bool lowerProgram(const ast::Program &program, kern::ILogger *logger, const std::string &sourceName,
+                  std::vector<Lowered> &lowered);
 void emitProgram(const ast::Program &program, const std::vector<Lowered> &lowered, std::ostream &asmCode);

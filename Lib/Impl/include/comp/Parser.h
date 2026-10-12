@@ -34,7 +34,7 @@ struct Tok
     SrcPos pos;
 };
 
-bool tokenize(std::istream &sourceCode, kern::ILogger *logger, std::vector<Tok> &toks);
+bool tokenize(std::istream &sourceCode, kern::ILogger *logger, std::vector<Tok> &toks, const std::string &sourceName);
 std::string formatDiagnostic(const std::string &sourceName, SrcPos pos, const std::string &message);
 std::string formatHint(const std::string &hint);
 void reportError(kern::ILogger *logger, const std::string &sourceName, SrcPos pos, const std::string &message,

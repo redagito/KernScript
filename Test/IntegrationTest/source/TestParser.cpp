@@ -1,9 +1,12 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <map>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
+
+#include <kern/Kern.h>
 
 #include "common/LexerToken.h"
 #include "comp/Ast.h"
@@ -18,26 +21,26 @@ namespace
 bool parseAstSource(const std::string &source, std::vector<Tok> &toks, ast::Program &program)
 {
     std::istringstream input(source);
-    if (!tokenize(input, nullLogger(), toks))
+    if (!tokenize(input, nullLogger(), toks, "test.ks"))
     {
         return false;
     }
-    return ast::parseProgram(toks, nullLogger(), program);
+    return ast::parseProgram(toks, nullLogger(), "test.ks", program);
 }
 
 bool lowerAstSource(const std::string &source, ast::Program &program, std::vector<Lowered> &lowered)
 {
     std::vector<Tok> toks;
     std::istringstream input(source);
-    if (!tokenize(input, nullLogger(), toks))
+    if (!tokenize(input, nullLogger(), toks, "test.ks"))
     {
         return false;
     }
-    if (!ast::parseProgram(toks, nullLogger(), program))
+    if (!ast::parseProgram(toks, nullLogger(), "test.ks", program))
     {
         return false;
     }
-    return lowerProgram(program, nullLogger(), lowered);
+    return lowerProgram(program, nullLogger(), "test.ks", lowered);
 }
 
 } // namespace
@@ -68,7 +71,7 @@ TEST_CASE("Lower rejects use of undeclared variable", "[integration][compiler][p
     {
         std::vector<Tok> toks;
         REQUIRE(parseAstSource("func main {\nvar r = q;\n}\n", toks, readProgram));
-        REQUIRE_FALSE(lowerProgram(readProgram, nullLogger(), readLowered));
+        REQUIRE_FALSE(lowerProgram(readProgram, nullLogger(), "test.ks", readLowered));
     }
 
     ast::Program assignProgram;
@@ -76,7 +79,7 @@ TEST_CASE("Lower rejects use of undeclared variable", "[integration][compiler][p
     {
         std::vector<Tok> toks;
         REQUIRE(parseAstSource("func main {\nq = 1;\n}\n", toks, assignProgram));
-        REQUIRE_FALSE(lowerProgram(assignProgram, nullLogger(), assignLowered));
+        REQUIRE_FALSE(lowerProgram(assignProgram, nullLogger(), "test.ks", assignLowered));
     }
 
     ast::Program badProgram;
@@ -100,7 +103,7 @@ TEST_CASE("Compiler tokenize keeps keywords and drops newlines/comments", "[inte
 {
     std::istringstream input("func main() {\n// a comment\nvar x;\n}");
     std::vector<Tok> toks;
-    REQUIRE(tokenize(input, nullLogger(), toks));
+    REQUIRE(tokenize(input, nullLogger(), toks, "test.ks"));
     REQUIRE(toks.size() == 9);
     REQUIRE(toks[0].type == LexerToken::Keyword);
     REQUIRE(toks[0].text == "func");
@@ -114,7 +117,7 @@ TEST_CASE("Compiler tokenize keeps keywords and drops newlines/comments", "[inte
 
     std::istringstream words("and or xor not");
     std::vector<Tok> kw;
-    REQUIRE(tokenize(words, nullLogger(), kw));
+    REQUIRE(tokenize(words, nullLogger(), kw, "test.ks"));
     REQUIRE(kw.size() == 4);
     REQUIRE(kw[0].text == "and");
     REQUIRE(kw[3].text == "not");
@@ -128,16 +131,16 @@ TEST_CASE("Compiler tokenize rejects invalid characters", "[integration][compile
 {
     std::istringstream input("func `() {}");
     std::vector<Tok> toks;
-    REQUIRE_FALSE(tokenize(input, nullLogger(), toks));
+    REQUIRE_FALSE(tokenize(input, nullLogger(), toks, "test.ks"));
 }
 
 TEST_CASE("AST collects extern and func signatures", "[integration][compiler][parser]")
 {
     std::istringstream input("extern putc(c);\nfunc main(x) {\nputc(x);\n}\nfunc helper() {\n}\n");
     std::vector<Tok> toks;
-    REQUIRE(tokenize(input, nullLogger(), toks));
+    REQUIRE(tokenize(input, nullLogger(), toks, "test.ks"));
     ast::Program program;
-    REQUIRE(ast::parseProgram(toks, nullLogger(), program));
+    REQUIRE(ast::parseProgram(toks, nullLogger(), "test.ks", program));
     REQUIRE(program.externs.size() == 1);
     REQUIRE(program.externs[0].name == "putc");
     REQUIRE(program.externs[0].params == std::vector<std::string>{"c"});
@@ -152,9 +155,9 @@ TEST_CASE("AST rejects duplicate names", "[integration][compiler][parser]")
 {
     std::istringstream input("func dup() {\n}\nfunc dup() {\n}\n");
     std::vector<Tok> toks;
-    REQUIRE(tokenize(input, nullLogger(), toks));
+    REQUIRE(tokenize(input, nullLogger(), toks, "test.ks"));
     ast::Program program;
-    REQUIRE_FALSE(ast::parseProgram(toks, nullLogger(), program));
+    REQUIRE_FALSE(ast::parseProgram(toks, nullLogger(), "test.ks", program));
 }
 
 TEST_CASE("AST classifies valued and void returns", "[integration][compiler][parser]")
@@ -180,12 +183,12 @@ TEST_CASE("Compiler lowerProgram and emitProgram shape on tiny program", "[integ
 {
     std::istringstream input("func main() {\nvar x = 1;\n}\n");
     std::vector<Tok> toks;
-    REQUIRE(tokenize(input, nullLogger(), toks));
+    REQUIRE(tokenize(input, nullLogger(), toks, "test.ks"));
     ast::Program program;
-    REQUIRE(ast::parseProgram(toks, nullLogger(), program));
+    REQUIRE(ast::parseProgram(toks, nullLogger(), "test.ks", program));
 
     std::vector<Lowered> lowered;
-    REQUIRE(lowerProgram(program, nullLogger(), lowered));
+    REQUIRE(lowerProgram(program, nullLogger(), "test.ks", lowered));
     REQUIRE(lowered.size() == 1);
     REQUIRE(lowered[0].name == "main");
     REQUIRE(lowered[0].vars == std::vector<std::string>{"x"});
@@ -200,7 +203,7 @@ TEST_CASE("Compiler tokenize records token positions", "[integration][compiler][
 {
     std::istringstream input("func main() {\nvar x = 1;\n}\n");
     std::vector<Tok> toks;
-    REQUIRE(tokenize(input, nullLogger(), toks));
+    REQUIRE(tokenize(input, nullLogger(), toks, "test.ks"));
     REQUIRE(toks.size() == 11);
     REQUIRE(toks[0].text == "func");
     REQUIRE(toks[0].pos.line == 1);
@@ -293,7 +296,7 @@ TEST_CASE("AST builds extern and valued func with spans", "[integration][compile
 
     // Lowering the same tree emits the expected body lines.
     std::vector<Lowered> lowered;
-    REQUIRE(lowerProgram(program, nullLogger(), lowered));
+    REQUIRE(lowerProgram(program, nullLogger(), "test.ks", lowered));
     REQUIRE(lowered.size() == 1);
     REQUIRE(lowered[0].body ==
             std::vector<std::string>{"pushv x", "pushi 1", "add", "popv r", "pushv r", "popv retmp", "retv retmp"});
@@ -418,4 +421,87 @@ TEST_CASE("AST rejects malformed input", "[integration][compiler][parser]")
     std::vector<Tok> emptyToks;
     ast::Program emptyProgram;
     REQUIRE_FALSE(parseAstSource("", emptyToks, emptyProgram));
+}
+
+namespace
+{
+
+std::vector<std::string> compileWithName(const std::string &source, const std::string &sourceName, bool &ok)
+{
+    testutil::RecordingLogger logger;
+    std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler(&logger));
+    std::stringstream input(source);
+    std::stringstream asmCode;
+    ok = compiler->compile(input, asmCode, sourceName);
+    return logger.messages();
+}
+
+} // namespace
+
+TEST_CASE("Diagnostic reports undeclared name with position and hint", "[integration][compiler][diagnostic]")
+{
+    const std::string source = "extern println(x);\nfunc main {\n  println(q);\n}\n";
+    bool ok = true;
+    const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
+    REQUIRE_FALSE(ok);
+    REQUIRE(messages.size() == 2);
+    REQUIRE(messages[0] == "test.ks:3:11: error: Use of undeclared variable.");
+    REQUIRE(messages[1] == "note: declare it with var or as a parameter");
+}
+
+TEST_CASE("Diagnostic reports arity with position and hint", "[integration][compiler][diagnostic]")
+{
+    const std::string source = "extern println(x);\nfunc double(v) {\n  return v * 2;\n}\nfunc main {\n"
+                               "  println(double(1, 2));\n}\n";
+    bool ok = true;
+    const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
+    REQUIRE_FALSE(ok);
+    REQUIRE(messages.size() == 2);
+    REQUIRE(messages[0] == "test.ks:6:11: error: Wrong argument count.");
+    REQUIRE(messages[1] == "note: declared 1 parameters here");
+}
+
+TEST_CASE("Diagnostic reports mixed returns with position and hint", "[integration][compiler][diagnostic]")
+{
+    const std::string source = "extern println(x);\nfunc f(v) {\n  if (v == 1) {\n    return 1;\n  }\n  return;\n}\n"
+                               "func main {\n  println(f(2));\n}\n";
+    bool ok = true;
+    const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
+    REQUIRE_FALSE(ok);
+    REQUIRE(messages.size() == 2);
+    REQUIRE(messages[0] == "test.ks:6:3: error: Mixed valued and void returns.");
+    REQUIRE(messages[1] == "note: use one return form in each function");
+}
+
+TEST_CASE("Diagnostic reports bad literal with position and hint", "[integration][compiler][diagnostic]")
+{
+    const std::string source = "extern println(x);\nfunc main {\n  var x = 4294967296;\n  println(x);\n}\n";
+    bool ok = true;
+    const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
+    REQUIRE_FALSE(ok);
+    REQUIRE(messages.size() == 2);
+    REQUIRE(messages[0] == "test.ks:3:11: error: Integer literal out of range.");
+    REQUIRE(messages[1] == "note: use 0 to 4294967295");
+}
+
+TEST_CASE("Diagnostic reports expected token with position and no hint", "[integration][compiler][diagnostic]")
+{
+    const std::string source = "func main {\nvar x = 1\n}\n";
+    bool ok = true;
+    const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
+    REQUIRE_FALSE(ok);
+    REQUIRE(messages.size() == 1);
+    REQUIRE(messages[0] == "test.ks:3:1: error: Expected ';'.");
+}
+
+TEST_CASE("Diagnostic uses the input name without an explicit source name", "[integration][compiler][diagnostic]")
+{
+    const std::string source = "extern println(x);\nfunc main {\n  println(q);\n}\n";
+    testutil::RecordingLogger logger;
+    std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler(&logger));
+    std::stringstream input(source);
+    std::stringstream asmCode;
+    REQUIRE_FALSE(compiler->compile(input, asmCode));
+    REQUIRE_FALSE(logger.messages().empty());
+    REQUIRE(logger.messages()[0] == "<input>:3:11: error: Use of undeclared variable.");
 }
