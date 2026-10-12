@@ -16,6 +16,9 @@ class KernScriptConan(ConanFile):
         # Transitive dependency of spdlog, used by the ILogger interface for
         # message formatting. Declared directly so the CMake target exists.
         self.requires("fmt/12.1.0")
+        # Cross-platform GUI toolkit for the ScriptFltk sample, the portable
+        # twin of the Win32-only ScriptGui sample.
+        self.requires("fltk/1.4.4")
 
     def layout(self):
         cmake_layout(self)

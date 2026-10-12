@@ -11,3 +11,6 @@ add_subdirectory (RuleEngine)
 if (WIN32)
     add_subdirectory (ScriptGui)
 endif ()
+# Cross-platform twin of ScriptGui above, built on FLTK. No system guard:
+# FLTK abstracts the native toolkit, so this builds on every platform.
+add_subdirectory (ScriptFltk)
