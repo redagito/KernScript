@@ -857,43 +857,45 @@ bool parseAstFuncDecl(AstBuild &build, ast::Func &func, const std::vector<ast::E
             return false;
         }
     }
-    if (astPeek(build) == LexerToken::OpenParenthesis)
+    if (astPeek(build) != LexerToken::OpenParenthesis)
     {
-        ++build.pos;
-        if (astPeek(build) == LexerToken::Identifier)
+        reportError(build.logger, build.sourceName, astHere(build), "Expected '('.", "write func name() {}");
+        return false;
+    }
+    ++build.pos;
+    if (astPeek(build) == LexerToken::Identifier)
+    {
+        while (true)
         {
-            while (true)
+            const std::string param = astTok(build).text;
+            const SrcPos paramPos = astTok(build).pos;
+            for (const auto &seen : func.params)
             {
-                const std::string param = astTok(build).text;
-                const SrcPos paramPos = astTok(build).pos;
-                for (const auto &seen : func.params)
+                if (seen == param)
                 {
-                    if (seen == param)
-                    {
-                        reportError(build.logger, build.sourceName, paramPos, "Duplicate parameter name.",
-                                    "use a different name");
-                        return false;
-                    }
+                    reportError(build.logger, build.sourceName, paramPos, "Duplicate parameter name.",
+                                "use a different name");
+                    return false;
                 }
-                func.params.push_back(param);
-                ++build.pos;
-                if (astPeek(build) == LexerToken::Comma)
-                {
-                    ++build.pos;
-                    if (astPeek(build) != LexerToken::Identifier)
-                    {
-                        astError(build, "Expected a parameter name.");
-                        return false;
-                    }
-                    continue;
-                }
-                break;
             }
+            func.params.push_back(param);
+            ++build.pos;
+            if (astPeek(build) == LexerToken::Comma)
+            {
+                ++build.pos;
+                if (astPeek(build) != LexerToken::Identifier)
+                {
+                    astError(build, "Expected a parameter name.");
+                    return false;
+                }
+                continue;
+            }
+            break;
         }
-        if (!astExpect(build, LexerToken::CloseParenthesis, "')'"))
-        {
-            return false;
-        }
+    }
+    if (!astExpect(build, LexerToken::CloseParenthesis, "')'"))
+    {
+        return false;
     }
     if (!astExpect(build, LexerToken::OpenBrace, "'{'"))
     {

@@ -49,7 +49,7 @@ TEST_CASE("AST expresses add/mul precedence in order", "[integration][compiler][
 {
     std::vector<Tok> toks;
     ast::Program program;
-    REQUIRE(parseAstSource("func main {\nvar r = 1 + 2 * 3;\n}\n", toks, program));
+    REQUIRE(parseAstSource("func main() {\nvar r = 1 + 2 * 3;\n}\n", toks, program));
     REQUIRE(program.funcs.size() == 1);
     REQUIRE(program.funcs[0].body.size() == 1);
 
@@ -70,7 +70,7 @@ TEST_CASE("Lower rejects use of undeclared variable", "[integration][compiler][p
     std::vector<Lowered> readLowered;
     {
         std::vector<Tok> toks;
-        REQUIRE(parseAstSource("func main {\nvar r = q;\n}\n", toks, readProgram));
+        REQUIRE(parseAstSource("func main() {\nvar r = q;\n}\n", toks, readProgram));
         REQUIRE_FALSE(lowerProgram(readProgram, nullLogger(), "test.ks", readLowered));
     }
 
@@ -78,14 +78,14 @@ TEST_CASE("Lower rejects use of undeclared variable", "[integration][compiler][p
     std::vector<Lowered> assignLowered;
     {
         std::vector<Tok> toks;
-        REQUIRE(parseAstSource("func main {\nq = 1;\n}\n", toks, assignProgram));
+        REQUIRE(parseAstSource("func main() {\nq = 1;\n}\n", toks, assignProgram));
         REQUIRE_FALSE(lowerProgram(assignProgram, nullLogger(), "test.ks", assignLowered));
     }
 
     ast::Program badProgram;
     {
         std::vector<Tok> toks;
-        REQUIRE(parseAstSource("func main {\nvar r = 1 +;\n}\n", toks, badProgram) == false);
+        REQUIRE(parseAstSource("func main() {\nvar r = 1 +;\n}\n", toks, badProgram) == false);
     }
 }
 
@@ -93,7 +93,7 @@ TEST_CASE("Lower lowers var declaration statement", "[integration][compiler][par
 {
     ast::Program program;
     std::vector<Lowered> lowered;
-    REQUIRE(lowerAstSource("func main {\nvar r = 1 + 2;\n}\n", program, lowered));
+    REQUIRE(lowerAstSource("func main() {\nvar r = 1 + 2;\n}\n", program, lowered));
     REQUIRE(lowered.size() == 1);
     REQUIRE(lowered[0].body == std::vector<std::string>{"pushi 1", "pushi 2", "add", "popv r"});
     REQUIRE(lowered[0].vars == std::vector<std::string>{"r"});
@@ -353,7 +353,7 @@ TEST_CASE("AST builds if else while with logic precedence", "[integration][compi
 
 TEST_CASE("AST builds strings calls and unary with spans", "[integration][compiler][parser]")
 {
-    const std::string source = "func double(v) {\nreturn v * 2;\n}\nfunc main {\nvar s = \"hi\";\n"
+    const std::string source = "func double(v) {\nreturn v * 2;\n}\nfunc main() {\nvar s = \"hi\";\n"
                                "var r = not double(21) + 1;\ndouble(r);\n}\n";
     std::vector<Tok> toks;
     ast::Program program;
@@ -404,13 +404,13 @@ TEST_CASE("AST builds strings calls and unary with spans", "[integration][compil
 
 TEST_CASE("AST rejects malformed input", "[integration][compiler][parser]")
 {
-    const std::string missingSemi = "func main {\nvar x = 1\n}\n";
-    const std::string missingParen = "func main {\nvar x = (1;\n}\n";
-    const std::string missingBrace = "func main {\nvar x = 1;\n";
+    const std::string missingSemi = "func main() {\nvar x = 1\n}\n";
+    const std::string missingParen = "func main() {\nvar x = (1;\n}\n";
+    const std::string missingBrace = "func main() {\nvar x = 1;\n";
     const std::string noFunc = "extern putc(c);\n";
-    const std::string badLiteral = "func main {\nvar x = 4294967296;\n}\n";
-    const std::string duplicate = "func main {\n}\nfunc main {\n}\n";
-    const std::string mixed = "func main {\nreturn 1;\nreturn;\n}\n";
+    const std::string badLiteral = "func main() {\nvar x = 4294967296;\n}\n";
+    const std::string duplicate = "func main() {\n}\nfunc main() {\n}\n";
+    const std::string mixed = "func main() {\nreturn 1;\nreturn;\n}\n";
     for (const std::string *source :
          {&missingSemi, &missingParen, &missingBrace, &noFunc, &badLiteral, &duplicate, &mixed})
     {
@@ -440,7 +440,7 @@ std::vector<std::string> compileWithName(const std::string &source, const std::s
 
 TEST_CASE("Diagnostic reports undeclared name with position and hint", "[integration][compiler][diagnostic]")
 {
-    const std::string source = "extern println(x);\nfunc main {\n  println(q);\n}\n";
+    const std::string source = "extern println(x);\nfunc main() {\n  println(q);\n}\n";
     bool ok = true;
     const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
     REQUIRE_FALSE(ok);
@@ -451,7 +451,7 @@ TEST_CASE("Diagnostic reports undeclared name with position and hint", "[integra
 
 TEST_CASE("Diagnostic reports arity with position and hint", "[integration][compiler][diagnostic]")
 {
-    const std::string source = "extern println(x);\nfunc double(v) {\n  return v * 2;\n}\nfunc main {\n"
+    const std::string source = "extern println(x);\nfunc double(v) {\n  return v * 2;\n}\nfunc main() {\n"
                                "  println(double(1, 2));\n}\n";
     bool ok = true;
     const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
@@ -464,7 +464,7 @@ TEST_CASE("Diagnostic reports arity with position and hint", "[integration][comp
 TEST_CASE("Diagnostic reports mixed returns with position and hint", "[integration][compiler][diagnostic]")
 {
     const std::string source = "extern println(x);\nfunc f(v) {\n  if (v == 1) {\n    return 1;\n  }\n  return;\n}\n"
-                               "func main {\n  println(f(2));\n}\n";
+                               "func main() {\n  println(f(2));\n}\n";
     bool ok = true;
     const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
     REQUIRE_FALSE(ok);
@@ -475,7 +475,7 @@ TEST_CASE("Diagnostic reports mixed returns with position and hint", "[integrati
 
 TEST_CASE("Diagnostic reports bad literal with position and hint", "[integration][compiler][diagnostic]")
 {
-    const std::string source = "extern println(x);\nfunc main {\n  var x = 4294967296;\n  println(x);\n}\n";
+    const std::string source = "extern println(x);\nfunc main() {\n  var x = 4294967296;\n  println(x);\n}\n";
     bool ok = true;
     const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
     REQUIRE_FALSE(ok);
@@ -486,7 +486,7 @@ TEST_CASE("Diagnostic reports bad literal with position and hint", "[integration
 
 TEST_CASE("Diagnostic reports expected token with position and no hint", "[integration][compiler][diagnostic]")
 {
-    const std::string source = "func main {\nvar x = 1\n}\n";
+    const std::string source = "func main() {\nvar x = 1\n}\n";
     bool ok = true;
     const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
     REQUIRE_FALSE(ok);
@@ -496,7 +496,7 @@ TEST_CASE("Diagnostic reports expected token with position and no hint", "[integ
 
 TEST_CASE("Diagnostic uses the input name without an explicit source name", "[integration][compiler][diagnostic]")
 {
-    const std::string source = "extern println(x);\nfunc main {\n  println(q);\n}\n";
+    const std::string source = "extern println(x);\nfunc main() {\n  println(q);\n}\n";
     testutil::RecordingLogger logger;
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler(&logger));
     std::stringstream input(source);

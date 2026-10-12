@@ -1,7 +1,7 @@
 # KernScript Scripting Language (v1 Draft)
 
 Source compiles to KernScript assembly. One source file holds `extern`
-and `func` declarations. Execution starts at a host-chosen function;
+declarations followed by `func` declarations, with at least one `func`. Execution starts at a host-chosen function;
 every call runs to completion — a script cannot wait across calls.
 
 ## Lexical
@@ -18,8 +18,7 @@ every call runs to completion — a script cannot wait across calls.
 ## Grammar
 
 ```ebnf
-Program    := Decl*
-Decl       := ExternDecl | FuncDecl
+Program    := ExternDecl* FuncDecl+
 ExternDecl := "extern" Ident "(" [Ident ("," Ident)*] ")" ";"
 FuncDecl   := "func" Ident "(" [Ident ("," Ident)*] ")" Block
 Block      := "{" Stmt* "}"
