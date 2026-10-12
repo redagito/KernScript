@@ -105,7 +105,7 @@ bool emitPushUint(Ctx &ctx, const std::string &digits, std::vector<std::string> 
   return true;
 }
 
-bool parseExpr(Ctx &ctx, std::vector<std::string> &out);
+bool parseExpr(Ctx &ctx, std::vector<std::string> &out, bool &isString);
 bool parseStatement(Ctx &ctx, std::vector<std::string> &out);
 
 // Parses '(' [Expr (',' Expr)*] ')' with the current token on '('.
@@ -120,7 +120,8 @@ bool parseCallArgs(Ctx &ctx, std::vector<std::string> &args, unsigned int &count
   if (peekType(ctx) != LexerToken::CloseParenthesis) {
     while (true) {
       std::vector<std::string> one;
-      if (!parseExpr(ctx, one)) {
+      bool oneIsString = false;
+      if (!parseExpr(ctx, one, oneIsString)) {
         return false;
       }
       args.insert(args.end(), one.begin(), one.end());
@@ -216,7 +217,8 @@ bool parseCallStmt(Ctx &ctx, const std::string &name, std::vector<std::string> &
   return false;
 }
 
-bool parsePrimary(Ctx &ctx, std::vector<std::string> &out) {
+bool parsePrimary(Ctx &ctx, std::vector<std::string> &out, bool &isString) {
+  isString = false;
   if (atEnd(ctx)) {
     ctx.logger->error("Expected an expression.");
     return false;
@@ -234,6 +236,7 @@ bool parsePrimary(Ctx &ctx, std::vector<std::string> &out) {
   if (tok.type == LexerToken::String) {
     ++ctx.pos;
     out.push_back("pushs \"" + tok.text + "\"");
+    isString = true;
     return true;
   }
   if (tok.type == LexerToken::Identifier) {
@@ -252,7 +255,7 @@ bool parsePrimary(Ctx &ctx, std::vector<std::string> &out) {
   }
   if (tok.type == LexerToken::OpenParenthesis) {
     ++ctx.pos;
-    if (!parseExpr(ctx, out)) {
+    if (!parseExpr(ctx, out, isString)) {
       return false;
     }
     return expect(ctx, LexerToken::CloseParenthesis, "')'");
@@ -261,11 +264,17 @@ bool parsePrimary(Ctx &ctx, std::vector<std::string> &out) {
   return false;
 }
 
-bool parseUnary(Ctx &ctx, std::vector<std::string> &out) {
+bool parseUnary(Ctx &ctx, std::vector<std::string> &out, bool &isString) {
+  isString = false;
   if (peekType(ctx) == LexerToken::Dash) {
     ++ctx.pos;
     std::vector<std::string> rhs;
-    if (!parseUnary(ctx, rhs)) {
+    bool rhsIsString = false;
+    if (!parseUnary(ctx, rhs, rhsIsString)) {
+      return false;
+    }
+    if (rhsIsString) {
+      ctx.logger->error("Arithmetic on strings.");
       return false;
     }
     // Unary minus as 0 - x: push 0, push x, sub = 0 - x.
@@ -274,46 +283,64 @@ bool parseUnary(Ctx &ctx, std::vector<std::string> &out) {
     out.push_back("sub");
     return true;
   }
-  return parsePrimary(ctx, out);
+  return parsePrimary(ctx, out, isString);
 }
 
-bool parseMul(Ctx &ctx, std::vector<std::string> &out) {
-  if (!parseUnary(ctx, out)) {
+bool parseMul(Ctx &ctx, std::vector<std::string> &out, bool &isString) {
+  bool leftIsString = false;
+  if (!parseUnary(ctx, out, leftIsString)) {
     return false;
   }
+  bool hadOp = false;
   while (peekType(ctx) == LexerToken::Asterisk || peekType(ctx) == LexerToken::Slash) {
     const bool isMul = peekType(ctx) == LexerToken::Asterisk;
     ++ctx.pos;
     std::vector<std::string> rhs;
-    if (!parseUnary(ctx, rhs)) {
+    bool rhsIsString = false;
+    if (!parseUnary(ctx, rhs, rhsIsString)) {
+      return false;
+    }
+    if (leftIsString || rhsIsString) {
+      ctx.logger->error("Arithmetic on strings.");
       return false;
     }
     // Stack discipline: left already pushed, push right, then combine as
     // left OP right (sub/div are not commutative).
     out.insert(out.end(), rhs.begin(), rhs.end());
     out.push_back(isMul ? "mul" : "div");
+    leftIsString = false;
+    hadOp = true;
   }
+  isString = hadOp ? false : leftIsString;
   return true;
 }
 
-bool parseAdd(Ctx &ctx, std::vector<std::string> &out) {
-  if (!parseMul(ctx, out)) {
+bool parseAdd(Ctx &ctx, std::vector<std::string> &out, bool &isString) {
+  bool leftIsString = false;
+  if (!parseMul(ctx, out, leftIsString)) {
     return false;
   }
   while (peekType(ctx) == LexerToken::Plus || peekType(ctx) == LexerToken::Dash) {
     const bool isAdd = peekType(ctx) == LexerToken::Plus;
     ++ctx.pos;
     std::vector<std::string> rhs;
-    if (!parseMul(ctx, rhs)) {
+    bool rhsIsString = false;
+    if (!parseMul(ctx, rhs, rhsIsString)) {
+      return false;
+    }
+    if (leftIsString || rhsIsString) {
+      ctx.logger->error("Arithmetic on strings.");
       return false;
     }
     out.insert(out.end(), rhs.begin(), rhs.end());
     out.push_back(isAdd ? "add" : "sub");
+    leftIsString = false;
   }
+  isString = leftIsString;
   return true;
 }
 
-bool parseExpr(Ctx &ctx, std::vector<std::string> &out) { return parseAdd(ctx, out); }
+bool parseExpr(Ctx &ctx, std::vector<std::string> &out, bool &isString) { return parseAdd(ctx, out, isString); }
 
 // Parses a single-comparison condition: AddExpr (cmpOp AddExpr). Emits the
 // left pushes followed by the right pushes and returns the jump mnemonic
@@ -321,7 +348,8 @@ bool parseExpr(Ctx &ctx, std::vector<std::string> &out) { return parseAdd(ctx, o
 // then-block runs on fallthrough. Anything beyond (bare truthiness, logic
 // operators, chained comparisons) is a clean compile error.
 bool parseCondition(Ctx &ctx, std::vector<std::string> &out, std::string &falseJump) {
-  if (!parseAdd(ctx, out)) {
+  bool leftIsString = false;
+  if (!parseAdd(ctx, out, leftIsString)) {
     return false;
   }
   std::string jump;
@@ -349,7 +377,8 @@ bool parseCondition(Ctx &ctx, std::vector<std::string> &out, std::string &falseJ
     return false;
   }
   ++ctx.pos;
-  if (!parseAdd(ctx, out)) {
+  bool rightIsString = false;
+  if (!parseAdd(ctx, out, rightIsString)) {
     return false;
   }
   falseJump = jump;
@@ -481,7 +510,8 @@ bool parseReturn(Ctx &ctx, std::vector<std::string> &out) {
     return false;
   }
   std::vector<std::string> value;
-  if (!parseExpr(ctx, value)) {
+  bool valueIsString = false;
+  if (!parseExpr(ctx, value, valueIsString)) {
     return false;
   }
   if (!expect(ctx, LexerToken::Semicolon, "';'")) {
@@ -520,7 +550,8 @@ bool parseStatement(Ctx &ctx, std::vector<std::string> &out) {
     if (peekType(ctx) == LexerToken::Assign) {
       ++ctx.pos;
       std::vector<std::string> init;
-      if (!parseExpr(ctx, init)) {
+      bool initIsString = false;
+      if (!parseExpr(ctx, init, initIsString)) {
         return false;
       }
       out.insert(out.end(), init.begin(), init.end());
@@ -538,7 +569,8 @@ bool parseStatement(Ctx &ctx, std::vector<std::string> &out) {
       }
       ctx.pos += 2;
       std::vector<std::string> rhs;
-      if (!parseExpr(ctx, rhs)) {
+      bool rhsIsString = false;
+      if (!parseExpr(ctx, rhs, rhsIsString)) {
         return false;
       }
       if (!expect(ctx, LexerToken::Semicolon, "';'")) {
@@ -557,7 +589,8 @@ bool parseStatement(Ctx &ctx, std::vector<std::string> &out) {
       return parseCallStmt(ctx, name, out);
     }
     std::vector<std::string> value;
-    if (!parseExpr(ctx, value)) {
+    bool valueIsString = false;
+    if (!parseExpr(ctx, value, valueIsString)) {
       return false;
     }
     if (!expect(ctx, LexerToken::Semicolon, "';'")) {
@@ -578,7 +611,7 @@ Compiler::Compiler(kern::ILogger *logger) : m_logger(logger != nullptr ? logger 
 }
 
 bool Compiler::compile(std::istream &sourceCode, std::ostream &asmCode) {
-  // Slice 5: ExternDecl* + FuncDecl* where each FuncDecl is
+  // Slice 6: ExternDecl* + FuncDecl* where each FuncDecl is
   // 'func' Ident ['(' [Ident (',' Ident)*] ')'] '{' Stmt* '}' and Stmt is
   // VarDecl | Assign | If (optional Else) | While | Return | ExprStmt.
   // Calls lower as expressions (left-to-right args, 'call' leaves the
@@ -591,6 +624,10 @@ bool Compiler::compile(std::istream &sourceCode, std::ostream &asmCode) {
   // collected before any body lowers, so forward references resolve.
   // Conditions stay single CmpExpr comparisons over arithmetic operands
   // (calls allowed); logic operators and anything else return false.
+  // String and float literals lower to pushs/pushf; ==/!= compare strings
+  // by value through je/jne. Arithmetic (+ - * / and unary minus) on a
+  // statically known string operand is a compile error; string values
+  // held in variables still fail at runtime.
   Lexer lexer(m_logger);
   lexer.addKeyword("func");
   lexer.addKeyword("extern");

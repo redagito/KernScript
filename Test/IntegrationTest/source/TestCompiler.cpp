@@ -528,3 +528,128 @@ TEST_CASE("Compiler rejects inconsistent extern use", "[integration][compiler]")
   std::stringstream asmCode;
   REQUIRE_FALSE(compiler->compile(input, asmCode));
 }
+
+TEST_CASE("Compiler prints string variable end-to-end", "[integration][compiler]") {
+  const std::string source = "extern println(x);\nfunc main {\n  var s = \"hello\";\n  println(s);\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE(compiler->compile(input, asmCode));
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+  REQUIRE(vm->callFunction("main"));
+  REQUIRE(recorder.text() == "hello\n");
+}
+
+TEST_CASE("Compiler compares strings by value end-to-end", "[integration][compiler]") {
+  const std::string source =
+      "extern println(x);\nfunc main {\n"
+      "  var s = \"hello\";\n"
+      "  if (s == \"hello\") {\n    println(1);\n  } else {\n    println(0);\n  }\n"
+      "  if (s == \"bye\") {\n    println(1);\n  } else {\n    println(0);\n  }\n"
+      "}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE(compiler->compile(input, asmCode));
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+  REQUIRE(vm->callFunction("main"));
+  REQUIRE(recorder.text() == "1\n0\n");
+}
+
+TEST_CASE("Compiler compares strings with not-equal end-to-end", "[integration][compiler]") {
+  const std::string source =
+      "extern println(x);\nfunc main {\n"
+      "  var s = \"hello\";\n"
+      "  if (s != \"bye\") {\n    println(2);\n  } else {\n    println(0);\n  }\n"
+      "  if (s != \"hello\") {\n    println(2);\n  } else {\n    println(0);\n  }\n"
+      "}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE(compiler->compile(input, asmCode));
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+  REQUIRE(vm->callFunction("main"));
+  REQUIRE(recorder.text() == "2\n0\n");
+}
+
+TEST_CASE("Compiler evaluates float arithmetic end-to-end", "[integration][compiler]") {
+  const std::string source =
+      "extern println(x);\nfunc main {\n  var f = 1.5 + 2.25;\n  println(f);\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE(compiler->compile(input, asmCode));
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+  REQUIRE(vm->callFunction("main"));
+  REQUIRE(recorder.text() == "3.75\n");
+}
+
+TEST_CASE("Compiler runs strings and floats goal end-to-end", "[integration][compiler]") {
+  const std::string source =
+      "extern println(x);\nfunc main {\n"
+      "  var s = \"hello\";\n"
+      "  println(s);\n"
+      "  if (s == \"hello\") {\n    println(1);\n  } else {\n    println(0);\n  }\n"
+      "  if (s != \"bye\") {\n    println(2);\n  }\n"
+      "  var f = 1.5 + 2.25;\n"
+      "  println(f);\n"
+      "}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE(compiler->compile(input, asmCode));
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+  REQUIRE(vm->callFunction("main"));
+  REQUIRE(recorder.text() == "hello\n1\n2\n3.75\n");
+}
+
+TEST_CASE("Compiler rejects string addition", "[integration][compiler]") {
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+
+  const std::string plusSource = "extern println(x);\nfunc main {\n  var s = \"a\" + \"b\";\n  println(s);\n}\n";
+  {
+    std::stringstream input(plusSource);
+    std::stringstream asmCode;
+    REQUIRE_FALSE(compiler->compile(input, asmCode));
+  }
+}
