@@ -14,3 +14,5 @@ endif ()
 # Cross-platform twin of ScriptGui above, built on FLTK. No system guard:
 # FLTK abstracts the native toolkit, so this builds on every platform.
 add_subdirectory (ScriptFltk)
+# Scripted Game of Life on FLTK. No system guard: cross-platform like ScriptFltk.
+add_subdirectory (ScriptLife)
