@@ -13,3 +13,4 @@ enable_testing ()
 
 add_subdirectory (Lib)
 add_subdirectory (Test)
+add_subdirectory (Samples)
