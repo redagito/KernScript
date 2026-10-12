@@ -16,3 +16,5 @@ endif ()
 add_subdirectory (ScriptFltk)
 # Scripted Game of Life on FLTK. No system guard: cross-platform like ScriptFltk.
 add_subdirectory (ScriptLife)
+# Script-filtered task board on FLTK. No system guard: cross-platform like ScriptLife.
+add_subdirectory (ScriptBoard)
