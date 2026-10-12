@@ -2871,3 +2871,120 @@ TEST_CASE("Extern return chaining still works", "[integration][vm][m5]")
     REQUIRE(testutil::runScript(source, "main", recorder));
     REQUIRE(recorder.text() == "35\n");
 }
+
+#ifdef KERNSCRIPT_PROFILING
+#include <sstream>
+#include <string>
+#include <unordered_map>
+
+namespace
+{
+
+/**
+ * \brief Reads dumpProfile rows into a mnemonic to count lookup.
+ *
+ * Skips the two header lines, then reads mnemonic, count and cycles per row,
+ * ignoring the share column so its formatting stays free.
+ */
+std::unordered_map<std::string, unsigned long long> parseProfileCounts(const std::string &text)
+{
+    std::unordered_map<std::string, unsigned long long> counts;
+    std::istringstream lines(text);
+    std::string line;
+    std::getline(lines, line);
+    std::getline(lines, line);
+    while (std::getline(lines, line))
+    {
+        std::istringstream row(line);
+        std::string mnemonic;
+        unsigned long long count = 0;
+        unsigned long long cycles = 0;
+        if (row >> mnemonic >> count >> cycles)
+        {
+            counts[mnemonic] = count;
+        }
+    }
+    return counts;
+}
+
+} // namespace
+
+TEST_CASE("Profiling counts each executed opcode", "[integration][vm][profiling]")
+{
+    const std::string source = wrap("pushi 1\ncalle println\nret");
+    std::stringstream byteCode;
+    REQUIRE(testutil::assemble(source, byteCode));
+
+    VirtualMachine vm(nullptr);
+    testutil::DiscardRecorder recorder;
+    testutil::registerHostFunctions(vm, recorder);
+    REQUIRE(vm.load(byteCode));
+
+    vm.resetProfile();
+    REQUIRE(vm.callFunction("main"));
+
+    std::ostringstream profile;
+    vm.dumpProfile(profile);
+    const auto counts = parseProfileCounts(profile.str());
+    REQUIRE(counts.at("pushi") == 1);
+    REQUIRE(counts.at("calle") == 1);
+    REQUIRE(counts.at("ret") == 1);
+    // One fetch/decode per executed instruction.
+    REQUIRE(counts.at("fetch") == 3);
+    REQUIRE(profile.str().find("3 iterations") != std::string::npos);
+    REQUIRE(profile.str().find("1 calls") != std::string::npos);
+}
+
+TEST_CASE("Profiling dump names the executed opcodes", "[integration][vm][profiling]")
+{
+    const std::string source = wrap("pushi 6\npushi 7\nmul\ncalle println\nret");
+    std::stringstream byteCode;
+    REQUIRE(testutil::assemble(source, byteCode));
+
+    VirtualMachine vm(nullptr);
+    testutil::DiscardRecorder recorder;
+    testutil::registerHostFunctions(vm, recorder);
+    REQUIRE(vm.load(byteCode));
+
+    vm.resetProfile();
+    REQUIRE(vm.callFunction("main"));
+
+    std::ostringstream profile;
+    vm.dumpProfile(profile);
+    const auto counts = parseProfileCounts(profile.str());
+    REQUIRE(counts.at("pushi") == 2);
+    REQUIRE(counts.at("mul") == 1);
+    REQUIRE(counts.at("calle") == 1);
+    REQUIRE(counts.at("ret") == 1);
+    REQUIRE(profile.str().find("profile:") != std::string::npos);
+    REQUIRE(profile.str().find("pushi") != std::string::npos);
+    REQUIRE(profile.str().find("mul") != std::string::npos);
+}
+
+TEST_CASE("Profiling reset zeroes the counters", "[integration][vm][profiling]")
+{
+    const std::string source = wrap("pushi 1\ncalle println\nret");
+    std::stringstream byteCode;
+    REQUIRE(testutil::assemble(source, byteCode));
+
+    VirtualMachine vm(nullptr);
+    testutil::DiscardRecorder recorder;
+    testutil::registerHostFunctions(vm, recorder);
+    REQUIRE(vm.load(byteCode));
+    REQUIRE(vm.callFunction("main"));
+
+    vm.resetProfile();
+    std::ostringstream profile;
+    vm.dumpProfile(profile);
+    REQUIRE(profile.str().find("pushi") == std::string::npos);
+    REQUIRE(profile.str().find("fetch") == std::string::npos);
+    REQUIRE(profile.str().find("0 iterations") != std::string::npos);
+    REQUIRE(profile.str().find("0 calls") != std::string::npos);
+
+    // Profiling resumes after the reset.
+    REQUIRE(vm.callFunction("main"));
+    std::ostringstream rerun;
+    vm.dumpProfile(rerun);
+    REQUIRE(parseProfileCounts(rerun.str()).at("pushi") == 1);
+}
+#endif

@@ -15,6 +15,12 @@
 #include "common/Instruction.h"
 #include "vm/Value.h"
 
+#ifdef KERNSCRIPT_PROFILING
+#include <array>
+#include <chrono>
+#include <iosfwd>
+#endif
+
 class VirtualMachine : public kern::IVirtualMachine
 {
 public:
@@ -54,6 +60,24 @@ public:
     void setReturnValue(double value);
     void setReturnValue(unsigned int value);
     void setReturnValue(bool value);
+
+#ifdef KERNSCRIPT_PROFILING
+    /**
+     * \brief Clears all profiling counters.
+     *
+     * Enabled builds only; the method does not exist otherwise.
+     */
+    void resetProfile();
+
+    /**
+     * \brief Prints per-opcode counts and cycle shares, hottest first.
+     *
+     * Rows cover executed opcodes plus a fetch/decode row, sorted by cycles
+     * descending with the raw opcode value breaking ties. Timings are
+     * RELATIVE (the probe clocks roughly double loop cost), never absolute.
+     */
+    void dumpProfile(std::ostream &output);
+#endif
 
 protected:
     /**
@@ -128,4 +152,59 @@ private:
     uint32_t m_maxTableEntries = 0;              /**< Most entries accepted in one byte code table. */
     uint64_t m_maxExecutionSteps = 0;            /**< Instruction budget per callFunction, reset on every call. */
     bool m_running = false;                      /**< Reentrancy guard for execute, reset on every exit. */
+
+#ifdef KERNSCRIPT_PROFILING
+    /**
+     * \brief One counter pair per profiling bucket.
+     *
+     * Cycles hold steady_clock nanoseconds: RELATIVE shares, never absolute
+     * production timings.
+     */
+    struct ProfileEntry
+    {
+        uint64_t count = 0;
+        uint64_t cycles = 0;
+    };
+
+    // One bucket per opcode, indexed by the raw opcode value. Hardcoded so the
+    // storage is a plain array; the asserts pin it to the Opcode enum and the
+    // mnemonic table, so adding an opcode without updating this fails loudly.
+    static constexpr size_t kProfileOpcodeCount = 38;
+    static_assert(static_cast<size_t>(Opcode::Jle) + 1 == kProfileOpcodeCount,
+                  "kProfileOpcodeCount must match the Opcode enum.");
+    static_assert(sizeof(instructions) / sizeof(instructions[0]) == kProfileOpcodeCount,
+                  "Opcode mnemonic table out of sync.");
+
+    /**
+     * \brief RAII timer attributing one iteration's body time to its opcode.
+     *
+     * The destructor stamps the end time, so returns and exception unwinds
+     * attribute alike. Unknown ids (corrupt bytecode) have no bucket; their
+     * body time joins the fetch/decode bucket instead of vanishing.
+     */
+    class BodyProbe
+    {
+    public:
+        BodyProbe(VirtualMachine &owner, size_t rawOpcode, bool knownOpcode,
+                  std::chrono::steady_clock::time_point bodyStart);
+        ~BodyProbe();
+
+        BodyProbe(const BodyProbe &) = delete;
+        BodyProbe &operator=(const BodyProbe &) = delete;
+
+    private:
+        VirtualMachine &m_owner;
+        size_t m_rawOpcode;
+        bool m_knownOpcode;
+        std::chrono::steady_clock::time_point m_bodyStart;
+    };
+
+    // Per-instance storage, no globals: the VM is single-threaded by its
+    // m_running reentrancy contract. Guarded, so when KERNSCRIPT_PROFILING is
+    // off the class layout is byte-identical to the uninstrumented VM.
+    std::array<ProfileEntry, kProfileOpcodeCount> m_profileEntries{};
+    ProfileEntry m_profileFetchDecode{};
+    uint64_t m_profileLoopIterations = 0;
+    uint64_t m_profileCallEntries = 0;
+#endif
 };
