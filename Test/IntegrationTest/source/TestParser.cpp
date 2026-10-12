@@ -505,3 +505,39 @@ TEST_CASE("Diagnostic uses the input name without an explicit source name", "[in
     REQUIRE_FALSE(logger.messages().empty());
     REQUIRE(logger.messages()[0] == "<input>:3:11: error: Use of undeclared variable.");
 }
+
+namespace
+{
+
+std::string makeNestedSource(int depth)
+{
+    std::string source = "extern println(x);\nfunc main() {\n";
+    for (int i = 0; i < depth; ++i)
+    {
+        source += "if (1 == 1) {\nprintln(1);\n} else {\n";
+    }
+    source += "println(0);\n";
+    for (int i = 0; i < depth; ++i)
+    {
+        source += "}\n";
+    }
+    return source + "}\n";
+}
+
+} // namespace
+
+TEST_CASE("Parser rejects deeply nested blocks with a clean error", "[integration][compiler][parser]")
+{
+    bool ok = true;
+    const std::vector<std::string> messages = compileWithName(makeNestedSource(400), "test.ks", ok);
+    REQUIRE_FALSE(ok);
+    REQUIRE_FALSE(messages.empty());
+    REQUIRE(messages[0].find("error: Nesting too deep.") != std::string::npos);
+}
+
+TEST_CASE("Parser still accepts moderate nesting", "[integration][compiler][parser]")
+{
+    bool ok = true;
+    const std::vector<std::string> messages = compileWithName(makeNestedSource(100), "test.ks", ok);
+    REQUIRE(ok);
+}

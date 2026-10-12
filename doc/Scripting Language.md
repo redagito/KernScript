@@ -76,7 +76,9 @@ consume what you do not need.
 
 Compile errors: duplicate or undeclared names, wrong argument count,
 mixed valued/void returns, void call used as a value, inconsistent extern
-use, bad literals, `return` outside a function. Runtime failures (wrong
+use, bad literals, `return` outside a function, or nesting past the depth
+bound (blocks and expressions share one bound, so runaway nesting fails
+clean instead of overflowing the host stack). Runtime failures (wrong
 operand types, division by zero, overflow, reading a never-assigned
 variable, missing host function, runaway execution past its bounded
 instruction count) fail the run.

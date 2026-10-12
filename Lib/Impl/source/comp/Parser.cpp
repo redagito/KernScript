@@ -92,6 +92,7 @@ struct AstBuild
     std::size_t pos = 0;
     kern::ILogger *logger = nullptr;
     std::string sourceName;
+    int depth = 0;
 };
 
 // Position of the current token, the last token at end of input, or 1:1
@@ -114,6 +115,45 @@ void astError(AstBuild &build, const std::string &message, const std::string &hi
 {
     reportError(build.logger, build.sourceName, astHere(build), message, hint);
 }
+
+// Bounded nesting: the parser walks user-controlled if/while blocks and
+// parenthesized/unary expressions with C++ recursion, so depth beyond this
+// limit fails with a clean diagnostic instead of overflowing the host stack
+// (observed crash between 300 and 400 nested blocks). One shared budget
+// covers blocks and expressions because lowering recurses on both.
+constexpr int kMaxNestingDepth = 128;
+
+class DepthGuard
+{
+public:
+    explicit DepthGuard(AstBuild &build) : m_build(build)
+    {
+        if (m_build.depth >= kMaxNestingDepth)
+        {
+            astError(m_build, "Nesting too deep.", "flatten the nesting or split it into smaller functions");
+            return;
+        }
+        ++m_build.depth;
+        m_armed = true;
+    }
+
+    ~DepthGuard()
+    {
+        if (m_armed)
+        {
+            --m_build.depth;
+        }
+    }
+
+    bool ok() const { return m_armed; }
+
+    DepthGuard(const DepthGuard &) = delete;
+    DepthGuard &operator=(const DepthGuard &) = delete;
+
+private:
+    AstBuild &m_build;
+    bool m_armed = false;
+};
 
 bool astAtEnd(const AstBuild &build) { return build.pos >= build.toks->size(); }
 
@@ -316,6 +356,11 @@ bool parseAstPrimary(AstBuild &build, std::unique_ptr<ast::Expr> &expr)
 
 bool parseAstUnary(AstBuild &build, std::unique_ptr<ast::Expr> &expr)
 {
+    DepthGuard guard(build);
+    if (!guard.ok())
+    {
+        return false;
+    }
     if (astPeek(build) == LexerToken::Dash)
     {
         const SrcPos opPos = astTok(build).pos;
@@ -488,7 +533,15 @@ bool parseAstOr(AstBuild &build, std::unique_ptr<ast::Expr> &expr)
     return true;
 }
 
-bool parseAstExpr(AstBuild &build, std::unique_ptr<ast::Expr> &expr) { return parseAstOr(build, expr); }
+bool parseAstExpr(AstBuild &build, std::unique_ptr<ast::Expr> &expr)
+{
+    DepthGuard guard(build);
+    if (!guard.ok())
+    {
+        return false;
+    }
+    return parseAstOr(build, expr);
+}
 
 bool parseAstBlock(AstBuild &build, std::vector<ast::Stmt> &body);
 bool parseAstStmt(AstBuild &build, ast::Stmt &stmt);
@@ -696,6 +749,11 @@ bool parseAstStmt(AstBuild &build, ast::Stmt &stmt)
 // Parses statements up to (but not consuming) the closing brace.
 bool parseAstBlock(AstBuild &build, std::vector<ast::Stmt> &body)
 {
+    DepthGuard guard(build);
+    if (!guard.ok())
+    {
+        return false;
+    }
     while (astPeek(build) != LexerToken::CloseBrace)
     {
         if (astAtEnd(build))
