@@ -145,6 +145,127 @@ TEST_CASE("Compiler rejects duplicate var declaration", "[integration][compiler]
   REQUIRE_FALSE(compiler->compile(input, asmCode));
 }
 
+TEST_CASE("Compiler takes then-branch when condition holds", "[integration][compiler]") {
+  const std::string source = "extern println(x);\nfunc main {\n  var m = 3;\n  if (m == 3) {\n    println(1);\n  } else {\n    println(0);\n  }\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE(compiler->compile(input, asmCode));
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+  REQUIRE(vm->callFunction("main"));
+  REQUIRE(recorder.text() == "1\n");
+}
+
+TEST_CASE("Compiler takes else-branch when condition fails", "[integration][compiler]") {
+  const std::string source = "extern println(x);\nfunc main {\n  var m = 4;\n  if (m == 3) {\n    println(1);\n  } else {\n    println(0);\n  }\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE(compiler->compile(input, asmCode));
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+  REQUIRE(vm->callFunction("main"));
+  REQUIRE(recorder.text() == "0\n");
+}
+
+TEST_CASE("Compiler supports not-equal and ordered comparisons", "[integration][compiler]") {
+  const std::string source =
+      "extern println(x);\nfunc main {\n"
+      "  var m = 4;\n"
+      "  if (m != 3) {\n    println(1);\n  } else {\n    println(0);\n  }\n"
+      "  if (m < 5) {\n    println(1);\n  } else {\n    println(0);\n  }\n"
+      "  if (m > 5) {\n    println(1);\n  } else {\n    println(0);\n  }\n"
+      "  if (m <= 4) {\n    println(1);\n  } else {\n    println(0);\n  }\n"
+      "  if (m >= 5) {\n    println(1);\n  } else {\n    println(0);\n  }\n"
+      "}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE(compiler->compile(input, asmCode));
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+  REQUIRE(vm->callFunction("main"));
+  REQUIRE(recorder.text() == "1\n1\n0\n1\n0\n");
+}
+
+TEST_CASE("Compiler runs then-block of if without else when taken", "[integration][compiler]") {
+  const std::string source = "extern println(x);\nfunc main {\n  var m = 3;\n  if (m == 3) {\n    println(1);\n  }\n  println(2);\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE(compiler->compile(input, asmCode));
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+  REQUIRE(vm->callFunction("main"));
+  REQUIRE(recorder.text() == "1\n2\n");
+}
+
+TEST_CASE("Compiler skips then-block of if without else when not taken", "[integration][compiler]") {
+  const std::string source = "extern println(x);\nfunc main {\n  var m = 4;\n  if (m == 3) {\n    println(1);\n  }\n  println(2);\n}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE(compiler->compile(input, asmCode));
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+  REQUIRE(vm->callFunction("main"));
+  REQUIRE(recorder.text() == "2\n");
+}
+
+TEST_CASE("Compiler rejects logic operators and while in this slice", "[integration][compiler]") {
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+
+  const std::string andSource = "extern println(x);\nfunc main {\n  var m = 3;\n  if (m == 3 and m < 5) {\n    println(1);\n  }\n}\n";
+  {
+    std::stringstream input(andSource);
+    std::stringstream asmCode;
+    REQUIRE_FALSE(compiler->compile(input, asmCode));
+  }
+
+  const std::string whileSource = "extern println(x);\nfunc main {\n  while (1 == 1) {\n    println(1);\n  }\n}\n";
+  {
+    std::stringstream input(whileSource);
+    std::stringstream asmCode;
+    REQUIRE_FALSE(compiler->compile(input, asmCode));
+  }
+}
+
 TEST_CASE("Compiler rejects call to undeclared extern", "[integration][compiler]") {
   const std::string source = "func main {\n  foo(42);\n}\n";
 

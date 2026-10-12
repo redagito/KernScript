@@ -24,6 +24,7 @@ struct Ctx {
   std::vector<std::string> varOrder;
   std::vector<std::string> body;
   std::string funcName;
+  unsigned int labelCounter = 0;
   kern::ILogger *logger = nullptr;
 };
 
@@ -77,6 +78,7 @@ bool emitPushUint(Ctx &ctx, const std::string &digits, std::vector<std::string> 
 }
 
 bool parseExpr(Ctx &ctx, std::vector<std::string> &out);
+bool parseStatement(Ctx &ctx, std::vector<std::string> &out);
 
 bool parsePrimary(Ctx &ctx, std::vector<std::string> &out) {
   if (atEnd(ctx)) {
@@ -179,7 +181,7 @@ bool parseExpr(Ctx &ctx, std::vector<std::string> &out) { return parseAdd(ctx, o
 
 // Parses an extern call statement, counting top-level arguments for the
 // arity check. Each argument expression pushes exactly one net value.
-bool parseCallStmtCounted(Ctx &ctx) {
+bool parseCallStmtCounted(Ctx &ctx, std::vector<std::string> &out) {
   const std::string callee = peekText(ctx);
   const auto it = ctx.externs.find(callee);
   if (it == ctx.externs.end()) {
@@ -217,12 +219,126 @@ bool parseCallStmtCounted(Ctx &ctx) {
   if (!expect(ctx, LexerToken::Semicolon, "';'")) {
     return false;
   }
-  ctx.body.insert(ctx.body.end(), args.begin(), args.end());
-  ctx.body.push_back("calle " + callee);
+  out.insert(out.end(), args.begin(), args.end());
+  out.push_back("calle " + callee);
   return true;
 }
 
-bool parseStatement(Ctx &ctx) {
+// Parses a single-comparison condition: AddExpr (cmpOp AddExpr). Emits the
+// left pushes followed by the right pushes and returns the jump mnemonic
+// that reaches the else/end label when the condition does NOT hold, so the
+// then-block runs on fallthrough. Anything beyond (bare truthiness, logic
+// operators, chained comparisons) is a clean compile error.
+bool parseCondition(Ctx &ctx, std::vector<std::string> &out, std::string &falseJump) {
+  if (!parseAdd(ctx, out)) {
+    return false;
+  }
+  std::string jump;
+  switch (peekType(ctx)) {
+  case LexerToken::Equal:
+    jump = "jne";
+    break;
+  case LexerToken::NotEqual:
+    jump = "je";
+    break;
+  case LexerToken::LessThan:
+    jump = "jge";
+    break;
+  case LexerToken::LessOrEqual:
+    jump = "jg";
+    break;
+  case LexerToken::GreaterThan:
+    jump = "jle";
+    break;
+  case LexerToken::GreaterOrEqual:
+    jump = "jl";
+    break;
+  default:
+    ctx.logger->error("Expected a comparison.");
+    return false;
+  }
+  ++ctx.pos;
+  if (!parseAdd(ctx, out)) {
+    return false;
+  }
+  falseJump = jump;
+  return true;
+}
+
+// Parses statements up to (but not consuming) the closing brace.
+bool parseStmtList(Ctx &ctx, std::vector<std::string> &out) {
+  while (peekType(ctx) != LexerToken::CloseBrace) {
+    if (atEnd(ctx)) {
+      ctx.logger->error("Expected '}}'.");
+      return false;
+    }
+    if (!parseStatement(ctx, out)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool parseIf(Ctx &ctx, std::vector<std::string> &out) {
+  ++ctx.pos; // consume 'if'
+  if (!expect(ctx, LexerToken::OpenParenthesis, "'('")) {
+    return false;
+  }
+  std::vector<std::string> cond;
+  std::string falseJump;
+  if (!parseCondition(ctx, cond, falseJump)) {
+    return false;
+  }
+  if (!expect(ctx, LexerToken::CloseParenthesis, "')'")) {
+    return false;
+  }
+  if (!expect(ctx, LexerToken::OpenBrace, "'{'")) {
+    return false;
+  }
+  std::vector<std::string> thenBody;
+  if (!parseStmtList(ctx, thenBody)) {
+    return false;
+  }
+  if (!expect(ctx, LexerToken::CloseBrace, "'}'")) {
+    return false;
+  }
+  bool hasElse = false;
+  std::vector<std::string> elseBody;
+  if (peekType(ctx) == LexerToken::Keyword && peekText(ctx) == "else") {
+    ++ctx.pos;
+    hasElse = true;
+    if (!expect(ctx, LexerToken::OpenBrace, "'{'")) {
+      return false;
+    }
+    if (!parseStmtList(ctx, elseBody)) {
+      return false;
+    }
+    if (!expect(ctx, LexerToken::CloseBrace, "'}'")) {
+      return false;
+    }
+  }
+  // Unique labels per if so nested and sequential ifs cannot collide.
+  const unsigned int id = ctx.labelCounter++;
+  const std::string elseLabel = "if_else_" + std::to_string(id);
+  const std::string endLabel = "if_end_" + std::to_string(id);
+  out.insert(out.end(), cond.begin(), cond.end());
+  out.push_back(falseJump + " " + (hasElse ? elseLabel : endLabel));
+  out.insert(out.end(), thenBody.begin(), thenBody.end());
+  if (hasElse) {
+    out.push_back("jmp " + endLabel);
+    out.push_back("label " + elseLabel);
+    out.insert(out.end(), elseBody.begin(), elseBody.end());
+    out.push_back("label " + endLabel);
+  } else {
+    out.push_back("label " + endLabel);
+  }
+  return true;
+}
+
+bool parseStatement(Ctx &ctx, std::vector<std::string> &out) {
+  if (peekType(ctx) == LexerToken::Keyword && peekText(ctx) == "if") {
+    return parseIf(ctx, out);
+  }
   if (peekType(ctx) == LexerToken::Keyword && peekText(ctx) == "var") {
     ++ctx.pos;
     if (peekType(ctx) != LexerToken::Identifier) {
@@ -243,8 +359,8 @@ bool parseStatement(Ctx &ctx) {
       if (!parseExpr(ctx, init)) {
         return false;
       }
-      ctx.body.insert(ctx.body.end(), init.begin(), init.end());
-      ctx.body.push_back("popv " + name);
+      out.insert(out.end(), init.begin(), init.end());
+      out.push_back("popv " + name);
     }
     return expect(ctx, LexerToken::Semicolon, "';'");
   }
@@ -264,11 +380,11 @@ bool parseStatement(Ctx &ctx) {
       if (!expect(ctx, LexerToken::Semicolon, "';'")) {
         return false;
       }
-      ctx.body.insert(ctx.body.end(), rhs.begin(), rhs.end());
-      ctx.body.push_back("popv " + name);
+      out.insert(out.end(), rhs.begin(), rhs.end());
+      out.push_back("popv " + name);
       return true;
     }
-    return parseCallStmtCounted(ctx);
+    return parseCallStmtCounted(ctx, out);
   }
   ctx.logger->error("Expected a statement.");
   return false;
@@ -281,15 +397,25 @@ Compiler::Compiler(kern::ILogger *logger) : m_logger(logger != nullptr ? logger 
 }
 
 bool Compiler::compile(std::istream &sourceCode, std::ostream &asmCode) {
-  // Slice 2: ExternDecl* + one 'func' Ident ['()'] '{' Stmt* '}' where Stmt is
-  // VarDecl | Assign | extern call with expression arguments. Expressions
-  // cover Add/Mul/Unary/Primary with parentheses, integer/float/string
-  // literals and variables. Emits 'var' decls plus stack-machine arithmetic
-  // (push left, push right, add/sub/mul/div as left OP right).
+  // Slice 3: ExternDecl* + one 'func' Ident ['()'] '{' Stmt* '}' where Stmt is
+  // VarDecl | Assign | extern call (as in slice 2) plus If with an optional
+  // Else. If conditions are single CmpExpr comparisons over arithmetic
+  // operands; they lower to left/right pushes plus the inverse conditional
+  // jump to a unique per-if else/end label. Logic operators, while and
+  // return remain compile errors.
   Lexer lexer(m_logger);
   lexer.addKeyword("func");
   lexer.addKeyword("extern");
   lexer.addKeyword("var");
+  lexer.addKeyword("if");
+  lexer.addKeyword("else");
+  // Reserved logic operators: recognized so misuse fails with a clean
+  // keyword error instead of parsing as an identifier. Slice 3 conditions
+  // are single comparisons only.
+  lexer.addKeyword("and");
+  lexer.addKeyword("or");
+  lexer.addKeyword("xor");
+  lexer.addKeyword("not");
 
   // Buffer significant tokens for one-token lookahead.
   std::vector<Tok> toks;
@@ -393,7 +519,7 @@ bool Compiler::compile(std::istream &sourceCode, std::ostream &asmCode) {
           m_logger->error("Expected '}}'.");
           return false;
         }
-        if (!parseStatement(ctx)) {
+        if (!parseStatement(ctx, ctx.body)) {
           return false;
         }
       }
