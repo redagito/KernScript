@@ -16,11 +16,51 @@
 
 #include <kern/Kern.h>
 
+// ScriptUi: script-built UI shell on FLTK. The host is deliberately dumb: it
+// owns the window, the named widget registry and the extern protocol, while
+// EVERYTHING visible (title, widgets, order, handlers) comes from the script
+// it runs. There are no widget names, counts, orders or demo behaviors
+// baked in below; the verify harness discovers all of them at runtime.
+//
+// Lifecycle contract (mirrored in the scripts/*.ks headers):
+//   1. The host loads one script file (argv choice, else ui.ks) and calls its
+//      nullary build() function FIRST. build() creates the widgets it needs,
+//      wires buttons with on_click, and should call set_title (otherwise the
+//      neutral default title stays).
+//   2. Extern protocol, with arities and value/statement use:
+//        create_label(name, text)      statement, arity 2: label under name.
+//        create_field(name)            statement, arity 1: text field under name.
+//        create_button(name, caption)  statement, arity 2: button under name.
+//        on_click(name, handler)       statement, arity 2: wire button to a
+//                                      script function BY NAME.
+//        get_text(name)                value, arity 1: read a field.
+//        set_text(name, text)          statement, arity 2: write a field.
+//        upper(text)                   value, arity 1: ASCII uppercase.
+//        set_title(text)               statement, arity 1: window title.
+//        check_equal(actual, expected) statement, arity 2: mismatch fails.
+//        quit()                        statement, arity 0: hide window, exit 0.
+//   3. Registry rules: names are unique across ALL kinds; a duplicate create,
+//      or get/set/on_click naming an unknown widget, returns false from the
+//      extern, which the VM turns into a RuntimeError (loud, never silent).
+//      A button whose handler names no script function fails loudly at click
+//      time (stderr plus a failed-dispatch flag --verify asserts).
+//   4. --verify hook convention (optional, nullary, script-side names only):
+//      verify_setup() runs once before the harness presses anything; after
+//      each REAL button press the harness calls check_<handler>, where
+//      <handler> is the handler name the SCRIPT wired at runtime. A missing
+//      hook only logs the field dump; a hook that throws (e.g. through
+//      check_equal) fails the run. --verify drives every script in
+//      kVerifyScripts through this loop, so a shell that only fits one demo
+//      cannot pass.
+
 namespace
 {
 
-constexpr const char *kWindowTitle = "KernScript Ui";
-constexpr const char *kScriptFile = "ui.ks";
+constexpr const char *kDefaultTitle = "KernScript";
+constexpr const char *kDefaultScript = "ui.ks";
+constexpr const char *kVerifyScripts[] = {"ui.ks", "notes.ks"};
+constexpr const char *kBogusHandler = "__verify_no_such_handler__";
+constexpr const char *kAbsentStem = "__verify_missing__";
 constexpr int kWinW = 400;
 constexpr int kWinH = 340;
 constexpr int kMargin = 20;
@@ -52,6 +92,8 @@ std::unordered_map<std::string, std::size_t> g_registry; // name -> g_widgets in
 std::unordered_map<std::string, std::string> g_handlers; // button name -> script func
 int g_nextY = kMargin;
 bool g_quitRequested = false;
+bool g_titleWasSet = false;
+bool g_lastDispatchOk = true;
 
 const WidgetEntry *findEntry(const std::string &name)
 {
@@ -61,6 +103,19 @@ const WidgetEntry *findEntry(const std::string &name)
         return nullptr;
     }
     return &g_widgets[found->second];
+}
+
+void resetShell()
+{
+    g_vm = nullptr;
+    g_window = nullptr;
+    g_widgets.clear();
+    g_registry.clear();
+    g_handlers.clear();
+    g_nextY = kMargin;
+    g_quitRequested = false;
+    g_titleWasSet = false;
+    g_lastDispatchOk = true;
 }
 
 int nextRowY()
@@ -179,6 +234,27 @@ bool doSetText(const std::string &name, const std::string &text)
     return true;
 }
 
+// Script-owned window title. An empty title is rejected (loud, like every
+// other statement-use extern validation); when the script never calls this,
+// the neutral default title stays.
+bool doSetTitle(const std::string &text)
+{
+    if (g_window == nullptr)
+    {
+        throw kern::RuntimeError("set_title before window exists");
+    }
+    if (text.empty())
+    {
+        return false;
+    }
+    g_window->copy_label(text.c_str());
+    g_window->redraw();
+    g_titleWasSet = true;
+    return true;
+}
+
+bool doCheckEqual(const std::string &actual, const std::string &expected) { return actual == expected; }
+
 std::string upperText(std::string text)
 {
     for (char &c : text)
@@ -200,8 +276,9 @@ void quitRequest()
     }
 }
 
-// Statement-use externs (create_*, on_click, set_text, quit): a false host
-// outcome becomes a false extern call, which the VM turns into RuntimeError.
+// Statement-use externs (create_*, on_click, set_text, set_title,
+// check_equal, quit): a false host outcome becomes a false extern call,
+// which the VM turns into RuntimeError.
 class CreateLabelExtern : public kern::IExternFunction
 {
 public:
@@ -343,6 +420,52 @@ public:
     }
 };
 
+class SetTitleExtern : public kern::IExternFunction
+{
+public:
+    unsigned int getArgumentCount() const override { return 1; }
+    bool call(kern::IVirtualMachine &vm) override
+    {
+        std::string text;
+        if (!vm.popParameter(text))
+        {
+            return false;
+        }
+        if (!doSetTitle(text))
+        {
+            return false;
+        }
+        vm.setReturnValue();
+        return true;
+    }
+};
+
+class CheckEqualExtern : public kern::IExternFunction
+{
+public:
+    unsigned int getArgumentCount() const override { return 2; }
+    bool call(kern::IVirtualMachine &vm) override
+    {
+        std::string expected;
+        if (!vm.popParameter(expected))
+        {
+            return false;
+        }
+        std::string actual;
+        if (!vm.popParameter(actual))
+        {
+            return false;
+        }
+        if (!doCheckEqual(actual, expected))
+        {
+            std::cerr << "check_equal mismatch: got '" << actual << "' want '" << expected << "'\n";
+            return false;
+        }
+        vm.setReturnValue();
+        return true;
+    }
+};
+
 class UpperExtern : public kern::IExternFunction
 {
 public:
@@ -379,6 +502,8 @@ void registerExterns(kern::IVirtualMachine &vm)
     vm.addFunction("on_click", new OnClickExtern());
     vm.addFunction("get_text", new GetTextExtern());
     vm.addFunction("set_text", new SetTextExtern());
+    vm.addFunction("set_title", new SetTitleExtern());
+    vm.addFunction("check_equal", new CheckEqualExtern());
     vm.addFunction("upper", new UpperExtern());
     vm.addFunction("quit", new QuitExtern());
 }
@@ -407,6 +532,7 @@ void onButton(Fl_Widget * /*widget*/, void *data)
     if (index >= g_widgets.size() || g_widgets[index].kind != Kind::Button)
     {
         std::cerr << "button callback without a known button\n";
+        g_lastDispatchOk = false;
         return;
     }
     const std::string &name = g_widgets[index].name;
@@ -414,17 +540,18 @@ void onButton(Fl_Widget * /*widget*/, void *data)
     if (found == g_handlers.end())
     {
         std::cerr << "button " << name << " has no handler\n";
+        g_lastDispatchOk = false;
         return;
     }
     std::cout << "button " << name << " -> " << found->second << '\n';
-    callByName(found->second);
+    g_lastDispatchOk = callByName(found->second);
 }
 
 // Scripts live as separate files under scripts/. Resolve robustly so
 // --verify works from the build tree: exe-dir/scripts wins, then
 // CWD/scripts, then CWD/Samples/ScriptUi/scripts (repo-root runs).
 // The winning candidate is reported; a miss is a loud error, never silent.
-bool resolveScriptPath(const char *file, std::string &out, int &candidate)
+bool resolveScriptPath(const std::string &file, std::string &out, int &candidate)
 {
     std::vector<std::string> tries;
     try
@@ -464,28 +591,28 @@ bool resolveScriptPath(const char *file, std::string &out, int &candidate)
     return false;
 }
 
-bool loadScript()
+bool loadScript(const std::string &file)
 {
     std::string path;
     int candidate = -1;
-    if (!resolveScriptPath(kScriptFile, path, candidate))
+    if (!resolveScriptPath(file, path, candidate))
     {
         return false;
     }
-    std::ifstream file(path, std::ios::binary);
-    if (!file)
+    std::ifstream script(path, std::ios::binary);
+    if (!script)
     {
         std::cerr << "cannot open script file: " << path << '\n';
         return false;
     }
     std::stringstream source;
-    source << file.rdbuf();
+    source << script.rdbuf();
 
     std::stringstream asmCode;
     {
         std::istringstream input(source.str());
         std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
-        if (!compiler->compile(input, asmCode, kScriptFile))
+        if (!compiler->compile(input, asmCode, file.c_str()))
         {
             std::cerr << "compile failed for " << path << '\n';
             return false;
@@ -518,32 +645,91 @@ bool loadScript()
     return true;
 }
 
-Fl_Input *fieldBox(const std::string &name)
+// Grow the window to fit whatever the script built: the shell assumes no
+// fixed widget count, so a tall stack gets a taller window instead of
+// clipping. A small build keeps the default size.
+void fitWindowHeight(Fl_Window &window)
 {
-    auto found = g_registry.find(name);
-    if (found == g_registry.end() || found->second >= g_widgets.size())
+    const int needed = g_nextY + kMargin;
+    if (needed > window.h())
     {
-        return nullptr;
+        window.size(window.w(), needed);
     }
-    if (g_widgets[found->second].kind != Kind::Field)
-    {
-        return nullptr;
-    }
-    return static_cast<Fl_Input *>(g_widgets[found->second].widget);
 }
 
-Fl_Button *pushButton(const std::string &name)
+Fl_Button *buttonWidget(const std::string &name)
 {
-    auto found = g_registry.find(name);
-    if (found == g_registry.end() || found->second >= g_widgets.size())
+    const WidgetEntry *entry = findEntry(name);
+    if (entry == nullptr || entry->kind != Kind::Button)
     {
         return nullptr;
     }
-    if (g_widgets[found->second].kind != Kind::Button)
+    return static_cast<Fl_Button *>(entry->widget);
+}
+
+// Button and field names in creation order: the whole verify harness drives
+// these runtime-discovered lists, never hardcoded names.
+std::vector<std::string> buttonNames()
+{
+    std::vector<std::string> names;
+    for (const WidgetEntry &entry : g_widgets)
     {
-        return nullptr;
+        if (entry.kind == Kind::Button)
+        {
+            names.push_back(entry.name);
+        }
     }
-    return static_cast<Fl_Button *>(g_widgets[found->second].widget);
+    return names;
+}
+
+std::vector<std::string> fieldNames()
+{
+    std::vector<std::string> names;
+    for (const WidgetEntry &entry : g_widgets)
+    {
+        if (entry.kind == Kind::Field)
+        {
+            names.push_back(entry.name);
+        }
+    }
+    return names;
+}
+
+void dumpFields()
+{
+    for (const std::string &name : fieldNames())
+    {
+        std::string value;
+        doGetText(name, value);
+        std::cout << "field " << name << "='" << value << "'\n";
+    }
+}
+
+// A name guaranteed absent from the live registry, for unknown-name probes.
+std::string absentName()
+{
+    std::string candidate = kAbsentStem;
+    while (findEntry(candidate) != nullptr)
+    {
+        candidate += "_x";
+    }
+    return candidate;
+}
+
+// Quote a runtime-discovered name for embedding in a probe script.
+std::string quoteForScript(const std::string &text)
+{
+    std::string quoted = "\"";
+    for (char c : text)
+    {
+        if (c == '\\' || c == '"')
+        {
+            quoted += '\\';
+        }
+        quoted += c;
+    }
+    quoted += '"';
+    return quoted;
 }
 
 // Runs a one-func probe script on a fresh VM sharing this registry and
@@ -601,15 +787,61 @@ bool probeExpectsFailure(const std::string &decls, const std::string &body, std:
     return false;
 }
 
-int runVerify()
+enum class HookResult
+{
+    Missing,
+    Ok,
+    Failed
+};
+
+// Optional script hooks (verify_setup, check_<handler>): absent is fine and
+// only logs; a throw fails the run. callFunction's false means "no such
+// function", so missing and failing stay distinguishable.
+HookResult callOptionalHook(const std::string &name)
+{
+    try
+    {
+        if (!g_vm->callFunction(name))
+        {
+            std::cout << "hook " << name << ": absent (generic drive only)\n";
+            return HookResult::Missing;
+        }
+    }
+    catch (const kern::RuntimeError &error)
+    {
+        std::cout << "hook " << name << " threw: " << error.what() << '\n';
+        return HookResult::Failed;
+    }
+    std::cout << "hook " << name << ": ok\n";
+    return HookResult::Ok;
+}
+
+// One script-agnostic verify pass: every name below is discovered at
+// runtime from the registry the script just built. Per-button behavior
+// assertions run through the script's own check_<handler> hooks (driven by
+// REAL button presses), so distinct scripts prove distinct behaviors while
+// the host stays name-free.
+int verifyPass(const std::string &file)
 {
     bool ok = true;
-    std::cout << "window title: " << (g_window->label() != nullptr ? g_window->label() : "(null)") << '\n';
+    std::cout << "--- verify " << file << " ---\n";
+    const char *rawLabel = g_window->label();
+    const std::string label = rawLabel != nullptr ? rawLabel : "";
+    std::cout << "window title: '" << label << "'\n";
     std::cout << "window shown: " << (g_window->shown() != 0 ? 1 : 0) << '\n';
-    if (g_window->label() == nullptr || std::string(g_window->label()).empty())
+    if (g_window->shown() == 0)
     {
-        std::cout << "MISMATCH: window title is empty\n";
+        std::cout << "MISMATCH: window is not visible\n";
         ok = false;
+    }
+    if (!g_titleWasSet || label.empty() || label == kDefaultTitle)
+    {
+        std::cout << "MISMATCH: window title was not set by the script\n";
+        ok = false;
+    }
+    else
+    {
+        std::cout << "title: script-set\n";
     }
 
     int labels = 0;
@@ -632,10 +864,29 @@ int runVerify()
     }
     std::cout << "widgets: " << g_widgets.size() << " (" << labels << " label, " << fields << " fields, " << buttons
               << " buttons)\n";
-    if (g_widgets.size() != 6 || labels != 1 || fields != 2 || buttons != 3)
+    for (const WidgetEntry &entry : g_widgets)
     {
-        std::cout << "MISMATCH: want 1 label, 2 fields, 3 buttons in creation order\n";
+        const char *kind = entry.kind == Kind::Label ? "label" : (entry.kind == Kind::Field ? "field" : "button");
+        std::cout << "  [" << kind << "] " << entry.name << '\n';
+    }
+    if (g_widgets.empty())
+    {
+        std::cout << "MISMATCH: script built no widgets\n";
         ok = false;
+    }
+    if (g_registry.size() != g_widgets.size())
+    {
+        std::cout << "MISMATCH: registry holds " << g_registry.size() << " names for " << g_widgets.size()
+                  << " widgets\n";
+        ok = false;
+    }
+    for (const auto &slot : g_registry)
+    {
+        if (slot.second >= g_widgets.size() || g_widgets[slot.second].name != slot.first)
+        {
+            std::cout << "MISMATCH: registry entry '" << slot.first << "' does not map back\n";
+            ok = false;
+        }
     }
     bool stacked = true;
     for (std::size_t i = 1; i < g_widgets.size(); ++i)
@@ -651,82 +902,70 @@ int runVerify()
         std::cout << "MISMATCH: widgets are not stacked in creation order\n";
         ok = false;
     }
-
-    const WidgetEntry *title = findEntry("title");
-    const WidgetEntry *input = findEntry("input");
-    const WidgetEntry *output = findEntry("output");
-    const WidgetEntry *close = findEntry("close");
-    const WidgetEntry *transform = findEntry("transform");
-    const WidgetEntry *clear = findEntry("clear");
-    if (title == nullptr || title->kind != Kind::Label || input == nullptr || input->kind != Kind::Field ||
-        output == nullptr || output->kind != Kind::Field || close == nullptr || close->kind != Kind::Button ||
-        transform == nullptr || transform->kind != Kind::Button || clear == nullptr || clear->kind != Kind::Button)
-    {
-        std::cout << "MISMATCH: named registry misses title/input/output/close/transform/clear\n";
-        ok = false;
-    }
-    else
-    {
-        std::cout << "registry: title/input/output/close/transform/clear all named\n";
-    }
-
-    Fl_Input *first = fieldBox("input");
-    Fl_Input *second = fieldBox("output");
-    Fl_Button *closeBtn = pushButton("close");
-    Fl_Button *transBtn = pushButton("transform");
-    Fl_Button *clearBtn = pushButton("clear");
-    if (first == nullptr || second == nullptr || closeBtn == nullptr || transBtn == nullptr || clearBtn == nullptr)
-    {
-        std::cout << "MISMATCH: named lookup does not map to widgets\n";
-        ok = false;
-    }
     if (!ok)
     {
-        std::cout << "VERIFY FAIL\n";
-        g_window->hide();
+        std::cout << "VERIFY FAIL " << file << '\n';
         return 1;
     }
 
-    // Real button callbacks from here on: preset, press, read back.
-    first->value("hello World 123");
-    std::cout << "preset input to 'hello World 123'\n";
-    transBtn->do_callback();
-    const std::string afterTransform = second->value() != nullptr ? second->value() : "";
-    std::cout << "after Transform: input='" << first->value() << "' output='" << afterTransform << "'\n";
-    if (afterTransform != "HELLO WORLD 123")
+    // Behavior first, through REAL button callbacks in creation order. The
+    // setup hook presets whatever fields THIS script owns; each check hook
+    // asserts what THIS script's handler just did.
+    if (callOptionalHook("verify_setup") == HookResult::Failed)
     {
-        std::cout << "MISMATCH transform: got '" << afterTransform << "' want 'HELLO WORLD 123'\n";
         ok = false;
     }
-    else
+    const std::vector<std::string> pressed = buttonNames();
+    if (pressed.empty())
     {
-        std::cout << "transform: output == upper(input)\n";
-    }
-
-    clearBtn->do_callback();
-    const std::string afterClear1 = first->value() != nullptr ? first->value() : "";
-    const std::string afterClear2 = second->value() != nullptr ? second->value() : "";
-    std::cout << "after Clear: input='" << afterClear1 << "' output='" << afterClear2 << "'\n";
-    if (!afterClear1.empty() || !afterClear2.empty())
-    {
-        std::cout << "MISMATCH clear: fields are not both empty\n";
+        std::cout << "MISMATCH: script wired no buttons to drive\n";
         ok = false;
     }
-    else
+    for (const std::string &name : pressed)
     {
-        std::cout << "clear: both fields empty\n";
+        Fl_Button *button = buttonWidget(name);
+        auto wired = g_handlers.find(name);
+        if (button == nullptr || wired == g_handlers.end())
+        {
+            std::cout << "MISMATCH: button '" << name << "' has no widget or handler\n";
+            ok = false;
+            continue;
+        }
+        button->do_callback();
+        if (!g_lastDispatchOk)
+        {
+            std::cout << "MISMATCH: press '" << name << "' did not dispatch to '" << wired->second << "'\n";
+            ok = false;
+            continue;
+        }
+        if (callOptionalHook("check_" + wired->second) == HookResult::Failed)
+        {
+            ok = false;
+        }
+        else
+        {
+            dumpFields();
+        }
+        if (g_quitRequested)
+        {
+            std::cout << "quit requested after '" << name << "'\n";
+        }
     }
 
     // Rejections: duplicate names and unknown names must surface as errors.
+    // The duplicate target is the first widget WHATEVER it is (the registry
+    // is shared across kinds); the unknown target is verified absent first.
     // Each probe runs through a real extern call, so a missing rejection
     // (extern returning true) shows up as a clean run instead of a throw.
-    const std::pair<const char *, const char *> rejections[] = {
-        {"extern create_label(name, text);", "create_label(\"input\", \"dup\");"},
-        {"extern create_field(name);", "create_field(\"input\");"},
-        {"extern create_button(name, caption);", "create_button(\"transform\", \"Dup\");"},
-        {"extern get_text(name);", "var x = get_text(\"nope\");"},
-        {"extern set_text(name, text);", "set_text(\"nope\", \"x\");"},
-        {"extern on_click(name, handler);", "on_click(\"nope\", \"on_transform\");"},
+    const std::string dupe = quoteForScript(g_widgets.front().name);
+    const std::string missing = quoteForScript(absentName());
+    const std::pair<const char *, std::string> rejections[] = {
+        {"extern create_label(name, text);", "create_label(" + dupe + ", \"dup\");"},
+        {"extern create_field(name);", "create_field(" + dupe + ");"},
+        {"extern create_button(name, caption);", "create_button(" + dupe + ", \"Dup\");"},
+        {"extern get_text(name);", "var x = get_text(" + missing + ");"},
+        {"extern set_text(name, text);", "set_text(" + missing + ", \"x\");"},
+        {"extern on_click(name, handler);", "on_click(" + missing + ", \"on_press\");"},
     };
     for (const auto &rejection : rejections)
     {
@@ -742,13 +981,41 @@ int runVerify()
         }
     }
 
-    // Close/quit path must end the app with code 0.
-    closeBtn->do_callback();
-    std::cout << "after Close: quit=" << (g_quitRequested ? 1 : 0) << " shown=" << (g_window->shown() != 0 ? 1 : 0)
-              << '\n';
+    // Unknown handler names dispatched at click time must fail loudly: rewire
+    // the first-created button (whatever it is) to a handler that does not
+    // exist, press the REAL button, and require a failed dispatch. The saved
+    // wiring is restored from the runtime copy afterwards.
+    const std::string firstButton = pressed.front();
+    const std::string savedHandler = g_handlers[firstButton];
+    if (!doOnClick(firstButton, kBogusHandler))
+    {
+        std::cout << "MISMATCH: cannot rewire '" << firstButton << "' for the unknown-handler probe\n";
+        ok = false;
+    }
+    else
+    {
+        buttonWidget(firstButton)->do_callback();
+        if (g_lastDispatchOk)
+        {
+            std::cout << "MISMATCH: unknown handler '" << kBogusHandler << "' dispatched quietly\n";
+            ok = false;
+        }
+        else
+        {
+            std::cout << "unknown handler failed loudly on '" << firstButton << "'\n";
+        }
+        if (!doOnClick(firstButton, savedHandler))
+        {
+            std::cout << "MISMATCH: cannot restore handler on '" << firstButton << "'\n";
+            ok = false;
+        }
+    }
+
+    // The sweep above must have ended the app through the script's own quit
+    // path (whatever button owns it) with code 0.
     if (!g_quitRequested)
     {
-        std::cout << "MISMATCH: Close did not request quit\n";
+        std::cout << "MISMATCH: button sweep never requested quit\n";
         ok = false;
     }
     else
@@ -756,9 +1023,40 @@ int runVerify()
         std::cout << "close: quit path exits 0\n";
     }
 
-    std::cout << (ok ? "VERIFY PASS\n" : "VERIFY FAIL\n");
-    g_window->hide();
+    std::cout << (ok ? "VERIFY PASS " : "VERIFY FAIL ") << file << '\n';
     return ok ? 0 : 1;
+}
+
+// One isolated pass per script: fresh VM, fresh registry, fresh window, so
+// scripts never see each other's widgets. The window is destroyed on return
+// (freeing its widgets) before the next pass resets the shell.
+int verifyScript(const std::string &file)
+{
+    resetShell();
+    std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+    registerExterns(*vm);
+    g_vm = vm.get();
+    if (!loadScript(file))
+    {
+        return 1;
+    }
+    Fl_Window window(kWinW, kWinH, kDefaultTitle);
+    g_window = &window;
+    window.begin();
+    if (!callByName("build"))
+    {
+        g_window = nullptr;
+        return 1;
+    }
+    window.end();
+    fitWindowHeight(window);
+    std::cout << "built " << g_widgets.size() << " widgets in creation order\n";
+    window.show();
+    const int code = verifyPass(file);
+    window.hide();
+    g_window = nullptr;
+    g_vm = nullptr;
+    return code;
 }
 
 } // namespace
@@ -770,25 +1068,57 @@ int main(int argc, char **argv)
         g_argv0 = argv[0];
     }
     bool verify = false;
+    std::string scriptArg;
     for (int i = 1; i < argc; ++i)
     {
         if (std::string(argv[i]) == "--verify")
         {
             verify = true;
         }
+        else if (scriptArg.empty())
+        {
+            scriptArg = argv[i];
+        }
     }
 
     try
     {
+        if (verify)
+        {
+            // Bare --verify proves generality: it drives EVERY sample script,
+            // each with a different shape and behavior, through real
+            // callbacks. An explicit "ScriptUi --verify other.ks" drives just
+            // that one script instead.
+            if (!scriptArg.empty())
+            {
+                std::cout << "verify: explicit script " << scriptArg << '\n';
+                return verifyScript(scriptArg);
+            }
+            int code = 0;
+            for (const char *file : kVerifyScripts)
+            {
+                if (verifyScript(file) != 0)
+                {
+                    code = 1;
+                }
+            }
+            std::cout << (code == 0 ? "ALL VERIFY PASS\n" : "VERIFY FAIL\n");
+            return code;
+        }
+
+        // Interactive: run ANY script the shell can load, defaulting to the
+        // button/fields demo. Usage: ScriptUi [script.ks]
+        resetShell();
         std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
         registerExterns(*vm);
         g_vm = vm.get();
-        if (!loadScript())
+        const std::string file = scriptArg.empty() ? kDefaultScript : scriptArg;
+        if (!loadScript(file))
         {
             return 1;
         }
 
-        Fl_Window window(kWinW, kWinH, kWindowTitle);
+        Fl_Window window(kWinW, kWinH, kDefaultTitle);
         g_window = &window;
         window.begin();
         if (!callByName("build"))
@@ -796,17 +1126,11 @@ int main(int argc, char **argv)
             return 1;
         }
         window.end();
+        fitWindowHeight(window);
         std::cout << "built " << g_widgets.size() << " widgets in creation order\n";
-
-        if (verify)
-        {
-            window.show();
-            const int code = runVerify();
-            return code;
-        }
         window.show(argc, argv);
         Fl::run();
-        return g_quitRequested ? 0 : 0;
+        return 0;
     }
     catch (const kern::RuntimeError &error)
     {

@@ -12,8 +12,8 @@ target_link_libraries (ScriptUi
 	PRIVATE fltk::fltk
 )
 
-# The UI script lives as a separate file loaded from disk at startup.
-# Copy it beside the exe so --verify works from the build tree; the host
+# The UI scripts live as separate files loaded from disk at startup.
+# Copy them beside the exe so --verify works from the build tree; the host
 # also falls back to CWD-relative candidates.
 add_custom_command (TARGET ScriptUi POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/scripts $<TARGET_FILE_DIR:ScriptUi>/scripts
