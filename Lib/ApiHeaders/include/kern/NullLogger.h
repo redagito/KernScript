@@ -10,7 +10,7 @@ namespace kern
  */
 class NullLogger : public ILogger
 {
-  protected:
+protected:
     void onError(const std::string &message) override;
 };
 

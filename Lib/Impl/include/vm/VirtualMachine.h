@@ -17,7 +17,7 @@
 
 class VirtualMachine : public kern::IVirtualMachine
 {
-  public:
+public:
     /**
      * \brief Constructs a virtual machine with default limits.
      * \param logger Receives diagnostics. A null pointer discards them.
@@ -55,7 +55,7 @@ class VirtualMachine : public kern::IVirtualMachine
     void setReturnValue(unsigned int value);
     void setReturnValue(bool value);
 
-  protected:
+protected:
     /**
      * \brief Byte code deserialization.
      *
@@ -82,7 +82,7 @@ class VirtualMachine : public kern::IVirtualMachine
      */
     bool popValue(Value &val);
 
-  private:
+private:
     /**
      * \brief Assembled function.
      */

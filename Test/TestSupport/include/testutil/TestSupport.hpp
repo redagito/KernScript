@@ -19,15 +19,15 @@ namespace testutil
  */
 class RecordingLogger : public kern::ILogger
 {
-  public:
+public:
     const std::vector<std::string> &messages() const;
 
     bool empty() const;
 
-  protected:
+protected:
     void onError(const std::string &message) override;
 
-  private:
+private:
     std::vector<std::string> m_messages;
 };
 
@@ -40,7 +40,7 @@ class RecordingLogger : public kern::ILogger
  */
 class OutputRecorder
 {
-  public:
+public:
     virtual ~OutputRecorder();
 
     virtual void print(const std::string &text) = 0;
@@ -53,7 +53,7 @@ class OutputRecorder
  */
 class StringRecorder : public OutputRecorder
 {
-  public:
+public:
     void print(const std::string &text) override;
     void println(const std::string &text) override;
     void log(const std::string &severity, const std::string &message) override;
@@ -62,7 +62,7 @@ class StringRecorder : public OutputRecorder
 
     void clear();
 
-  private:
+private:
     std::string m_text;
 };
 
@@ -73,7 +73,7 @@ class StringRecorder : public OutputRecorder
  */
 class DiscardRecorder : public OutputRecorder
 {
-  public:
+public:
     void print(const std::string &text) override;
     void println(const std::string &text) override;
     void log(const std::string &severity, const std::string &message) override;

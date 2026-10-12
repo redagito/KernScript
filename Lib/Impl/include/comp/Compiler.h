@@ -5,7 +5,7 @@
 
 class Compiler : public kern::ICompiler
 {
-  public:
+public:
     /**
      * \brief Constructs a compiler.
      * \param logger Receives diagnostics. A null pointer discards them.
@@ -38,6 +38,6 @@ class Compiler : public kern::ICompiler
 
     bool compile(std::istream &sourceCode, std::ostream &asmCode);
 
-  private:
+private:
     kern::ILogger *m_logger;
 };

@@ -14,7 +14,7 @@ namespace kern
  */
 class ICompiler
 {
-  public:
+public:
     /**
      * \brief Virtual destructor for interface class.
      */

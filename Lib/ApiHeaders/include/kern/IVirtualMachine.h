@@ -17,7 +17,7 @@ class IExternFunction; /**< Forward declare, needed for cyclic dependency. */
  */
 class IVirtualMachine
 {
-  public:
+public:
     /**
      * \brief Virtual destructor for interface class.
      */

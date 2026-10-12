@@ -102,14 +102,14 @@ void checkPopAllowed(kern::ILogger *logger, bool running, const std::vector<Valu
  */
 class CallGuard
 {
-  public:
+public:
     explicit CallGuard(bool &flag) : m_flag(flag) { m_flag = true; }
     ~CallGuard() { m_flag = false; }
 
     CallGuard(const CallGuard &) = delete;
     CallGuard &operator=(const CallGuard &) = delete;
 
-  private:
+private:
     bool &m_flag;
 };
 

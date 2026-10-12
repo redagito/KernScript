@@ -14,7 +14,7 @@
 
 class Assembler : public kern::IAssembler
 {
-  public:
+public:
     /**
      * \brief Constructs an assembler.
      * \param logger Receives diagnostics. A null pointer discards them.
@@ -23,7 +23,7 @@ class Assembler : public kern::IAssembler
 
     bool assemble(std::istream &asmCode, std::ostream &byteCode);
 
-  protected:
+protected:
     bool parseFunction(std::istream &stream);
     bool parseExternFunction(std::istream &stream);
     bool parseModule(std::istream &stream);
@@ -41,7 +41,7 @@ class Assembler : public kern::IAssembler
     bool serializeExternFunctions(std::ostream &stream) const;
     bool serializeFunctions(std::ostream &stream) const;
 
-  private:
+private:
     uint32_t addString(const std::string &str);
 
     /**

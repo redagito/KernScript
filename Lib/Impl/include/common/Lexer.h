@@ -13,7 +13,7 @@
  */
 class Lexer
 {
-  public:
+public:
     /**
      * \brief Constructs a lexer.
      * \param logger Receives diagnostics. A null pointer discards them.
@@ -49,7 +49,7 @@ class Lexer
     void ignoreNextLex();
     void ignoreNewLine(bool state);
 
-  protected:
+protected:
     bool isKeyword(const std::string &text) const;
 
     void lexSingleCharLexeme(std::istream &stream, LexerToken tokenType);
@@ -63,7 +63,7 @@ class Lexer
     void lexString(std::istream &stream);
     void lexComment(std::istream &stream);
 
-  private:
+private:
     std::unordered_set<std::string> m_keywords;      /**< Registered keywords. */
     std::string m_currentLexeme;                     /**< Currently parsed lexeme. */
     LexerToken m_currentToken = LexerToken::Invalid; /**< Current token. */

@@ -15,7 +15,7 @@ namespace kern
  */
 class RuntimeError : public std::runtime_error
 {
-  public:
+public:
     explicit RuntimeError(const std::string &message);
 };
 } // namespace kern

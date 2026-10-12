@@ -25,7 +25,7 @@ namespace kern
  */
 class ILogger
 {
-  public:
+public:
     virtual ~ILogger() = default;
 
     /**
@@ -36,7 +36,7 @@ class ILogger
         onError(fmt::format(format, std::forward<Args>(args)...));
     }
 
-  protected:
+protected:
     /**
      * \brief Receives an already formatted error message.
      *

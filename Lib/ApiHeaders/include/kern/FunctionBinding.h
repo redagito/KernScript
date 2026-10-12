@@ -20,7 +20,7 @@ template <typename ReturnType, typename... ArgumentTypes> class ExternFunction :
 
 template <typename ReturnType> class ExternFunction<ReturnType> : public IExternFunction
 {
-  public:
+public:
     ExternFunction(ReturnType (*function)(void)) : m_function(function)
     {
         // Empty
@@ -35,13 +35,13 @@ template <typename ReturnType> class ExternFunction<ReturnType> : public IExtern
         return true;
     }
 
-  private:
+private:
     ::std::function<ReturnType(void)> m_function;
 };
 
 template <> class ExternFunction<void> : public IExternFunction
 {
-  public:
+public:
     ExternFunction(void (*function)(void)) : m_function(function)
     {
         // Empty
@@ -56,13 +56,13 @@ template <> class ExternFunction<void> : public IExternFunction
         return true;
     }
 
-  private:
+private:
     ::std::function<void(void)> m_function;
 };
 
 template <typename ReturnType, typename ArgType0> class ExternFunction<ReturnType, ArgType0> : public IExternFunction
 {
-  public:
+public:
     ExternFunction(ReturnType (*function)(ArgType0)) : m_function(function)
     {
         // Empty
@@ -82,13 +82,13 @@ template <typename ReturnType, typename ArgType0> class ExternFunction<ReturnTyp
         return true;
     }
 
-  private:
+private:
     ::std::function<ReturnType(ArgType0)> m_function;
 };
 
 template <typename ArgType0> class ExternFunction<void, ArgType0> : public IExternFunction
 {
-  public:
+public:
     ExternFunction(void (*function)(ArgType0)) : m_function(function)
     {
         // Empty
@@ -108,14 +108,14 @@ template <typename ArgType0> class ExternFunction<void, ArgType0> : public IExte
         return true;
     }
 
-  private:
+private:
     ::std::function<void(ArgType0)> m_function;
 };
 
 template <typename ReturnType, typename ArgType0, typename ArgType1>
 class ExternFunction<ReturnType, ArgType0, ArgType1> : public IExternFunction
 {
-  public:
+public:
     ExternFunction(ReturnType (*function)(ArgType0, ArgType1)) : m_function(function)
     {
         // Empty
@@ -144,13 +144,13 @@ class ExternFunction<ReturnType, ArgType0, ArgType1> : public IExternFunction
         return true;
     }
 
-  private:
+private:
     ::std::function<ReturnType(ArgType0, ArgType1)> m_function;
 };
 
 template <typename ArgType0, typename ArgType1> class ExternFunction<void, ArgType0, ArgType1> : public IExternFunction
 {
-  public:
+public:
     ExternFunction(void (*function)(ArgType0, ArgType1)) : m_function(function)
     {
         // Empty
@@ -179,14 +179,14 @@ template <typename ArgType0, typename ArgType1> class ExternFunction<void, ArgTy
         return true;
     }
 
-  private:
+private:
     ::std::function<void(ArgType0, ArgType1)> m_function;
 };
 
 template <typename ReturnType, typename ArgType0, typename ArgType1, typename ArgType2>
 class ExternFunction<ReturnType, ArgType0, ArgType1, ArgType2> : public IExternFunction
 {
-  public:
+public:
     ExternFunction(ReturnType (*function)(ArgType0, ArgType1, ArgType2)) : m_function(function)
     {
         // Empty
@@ -218,14 +218,14 @@ class ExternFunction<ReturnType, ArgType0, ArgType1, ArgType2> : public IExternF
         return true;
     }
 
-  private:
+private:
     ::std::function<ReturnType(ArgType0, ArgType1, ArgType2)> m_function;
 };
 
 template <typename ArgType0, typename ArgType1, typename ArgType2>
 class ExternFunction<void, ArgType0, ArgType1, ArgType2> : public IExternFunction
 {
-  public:
+public:
     ExternFunction(void (*function)(ArgType0, ArgType1, ArgType2)) : m_function(function)
     {
         // Empty
@@ -257,14 +257,14 @@ class ExternFunction<void, ArgType0, ArgType1, ArgType2> : public IExternFunctio
         return true;
     }
 
-  private:
+private:
     ::std::function<void(ArgType0, ArgType1, ArgType2)> m_function;
 };
 
 template <typename ReturnType, typename ArgType0, typename ArgType1, typename ArgType2, typename ArgType3>
 class ExternFunction<ReturnType, ArgType0, ArgType1, ArgType2, ArgType3> : public IExternFunction
 {
-  public:
+public:
     ExternFunction(ReturnType (*function)(ArgType0, ArgType1, ArgType2, ArgType3)) : m_function(function)
     {
         // Empty
@@ -299,14 +299,14 @@ class ExternFunction<ReturnType, ArgType0, ArgType1, ArgType2, ArgType3> : publi
         return true;
     }
 
-  private:
+private:
     ::std::function<ReturnType(ArgType0, ArgType1, ArgType2, ArgType3)> m_function;
 };
 
 template <typename ArgType0, typename ArgType1, typename ArgType2, typename ArgType3>
 class ExternFunction<void, ArgType0, ArgType1, ArgType2, ArgType3> : public IExternFunction
 {
-  public:
+public:
     ExternFunction(void (*function)(ArgType0, ArgType1, ArgType2, ArgType3)) : m_function(function)
     {
         // Empty
@@ -341,7 +341,7 @@ class ExternFunction<void, ArgType0, ArgType1, ArgType2, ArgType3> : public IExt
         return true;
     }
 
-  private:
+private:
     ::std::function<void(ArgType0, ArgType1, ArgType2, ArgType3)> m_function;
 };
 

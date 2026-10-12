@@ -13,7 +13,7 @@ namespace kern
  */
 class IAssembler
 {
-  public:
+public:
     /**
      * \brief Virtual destructor for interface class.
      */

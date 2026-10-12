@@ -7,4 +7,5 @@ ColumnLimit: 120
 SortIncludes: true
 IndentWidth: 4
 BreakBeforeBraces: Allman
+AccessModifierOffset: -4
 ...

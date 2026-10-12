@@ -12,7 +12,7 @@ class IVirtualMachine;
  */
 class IExternFunction
 {
-  public:
+public:
     virtual ~IExternFunction() = default;
 
     /**

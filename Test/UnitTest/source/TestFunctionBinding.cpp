@@ -34,7 +34,7 @@ bool truthy() { return true; }
  */
 class FakeVM : public kern::IVirtualMachine
 {
-  public:
+public:
     std::vector<int> intParams;
     int intResult = 0;
     bool intReturned = false;

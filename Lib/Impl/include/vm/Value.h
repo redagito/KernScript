@@ -8,7 +8,7 @@
  */
 class Value
 {
-  public:
+public:
     enum class Type
     {
         Integer,
@@ -77,7 +77,7 @@ class Value
 
     bool operator>(const Value &rhs) const;
 
-  private:
+private:
     /**
      * \brief Converts to a double, used when the operand types differ.
      */

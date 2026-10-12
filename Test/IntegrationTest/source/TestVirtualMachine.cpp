@@ -1361,7 +1361,7 @@ TEST_CASE("callFunction is not reentrant", "[integration][vm][m11]")
     // must throw instead of resetting the stacks mid-execution.
     class ReentrantFunction : public kern::IExternFunction
     {
-      public:
+    public:
         bool call(kern::IVirtualMachine &vm) override
         {
             vm.callFunction("main");
@@ -2167,7 +2167,7 @@ TEST_CASE("Extern calling clearScripts throws", "[integration][vm][reentry]")
 {
     class ClearingFunction : public kern::IExternFunction
     {
-      public:
+    public:
         bool call(kern::IVirtualMachine &vm) override
         {
             vm.clearScripts();
@@ -2194,7 +2194,7 @@ TEST_CASE("Extern removing itself throws", "[integration][vm][reentry]")
 {
     class SelfRemovingFunction : public kern::IExternFunction
     {
-      public:
+    public:
         bool call(kern::IVirtualMachine &vm) override
         {
             vm.removeFunction("boom");
@@ -2263,7 +2263,7 @@ TEST_CASE("popParameter takes a double", "[integration][vm][pop]")
 {
     class DoubleTaker : public kern::IExternFunction
     {
-      public:
+    public:
         bool call(kern::IVirtualMachine &vm) override
         {
             double value = 0.0;
@@ -2298,7 +2298,7 @@ TEST_CASE("popParameter takes an unsigned integer", "[integration][vm][pop]")
 {
     class UnsignedTaker : public kern::IExternFunction
     {
-      public:
+    public:
         bool call(kern::IVirtualMachine &vm) override
         {
             unsigned int value = 0;
@@ -2333,7 +2333,7 @@ TEST_CASE("popParameter takes a bool", "[integration][vm][pop]")
 {
     class BoolTaker : public kern::IExternFunction
     {
-      public:
+    public:
         bool call(kern::IVirtualMachine &vm) override
         {
             bool value = false;
@@ -2528,7 +2528,7 @@ TEST_CASE("Failed reentrant addFunction leaves ownership with the caller", "[int
     };
     class AddingFunction : public kern::IExternFunction
     {
-      public:
+    public:
         explicit AddingFunction(int *c) : count(c) {}
         bool call(kern::IVirtualMachine &vm) override
         {
@@ -2552,7 +2552,7 @@ TEST_CASE("Failed reentrant addFunction leaves ownership with the caller", "[int
 
         unsigned int getArgumentCount() const override { return 0; }
 
-      private:
+    private:
         int *count = nullptr;
     };
 
@@ -2695,7 +2695,7 @@ TEST_CASE("popParameter below the frame throws", "[integration][vm]")
     // the local, so the second pop must throw instead of succeeding.
     class DoublePopper : public kern::IExternFunction
     {
-      public:
+    public:
         bool call(kern::IVirtualMachine &vm) override
         {
             int first = 0;
