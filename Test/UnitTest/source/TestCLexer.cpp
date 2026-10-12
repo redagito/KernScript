@@ -52,6 +52,16 @@ TEST_CASE("Lexer accepts underscores in identifiers", "[unit][Lexer]")
     REQUIRE(lexer.getLexeme() == "a_b_1");
 }
 
+TEST_CASE("Lexer accepts a leading underscore in identifiers", "[unit][Lexer]")
+{
+    std::istringstream stream("_cell0");
+    Lexer lexer(nullptr);
+
+    lexer.lex(stream);
+    REQUIRE(lexer.getToken() == LexerToken::Identifier);
+    REQUIRE(lexer.getLexeme() == "_cell0");
+}
+
 TEST_CASE("Lexer removes a keyword again", "[unit][Lexer]")
 {
     std::istringstream stream("keyword");

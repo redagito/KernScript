@@ -63,9 +63,10 @@ unsigned int Lexer::lex(std::istream &stream)
         // The next lexeme is a numeric type, either int or float
         lexNumeric(stream);
     }
-    else if (std::isalpha(narrow))
+    else if (std::isalpha(narrow) || next == '_')
     {
-        // Either identifier or keyword
+        // Either identifier or keyword; a leading underscore is legal,
+        // matching the documented [A-Za-z_][A-Za-z0-9_]* rule.
         lexIdentifierOrKeyword(stream);
     }
     else
@@ -312,7 +313,7 @@ void Lexer::lexNumeric(std::istream &stream)
 
 void Lexer::lexIdentifierOrKeyword(std::istream &stream)
 {
-    // Already checked for leading alphabetic character
+    // Already checked for a leading alphabetic character or underscore
     // Valid characters in a, identifier are alphabetic, numeric and underscore
     while (std::isalnum(stream.peek()) || stream.peek() == '_')
     {
