@@ -22,3 +22,5 @@ add_subdirectory (ScriptBoard)
 add_subdirectory (ScriptSheet)
 # Eliza-style scripted therapist on FLTK. No system guard: cross-platform like ScriptSheet.
 add_subdirectory (ScriptShrink)
+# Script-built UI on FLTK. No system guard: cross-platform like ScriptShrink.
+add_subdirectory (ScriptUi)
