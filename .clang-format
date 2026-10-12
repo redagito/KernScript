@@ -5,4 +5,6 @@ Language: Cpp
 Standard: Latest
 ColumnLimit: 120
 SortIncludes: true
+IndentWidth: 4
+BreakBeforeBraces: Allman
 ...

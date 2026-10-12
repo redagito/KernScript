@@ -22,7 +22,8 @@ kern::ILogger *nullLogger();
  *
  * Holds no state, so a single shared instance is used everywhere.
  */
-class Logger : public kern::ILogger {
-protected:
-  void onError(const std::string &message) override;
+class Logger : public kern::ILogger
+{
+  protected:
+    void onError(const std::string &message) override;
 };

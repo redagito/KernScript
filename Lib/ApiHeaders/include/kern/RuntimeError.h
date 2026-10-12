@@ -3,7 +3,8 @@
 #include <stdexcept>
 #include <string>
 
-namespace kern {
+namespace kern
+{
 
 /**
  * \brief Error during script execution.
@@ -12,8 +13,9 @@ namespace kern {
  * stack underflow, a type mismatch or division by zero. Normal termination
  * through ret or exit does not throw.
  */
-class RuntimeError : public std::runtime_error {
-public:
-  explicit RuntimeError(const std::string &message);
+class RuntimeError : public std::runtime_error
+{
+  public:
+    explicit RuntimeError(const std::string &message);
 };
 } // namespace kern

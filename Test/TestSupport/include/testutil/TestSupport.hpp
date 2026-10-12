@@ -7,7 +7,8 @@
 #include <kern/ILogger.h>
 #include <kern/Kern.h>
 
-namespace testutil {
+namespace testutil
+{
 
 /**
  * \brief Logger that records every message it receives.
@@ -16,17 +17,18 @@ namespace testutil {
  * depending on message wording. Error paths are asserted by exception type,
  * this class only proves that a diagnostic arrived.
  */
-class RecordingLogger : public kern::ILogger {
-public:
-  const std::vector<std::string> &messages() const;
+class RecordingLogger : public kern::ILogger
+{
+  public:
+    const std::vector<std::string> &messages() const;
 
-  bool empty() const;
+    bool empty() const;
 
-protected:
-  void onError(const std::string &message) override;
+  protected:
+    void onError(const std::string &message) override;
 
-private:
-  std::vector<std::string> m_messages;
+  private:
+    std::vector<std::string> m_messages;
 };
 
 /**
@@ -36,30 +38,32 @@ private:
  * "prints" arrives here. Tests assert on this sink instead of scraping the
  * standard streams.
  */
-class OutputRecorder {
-public:
-  virtual ~OutputRecorder();
+class OutputRecorder
+{
+  public:
+    virtual ~OutputRecorder();
 
-  virtual void print(const std::string &text) = 0;
-  virtual void println(const std::string &text) = 0;
-  virtual void log(const std::string &severity, const std::string &message) = 0;
+    virtual void print(const std::string &text) = 0;
+    virtual void println(const std::string &text) = 0;
+    virtual void log(const std::string &severity, const std::string &message) = 0;
 };
 
 /**
  * \brief Records script output into a string.
  */
-class StringRecorder : public OutputRecorder {
-public:
-  void print(const std::string &text) override;
-  void println(const std::string &text) override;
-  void log(const std::string &severity, const std::string &message) override;
+class StringRecorder : public OutputRecorder
+{
+  public:
+    void print(const std::string &text) override;
+    void println(const std::string &text) override;
+    void log(const std::string &severity, const std::string &message) override;
 
-  const std::string &text() const;
+    const std::string &text() const;
 
-  void clear();
+    void clear();
 
-private:
-  std::string m_text;
+  private:
+    std::string m_text;
 };
 
 /**
@@ -67,11 +71,12 @@ private:
  *
  * Used by the helper overloads where only success or failure is interesting.
  */
-class DiscardRecorder : public OutputRecorder {
-public:
-  void print(const std::string &text) override;
-  void println(const std::string &text) override;
-  void log(const std::string &severity, const std::string &message) override;
+class DiscardRecorder : public OutputRecorder
+{
+  public:
+    void print(const std::string &text) override;
+    void println(const std::string &text) override;
+    void log(const std::string &severity, const std::string &message) override;
 };
 
 /**

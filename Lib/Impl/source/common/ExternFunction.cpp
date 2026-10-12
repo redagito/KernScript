@@ -2,46 +2,52 @@
 
 #include "common/Deserialize.h"
 
-bool serialize(const ExternFunction &externFunction, std::ostream &stream) {
-  // Sanity checks
-  if (externFunction.name.empty()) {
-    return false;
-  }
+bool serialize(const ExternFunction &externFunction, std::ostream &stream)
+{
+    // Sanity checks
+    if (externFunction.name.empty())
+    {
+        return false;
+    }
 
-  // Write name
-  uint32_t length = static_cast<uint32_t>(externFunction.name.length());
-  stream.write((char *)&length, sizeof(length));
-  stream.write((char *)externFunction.name.data(), length);
+    // Write name
+    uint32_t length = static_cast<uint32_t>(externFunction.name.length());
+    stream.write((char *)&length, sizeof(length));
+    stream.write((char *)externFunction.name.data(), length);
 
-  // Write argument count
-  stream.write((char *)&externFunction.argCount, sizeof(externFunction.argCount));
+    // Write argument count
+    stream.write((char *)&externFunction.argCount, sizeof(externFunction.argCount));
 
-  // Return stream state
-  return stream.good();
+    // Return stream state
+    return stream.good();
 }
 
-bool deserialize(std::istream &stream, ExternFunction &externFunction, size_t maxNameLength) {
-  // Function name
-  std::string name;
-  if (!deserialize(stream, name, maxNameLength)) {
-    return false;
-  }
+bool deserialize(std::istream &stream, ExternFunction &externFunction, size_t maxNameLength)
+{
+    // Function name
+    std::string name;
+    if (!deserialize(stream, name, maxNameLength))
+    {
+        return false;
+    }
 
-  // Empty names are never emitted, matching serialize(), so one on the wire
-  // is corrupt input.
-  if (name.empty()) {
-    return false;
-  }
+    // Empty names are never emitted, matching serialize(), so one on the wire
+    // is corrupt input.
+    if (name.empty())
+    {
+        return false;
+    }
 
-  // Argument count
-  uint8_t argCount;
-  if (!deserialize(stream, argCount)) {
-    return false;
-  }
+    // Argument count
+    uint8_t argCount;
+    if (!deserialize(stream, argCount))
+    {
+        return false;
+    }
 
-  // Write data to actual target
-  externFunction.name = std::move(name);
-  externFunction.argCount = argCount;
+    // Write data to actual target
+    externFunction.name = std::move(name);
+    externFunction.argCount = argCount;
 
-  return true;
+    return true;
 }

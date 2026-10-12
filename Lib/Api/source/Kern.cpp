@@ -6,7 +6,8 @@
 #include "logging/Logger.h"
 #include "vm/VirtualMachine.h"
 
-namespace {
+namespace
+{
 
 /**
  * \brief Returns the shared logger used when no logger is supplied.
@@ -14,9 +15,10 @@ namespace {
  * Logger holds no state, so one instance is enough. It is a function local
  * static to avoid depending on static initialization order.
  */
-Logger &defaultLogger() {
-  static Logger logger;
-  return logger;
+Logger &defaultLogger()
+{
+    static Logger logger;
+    return logger;
 }
 } // namespace
 
@@ -32,12 +34,14 @@ kern::IVirtualMachine *kern::createVirtualMachine() { return createVirtualMachin
 
 kern::IVirtualMachine *kern::createVirtualMachine(kern::ILogger *logger) { return new VirtualMachine(logger); }
 
-kern::IVirtualMachine *kern::createVirtualMachine(kern::ILogger *logger, kern::VMConfig config) {
-  return new VirtualMachine(logger, config);
+kern::IVirtualMachine *kern::createVirtualMachine(kern::ILogger *logger, kern::VMConfig config)
+{
+    return new VirtualMachine(logger, config);
 }
 
-kern::IVirtualMachine *kern::createVirtualMachine(kern::VMConfig config) {
-  return createVirtualMachine(&defaultLogger(), config);
+kern::IVirtualMachine *kern::createVirtualMachine(kern::VMConfig config)
+{
+    return createVirtualMachine(&defaultLogger(), config);
 }
 
 unsigned int kern::getMajorVersion() { return majorVersion; }

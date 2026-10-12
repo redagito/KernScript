@@ -27,25 +27,28 @@
  * scanning top-level declarations and classifying valued/void returns.
  */
 
-struct Tok {
-  LexerToken type = LexerToken::Invalid;
-  std::string text;
+struct Tok
+{
+    LexerToken type = LexerToken::Invalid;
+    std::string text;
 };
 
-struct FuncInfo {
-  std::string name;
-  std::vector<std::string> params;
-  std::size_t bodyBegin = 0;
-  std::size_t bodyEnd = 0;
-  bool hasValuedReturn = false;
-  bool hasBareReturn = false;
+struct FuncInfo
+{
+    std::string name;
+    std::vector<std::string> params;
+    std::size_t bodyBegin = 0;
+    std::size_t bodyEnd = 0;
+    bool hasValuedReturn = false;
+    bool hasBareReturn = false;
 };
 
-struct Program {
-  std::map<std::string, unsigned int> externs;
-  std::vector<std::pair<std::string, unsigned int>> externOrder;
-  std::vector<FuncInfo> funcOrder;
-  std::map<std::string, FuncInfo> funcs;
+struct Program
+{
+    std::map<std::string, unsigned int> externs;
+    std::vector<std::pair<std::string, unsigned int>> externOrder;
+    std::vector<FuncInfo> funcOrder;
+    std::map<std::string, FuncInfo> funcs;
 };
 
 bool tokenize(std::istream &sourceCode, kern::ILogger *logger, std::vector<Tok> &toks);
@@ -53,22 +56,23 @@ bool topAtEnd(std::size_t pos, const std::vector<Tok> &toks);
 LexerToken topPeek(std::size_t pos, std::size_t off, const std::vector<Tok> &toks);
 bool parseProgram(const std::vector<Tok> &toks, kern::ILogger *logger, Program &program);
 
-struct Ctx {
-  const std::vector<Tok> *toks = nullptr;
-  std::size_t pos = 0;
-  std::size_t end = 0;
-  const std::map<std::string, unsigned int> *externs = nullptr;
-  const std::map<std::string, FuncInfo> *funcs = nullptr;
-  std::map<std::string, int> *externUse = nullptr; // 1 = value, 2 = statement
-  std::map<std::string, unsigned int> vars;
-  std::vector<std::string> paramOrder;
-  std::vector<std::string> varOrder;
-  std::string retTemp;
-  std::vector<std::string> body;
-  bool funcValued = false;
-  bool funcHasBare = false;
-  unsigned int labelCounter = 0;
-  kern::ILogger *logger = nullptr;
+struct Ctx
+{
+    const std::vector<Tok> *toks = nullptr;
+    std::size_t pos = 0;
+    std::size_t end = 0;
+    const std::map<std::string, unsigned int> *externs = nullptr;
+    const std::map<std::string, FuncInfo> *funcs = nullptr;
+    std::map<std::string, int> *externUse = nullptr; // 1 = value, 2 = statement
+    std::map<std::string, unsigned int> vars;
+    std::vector<std::string> paramOrder;
+    std::vector<std::string> varOrder;
+    std::string retTemp;
+    std::vector<std::string> body;
+    bool funcValued = false;
+    bool funcHasBare = false;
+    unsigned int labelCounter = 0;
+    kern::ILogger *logger = nullptr;
 };
 
 bool atEnd(const Ctx &ctx);

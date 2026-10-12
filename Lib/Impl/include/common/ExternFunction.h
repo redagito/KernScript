@@ -8,9 +8,10 @@
 /**
  * \brief Represents an assembled extern function.
  */
-struct ExternFunction {
-  std::string name;     /**< Extern function name. */
-  uint8_t argCount = 0; /**< Expected argument count. */
+struct ExternFunction
+{
+    std::string name;     /**< Extern function name. */
+    uint8_t argCount = 0; /**< Expected argument count. */
 };
 
 /**

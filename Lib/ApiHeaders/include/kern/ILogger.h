@@ -4,7 +4,8 @@
 
 #include <fmt/format.h>
 
-namespace kern {
+namespace kern
+{
 
 /**
  * \brief Interface for receiving diagnostics from the library.
@@ -22,29 +23,31 @@ namespace kern {
  * passed to. Passing a null pointer selects the null logger, which discards
  * everything.
  */
-class ILogger {
-public:
-  virtual ~ILogger() = default;
+class ILogger
+{
+  public:
+    virtual ~ILogger() = default;
 
-  /**
-   * \brief Logs a formatted error message.
-   */
-  template <typename... Args> void error(fmt::format_string<Args...> format, Args &&...args) {
-    onError(fmt::format(format, std::forward<Args>(args)...));
-  }
+    /**
+     * \brief Logs a formatted error message.
+     */
+    template <typename... Args> void error(fmt::format_string<Args...> format, Args &&...args)
+    {
+        onError(fmt::format(format, std::forward<Args>(args)...));
+    }
 
-protected:
-  /**
-   * \brief Receives an already formatted error message.
-   *
-   * Implement this instead of error(). The formatting entry point is not
-   * virtual so that every implementation goes through fmt.
-   *
-   * One pure virtual per level. A new level adds another one, which is
-   * intentionally a breaking change: it forces every implementation to decide
-   * what to do with the new level instead of silently routing it into an
-   * existing one.
-   */
-  virtual void onError(const std::string &message) = 0;
+  protected:
+    /**
+     * \brief Receives an already formatted error message.
+     *
+     * Implement this instead of error(). The formatting entry point is not
+     * virtual so that every implementation goes through fmt.
+     *
+     * One pure virtual per level. A new level adds another one, which is
+     * intentionally a breaking change: it forces every implementation to decide
+     * what to do with the new level instead of silently routing it into an
+     * existing one.
+     */
+    virtual void onError(const std::string &message) = 0;
 };
 } // namespace kern

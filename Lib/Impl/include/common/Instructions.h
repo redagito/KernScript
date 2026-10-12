@@ -3,66 +3,68 @@
 #include <cstdint>
 #include <string>
 
-enum class Opcode {
-  // System
-  Nop = 0, /**< No operation. */
-  Break,   /**< Breakpoint, for debugging. */
-  Exit,    /**< Exit operation, immediately ends script. */
+enum class Opcode
+{
+    // System
+    Nop = 0, /**< No operation. */
+    Break,   /**< Breakpoint, for debugging. */
+    Exit,    /**< Exit operation, immediately ends script. */
 
-  // Data management
-  Movv, /**< Move variable to variable. */
-  Movi, /**< Move integer to variable. */
-  Movf, /**< Move float to variable. */
-  Movs, /**< Move string to variable. */
+    // Data management
+    Movv, /**< Move variable to variable. */
+    Movi, /**< Move integer to variable. */
+    Movf, /**< Move float to variable. */
+    Movs, /**< Move string to variable. */
 
-  // Runtime stack manipulation
-  Pushv, /**< Push value to stack. */
-  Pushi, /**< Push integer constant to stack. */
-  Pushu, /**< Push unsigned integer constant to stack. */
-  Pushf, /**< Push float constant to stack. */
-  Pushs, /**< Push string constant to stack. */
-  Pop,   /**< Pop value from stack. */
-  Popv,  /**< Pop value from stack into variable. */
+    // Runtime stack manipulation
+    Pushv, /**< Push value to stack. */
+    Pushi, /**< Push integer constant to stack. */
+    Pushu, /**< Push unsigned integer constant to stack. */
+    Pushf, /**< Push float constant to stack. */
+    Pushs, /**< Push string constant to stack. */
+    Pop,   /**< Pop value from stack. */
+    Popv,  /**< Pop value from stack into variable. */
 
-  // Function calling
-  Call,  /**< Call script function. */
-  Calle, /**< Call extern function. */
-  Ret,   /**< Return from script function without return value. */
-  Retv,  /**< Return from script function with variable as return value. */
-  Reti,  /**< Return from script function with integer as return value. */
-  Retf,  /**< Return from script function with float return value. */
-  Rets,  /**< Return from script function with string return value. */
+    // Function calling
+    Call,  /**< Call script function. */
+    Calle, /**< Call extern function. */
+    Ret,   /**< Return from script function without return value. */
+    Retv,  /**< Return from script function with variable as return value. */
+    Reti,  /**< Return from script function with integer as return value. */
+    Retf,  /**< Return from script function with float return value. */
+    Rets,  /**< Return from script function with string return value. */
 
-  // Arithmetic operations
-  Add, /**< Add. */
-  Sub, /**< Subtract. */
-  Mul, /**< Multiply. */
-  Div, /**< Divide. */
-  Inc, /**< Increment. */
-  Dec, /**< Decrement. */
+    // Arithmetic operations
+    Add, /**< Add. */
+    Sub, /**< Subtract. */
+    Mul, /**< Multiply. */
+    Div, /**< Divide. */
+    Inc, /**< Increment. */
+    Dec, /**< Decrement. */
 
-  // Logical operations
-  And, /**< Logical AND. */
-  Or,  /**< Logical OR. */
-  Not, /**< Logical NOT. */
-  Xor, /**< Logical XOR. */
+    // Logical operations
+    And, /**< Logical AND. */
+    Or,  /**< Logical OR. */
+    Not, /**< Logical NOT. */
+    Xor, /**< Logical XOR. */
 
-  // Flow control
-  Jmp, /**< Unconditional jump. */
-  Je,  /**< Jump if equal. */
-  Jne, /**< Jump if not equal. */
-  Jg,  /**< Jump if greater. */
-  Jge, /**< Jump if greater or equal. */
-  Jl,  /**< Jump if less. */
-  Jle  /**< Jump if less or equal. */
+    // Flow control
+    Jmp, /**< Unconditional jump. */
+    Je,  /**< Jump if equal. */
+    Jne, /**< Jump if not equal. */
+    Jg,  /**< Jump if greater. */
+    Jge, /**< Jump if greater or equal. */
+    Jl,  /**< Jump if less. */
+    Jle  /**< Jump if less or equal. */
 };
 
 /**
  * \brief Provides instruction specific information for id based lookup.
  */
-struct InstructionLookup {
-  std::string mnemonic;
-  unsigned int argCount;
+struct InstructionLookup
+{
+    std::string mnemonic;
+    unsigned int argCount;
 };
 
 const InstructionLookup instructions[] = {{"nop", 0},   {"break", 0}, {"exit", 0},

@@ -3,7 +3,8 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace kern {
+namespace kern
+{
 
 /**
  * \brief Limits for a virtual machine instance.
@@ -19,12 +20,13 @@ namespace kern {
  * backward jump to itself throws kern::RuntimeError instead of hanging the
  * host. The count resets on every callFunction.
  */
-struct VMConfig {
-  size_t maxStackBytes = 1024 * 1024;
-  uint32_t maxCallDepth = 1024;
-  size_t maxStringBytes = 1024 * 1024;
-  uint32_t maxTableEntries = 1024 * 1024;
-  uint64_t maxExecutionSteps = 10000000;
+struct VMConfig
+{
+    size_t maxStackBytes = 1024 * 1024;
+    uint32_t maxCallDepth = 1024;
+    size_t maxStringBytes = 1024 * 1024;
+    uint32_t maxTableEntries = 1024 * 1024;
+    uint64_t maxExecutionSteps = 10000000;
 };
 
 } // namespace kern

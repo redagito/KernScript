@@ -18,11 +18,12 @@
  * directly by parser unit tests.
  */
 
-struct Lowered {
-  std::string name;
-  std::vector<std::string> params;
-  std::vector<std::string> vars;
-  std::vector<std::string> body;
+struct Lowered
+{
+    std::string name;
+    std::vector<std::string> params;
+    std::vector<std::string> vars;
+    std::vector<std::string> body;
 };
 
 bool lowerProgram(const std::vector<Tok> &toks, const Program &program, kern::ILogger *logger,

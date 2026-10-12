@@ -11,7 +11,8 @@
 #include "kern/RuntimeError.h"
 #include "kern/VMConfig.h"
 
-namespace kern {
+namespace kern
+{
 
 /**
  * \brief Creates an assembler that logs to the spdlog default logger.
