@@ -248,17 +248,6 @@ TEST_CASE("Compiler skips then-block of if without else when not taken", "[integ
   REQUIRE(recorder.text() == "2\n");
 }
 
-TEST_CASE("Compiler rejects logic operators in this slice", "[integration][compiler]") {
-  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
-
-  const std::string andSource = "extern println(x);\nfunc main {\n  var m = 3;\n  if (m == 3 and m < 5) {\n    println(1);\n  }\n}\n";
-  {
-    std::stringstream input(andSource);
-    std::stringstream asmCode;
-    REQUIRE_FALSE(compiler->compile(input, asmCode));
-  }
-}
-
 TEST_CASE("Compiler runs factorial while loop end-to-end", "[integration][compiler]") {
   const std::string source =
       "extern println(x);\nfunc main {\n"
@@ -652,4 +641,101 @@ TEST_CASE("Compiler rejects string addition", "[integration][compiler]") {
     std::stringstream asmCode;
     REQUIRE_FALSE(compiler->compile(input, asmCode));
   }
+}
+
+TEST_CASE("Compiler supports and or not goal end-to-end", "[integration][compiler]") {
+  const std::string source =
+      "extern println(x);\nfunc main {\n"
+      "  var a = 3;\n"
+      "  if ((a > 1) and (a < 5)) {\n    println(1);\n  } else {\n    println(0);\n  }\n"
+      "  if (not (a == 4)) {\n    println(2);\n  }\n"
+      "  if ((a == 0) or (a == 3)) {\n    println(3);\n  }\n"
+      "}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE(compiler->compile(input, asmCode));
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+  REQUIRE(vm->callFunction("main"));
+  REQUIRE(recorder.text() == "1\n2\n3\n");
+}
+
+TEST_CASE("Compiler supports xor end-to-end", "[integration][compiler]") {
+  const std::string source =
+      "extern println(x);\nfunc main {\n"
+      "  var a = 3;\n"
+      "  if ((a == 3) xor (a == 4)) {\n    println(1);\n  } else {\n    println(0);\n  }\n"
+      "  if ((a == 3) xor (a == 3)) {\n    println(1);\n  } else {\n    println(0);\n  }\n"
+      "}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE(compiler->compile(input, asmCode));
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+  REQUIRE(vm->callFunction("main"));
+  REQUIRE(recorder.text() == "1\n0\n");
+}
+
+TEST_CASE("Compiler supports not on value end-to-end", "[integration][compiler]") {
+  const std::string source =
+      "extern println(x);\nfunc main {\n"
+      "  var r = not 0;\n"
+      "  println(r);\n"
+      "  var s = not 5;\n"
+      "  println(s);\n"
+      "}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE(compiler->compile(input, asmCode));
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+  REQUIRE(vm->callFunction("main"));
+  REQUIRE(recorder.text() == "1\n0\n");
+}
+
+TEST_CASE("Compiler respects logic precedence end-to-end", "[integration][compiler]") {
+  const std::string source =
+      "extern println(x);\nfunc main {\n"
+      "  var a = 1;\n"
+      "  if (a == 1 or a == 2 and a == 3) {\n    println(1);\n  } else {\n    println(0);\n  }\n"
+      "}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE(compiler->compile(input, asmCode));
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+  REQUIRE(vm->callFunction("main"));
+  REQUIRE(recorder.text() == "1\n");
 }

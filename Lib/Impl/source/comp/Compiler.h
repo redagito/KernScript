@@ -9,7 +9,7 @@ public:
    * \brief Constructs a compiler.
    * \param logger Receives diagnostics. A null pointer discards them.
    *
-   * NOTE: slices 1+2+3+4+5+6. compile() accepts ExternDecl* followed by
+   * NOTE: slices 1+2+3+4+5+6+7. compile() accepts ExternDecl* followed by
    * FuncDecl* where each function is 'func' Ident ['(' params ')']
    * '{' Stmt* '}' and Stmt is VarDecl | Assign | If (with optional
    * Else) | While | Return | ExprStmt. Calls lower as expressions
@@ -19,9 +19,11 @@ public:
    * mixing both, using a void call as a value, a wrong argument count,
    * an undeclared name, or inconsistent extern value/statement use all
    * return false. Signatures and classification are collected before any
-   * body lowers, so forward references resolve. Conditions are single
-   * CmpExpr comparisons; they emit left/right pushes plus the inverse
-   * conditional jump, with je/jne comparing strings by value. If uses a
+   * body lowers, so forward references resolve. Conditions are full logic
+   * expressions (Or > Xor > And > Cmp, not at Unary level); comparisons
+   * lower to 1/0 values via a true-jump over pushi 0 / pushi 1, logic ops
+   * emit and/or/xor and not negates in place, and if/while tests the value
+   * against 0 with je, with je/jne comparing strings by value. If uses a
    * unique per-if else/end label; while emits start label, condition,
    * inverse jump to end, body, jmp back to start with unique per-loop
    * labels. Unary minus lowers as 0 - x. String and float literals lower

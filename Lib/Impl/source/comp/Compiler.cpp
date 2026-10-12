@@ -106,6 +106,10 @@ bool emitPushUint(Ctx &ctx, const std::string &digits, std::vector<std::string> 
 }
 
 bool parseExpr(Ctx &ctx, std::vector<std::string> &out, bool &isString);
+bool parseOr(Ctx &ctx, std::vector<std::string> &out, bool &isString);
+bool parseXor(Ctx &ctx, std::vector<std::string> &out, bool &isString);
+bool parseAnd(Ctx &ctx, std::vector<std::string> &out, bool &isString);
+bool parseCmp(Ctx &ctx, std::vector<std::string> &out, bool &isString);
 bool parseStatement(Ctx &ctx, std::vector<std::string> &out);
 
 // Parses '(' [Expr (',' Expr)*] ')' with the current token on '('.
@@ -283,6 +287,17 @@ bool parseUnary(Ctx &ctx, std::vector<std::string> &out, bool &isString) {
     out.push_back("sub");
     return true;
   }
+  if (peekType(ctx) == LexerToken::Keyword && peekText(ctx) == "not") {
+    ++ctx.pos;
+    std::vector<std::string> rhs;
+    bool rhsIsString = false;
+    if (!parseUnary(ctx, rhs, rhsIsString)) {
+      return false;
+    }
+    out.insert(out.end(), rhs.begin(), rhs.end());
+    out.push_back("not");
+    return true;
+  }
   return parsePrimary(ctx, out, isString);
 }
 
@@ -340,48 +355,141 @@ bool parseAdd(Ctx &ctx, std::vector<std::string> &out, bool &isString) {
   return true;
 }
 
-bool parseExpr(Ctx &ctx, std::vector<std::string> &out, bool &isString) { return parseAdd(ctx, out, isString); }
+bool parseExpr(Ctx &ctx, std::vector<std::string> &out, bool &isString) { return parseOr(ctx, out, isString); }
 
-// Parses a single-comparison condition: AddExpr (cmpOp AddExpr). Emits the
-// left pushes followed by the right pushes and returns the jump mnemonic
-// that reaches the else/end label when the condition does NOT hold, so the
-// then-block runs on fallthrough. Anything beyond (bare truthiness, logic
-// operators, chained comparisons) is a clean compile error.
-bool parseCondition(Ctx &ctx, std::vector<std::string> &out, std::string &falseJump) {
+// Lowers one optional comparison to a 1/0 value. Plain arithmetic passes
+// through; with a comparison operator the left/right pushes are followed by
+// the true-jump over pushi 0 / pushi 1 so the stack holds exactly one
+// numeric value for an enclosing logic operator or condition test.
+bool parseCmp(Ctx &ctx, std::vector<std::string> &out, bool &isString) {
+  std::vector<std::string> left;
   bool leftIsString = false;
-  if (!parseAdd(ctx, out, leftIsString)) {
+  if (!parseAdd(ctx, left, leftIsString)) {
     return false;
   }
-  std::string jump;
+  std::string trueJump;
   switch (peekType(ctx)) {
   case LexerToken::Equal:
-    jump = "jne";
+    trueJump = "je";
     break;
   case LexerToken::NotEqual:
-    jump = "je";
+    trueJump = "jne";
     break;
   case LexerToken::LessThan:
-    jump = "jge";
+    trueJump = "jl";
     break;
   case LexerToken::LessOrEqual:
-    jump = "jg";
+    trueJump = "jle";
     break;
   case LexerToken::GreaterThan:
-    jump = "jle";
+    trueJump = "jg";
     break;
   case LexerToken::GreaterOrEqual:
-    jump = "jl";
+    trueJump = "jge";
     break;
   default:
-    ctx.logger->error("Expected a comparison.");
-    return false;
+    out.insert(out.end(), left.begin(), left.end());
+    isString = leftIsString;
+    return true;
   }
   ++ctx.pos;
+  std::vector<std::string> right;
   bool rightIsString = false;
-  if (!parseAdd(ctx, out, rightIsString)) {
+  if (!parseAdd(ctx, right, rightIsString)) {
     return false;
   }
-  falseJump = jump;
+  out.insert(out.end(), left.begin(), left.end());
+  out.insert(out.end(), right.begin(), right.end());
+  const unsigned int id = ctx.labelCounter++;
+  const std::string trueLabel = "cmp_true_" + std::to_string(id);
+  const std::string endLabel = "cmp_end_" + std::to_string(id);
+  out.push_back(trueJump + " " + trueLabel);
+  out.push_back("pushi 0");
+  out.push_back("jmp " + endLabel);
+  out.push_back("label " + trueLabel);
+  out.push_back("pushi 1");
+  out.push_back("label " + endLabel);
+  isString = false;
+  return true;
+}
+
+bool parseAnd(Ctx &ctx, std::vector<std::string> &out, bool &isString) {
+  bool leftIsString = false;
+  if (!parseCmp(ctx, out, leftIsString)) {
+    return false;
+  }
+  bool hadOp = false;
+  while (peekType(ctx) == LexerToken::Keyword && peekText(ctx) == "and") {
+    ++ctx.pos;
+    std::vector<std::string> rhs;
+    bool rhsIsString = false;
+    if (!parseCmp(ctx, rhs, rhsIsString)) {
+      return false;
+    }
+    out.insert(out.end(), rhs.begin(), rhs.end());
+    out.push_back("and");
+    leftIsString = false;
+    hadOp = true;
+  }
+  isString = hadOp ? false : leftIsString;
+  return true;
+}
+
+bool parseXor(Ctx &ctx, std::vector<std::string> &out, bool &isString) {
+  bool leftIsString = false;
+  if (!parseAnd(ctx, out, leftIsString)) {
+    return false;
+  }
+  bool hadOp = false;
+  while (peekType(ctx) == LexerToken::Keyword && peekText(ctx) == "xor") {
+    ++ctx.pos;
+    std::vector<std::string> rhs;
+    bool rhsIsString = false;
+    if (!parseAnd(ctx, rhs, rhsIsString)) {
+      return false;
+    }
+    out.insert(out.end(), rhs.begin(), rhs.end());
+    out.push_back("xor");
+    leftIsString = false;
+    hadOp = true;
+  }
+  isString = hadOp ? false : leftIsString;
+  return true;
+}
+
+bool parseOr(Ctx &ctx, std::vector<std::string> &out, bool &isString) {
+  bool leftIsString = false;
+  if (!parseXor(ctx, out, leftIsString)) {
+    return false;
+  }
+  bool hadOp = false;
+  while (peekType(ctx) == LexerToken::Keyword && peekText(ctx) == "or") {
+    ++ctx.pos;
+    std::vector<std::string> rhs;
+    bool rhsIsString = false;
+    if (!parseXor(ctx, rhs, rhsIsString)) {
+      return false;
+    }
+    out.insert(out.end(), rhs.begin(), rhs.end());
+    out.push_back("or");
+    leftIsString = false;
+    hadOp = true;
+  }
+  isString = hadOp ? false : leftIsString;
+  return true;
+}
+
+// Parses a full value condition for if/while. The expression always leaves
+// exactly one numeric value (comparisons lower to 1/0 above); pushing 0 and
+// je-ing to the else/end label jumps when the value is false, so the
+// then-block runs on fallthrough.
+bool parseCondition(Ctx &ctx, std::vector<std::string> &out, std::string &falseJump) {
+  bool valueIsString = false;
+  if (!parseExpr(ctx, out, valueIsString)) {
+    return false;
+  }
+  out.push_back("pushi 0");
+  falseJump = "je";
   return true;
 }
 
@@ -611,7 +719,7 @@ Compiler::Compiler(kern::ILogger *logger) : m_logger(logger != nullptr ? logger 
 }
 
 bool Compiler::compile(std::istream &sourceCode, std::ostream &asmCode) {
-  // Slice 6: ExternDecl* + FuncDecl* where each FuncDecl is
+  // Slice 7: ExternDecl* + FuncDecl* where each FuncDecl is
   // 'func' Ident ['(' [Ident (',' Ident)*] ')'] '{' Stmt* '}' and Stmt is
   // VarDecl | Assign | If (optional Else) | While | Return | ExprStmt.
   // Calls lower as expressions (left-to-right args, 'call' leaves the
@@ -622,9 +730,9 @@ bool Compiler::compile(std::istream &sourceCode, std::ostream &asmCode) {
   // an undeclared name. Each extern is tracked per value/statement use
   // and mixed use is rejected. Signatures and classification are
   // collected before any body lowers, so forward references resolve.
-  // Conditions stay single CmpExpr comparisons over arithmetic operands
-  // (calls allowed); logic operators and anything else return false.
-  // String and float literals lower to pushs/pushf; ==/!= compare strings
+  // Conditions are full logic expressions (Or > Xor > And > Cmp, not at
+  // Unary level); comparisons lower to 1/0 values and logic ops emit
+  // and/or/xor/not. String and float literals lower to pushs/pushf; ==/!= compare strings
   // by value through je/jne. Arithmetic (+ - * / and unary minus) on a
   // statically known string operand is a compile error; string values
   // held in variables still fail at runtime.
