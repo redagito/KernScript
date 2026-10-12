@@ -248,7 +248,7 @@ TEST_CASE("Compiler skips then-block of if without else when not taken", "[integ
   REQUIRE(recorder.text() == "2\n");
 }
 
-TEST_CASE("Compiler rejects logic operators and while in this slice", "[integration][compiler]") {
+TEST_CASE("Compiler rejects logic operators in this slice", "[integration][compiler]") {
   std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
 
   const std::string andSource = "extern println(x);\nfunc main {\n  var m = 3;\n  if (m == 3 and m < 5) {\n    println(1);\n  }\n}\n";
@@ -257,13 +257,92 @@ TEST_CASE("Compiler rejects logic operators and while in this slice", "[integrat
     std::stringstream asmCode;
     REQUIRE_FALSE(compiler->compile(input, asmCode));
   }
+}
 
-  const std::string whileSource = "extern println(x);\nfunc main {\n  while (1 == 1) {\n    println(1);\n  }\n}\n";
-  {
-    std::stringstream input(whileSource);
-    std::stringstream asmCode;
-    REQUIRE_FALSE(compiler->compile(input, asmCode));
-  }
+TEST_CASE("Compiler runs factorial while loop end-to-end", "[integration][compiler]") {
+  const std::string source =
+      "extern println(x);\nfunc main {\n"
+      "  var n = 5;\n"
+      "  var acc = 1;\n"
+      "  while (n > 1) {\n"
+      "    acc = acc * n;\n"
+      "    n = n - 1;\n"
+      "  }\n"
+      "  println(acc);\n"
+      "}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE(compiler->compile(input, asmCode));
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+  REQUIRE(vm->callFunction("main"));
+  REQUIRE(recorder.text() == "120\n");
+}
+
+TEST_CASE("Compiler skips while body when condition false initially", "[integration][compiler]") {
+  const std::string source =
+      "extern println(x);\nfunc main {\n"
+      "  var n = 0;\n"
+      "  while (n > 1) {\n"
+      "    println(1);\n"
+      "  }\n"
+      "  println(2);\n"
+      "}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE(compiler->compile(input, asmCode));
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+  REQUIRE(vm->callFunction("main"));
+  REQUIRE(recorder.text() == "2\n");
+}
+
+TEST_CASE("Compiler runs nested while loops end-to-end", "[integration][compiler]") {
+  const std::string source =
+      "extern println(x);\nfunc main {\n"
+      "  var i = 0;\n"
+      "  var total = 0;\n"
+      "  while (i < 2) {\n"
+      "    var j = 0;\n"
+      "    while (j < 3) {\n"
+      "      total = total + 1;\n"
+      "      j = j + 1;\n"
+      "    }\n"
+      "    i = i + 1;\n"
+      "  }\n"
+      "  println(total);\n"
+      "}\n";
+
+  std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+  std::stringstream input(source);
+  std::stringstream asmCode;
+  REQUIRE(compiler->compile(input, asmCode));
+
+  std::stringstream byteCode;
+  REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+
+  std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+  testutil::StringRecorder recorder;
+  testutil::registerHostFunctions(*vm, recorder);
+  REQUIRE(vm->load(byteCode));
+  REQUIRE(vm->callFunction("main"));
+  REQUIRE(recorder.text() == "6\n");
 }
 
 TEST_CASE("Compiler rejects call to undeclared extern", "[integration][compiler]") {

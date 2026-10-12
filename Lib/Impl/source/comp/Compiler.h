@@ -9,13 +9,15 @@ public:
    * \brief Constructs a compiler.
    * \param logger Receives diagnostics. A null pointer discards them.
    *
-   * NOTE: slices 1+2+3. compile() accepts ExternDecl* followed by one
+   * NOTE: slices 1+2+3+4. compile() accepts ExternDecl* followed by one
    * 'func' Ident '{' Stmt* '}' where Stmt is VarDecl | Assign | If
-   * (with optional Else) | extern call with expression arguments
+   * (with optional Else) | While | extern call with expression arguments
    * (Add/Mul/Unary/Primary, parens, int/float/string literals,
-   * variables). If conditions are single CmpExpr comparisons; they emit
-   * left/right pushes plus the inverse conditional jump to a unique
-   * per-if else/end label. Unary minus lowers as 0 - x. Anything else
+   * variables). Conditions are single CmpExpr comparisons; they emit
+   * left/right pushes plus the inverse conditional jump. If uses a unique
+   * per-if else/end label; while emits start label, condition, inverse
+   * jump to end, body, jmp back to start with unique per-loop labels.
+   * Unary minus lowers as 0 - x. Anything else
    * returns false. The Parser module remains the future frontend
    * (see Parser.h) for later slices.
    */

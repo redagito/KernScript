@@ -335,9 +335,48 @@ bool parseIf(Ctx &ctx, std::vector<std::string> &out) {
   return true;
 }
 
+bool parseWhile(Ctx &ctx, std::vector<std::string> &out) {
+  ++ctx.pos; // consume 'while'
+  if (!expect(ctx, LexerToken::OpenParenthesis, "'('")) {
+    return false;
+  }
+  std::vector<std::string> cond;
+  std::string falseJump;
+  if (!parseCondition(ctx, cond, falseJump)) {
+    return false;
+  }
+  if (!expect(ctx, LexerToken::CloseParenthesis, "')'")) {
+    return false;
+  }
+  if (!expect(ctx, LexerToken::OpenBrace, "'{'")) {
+    return false;
+  }
+  std::vector<std::string> loopBody;
+  if (!parseStmtList(ctx, loopBody)) {
+    return false;
+  }
+  if (!expect(ctx, LexerToken::CloseBrace, "'}'")) {
+    return false;
+  }
+  // Unique labels per loop so sequential and nested whiles cannot collide.
+  const unsigned int id = ctx.labelCounter++;
+  const std::string startLabel = "while_start_" + std::to_string(id);
+  const std::string endLabel = "while_end_" + std::to_string(id);
+  out.push_back("label " + startLabel);
+  out.insert(out.end(), cond.begin(), cond.end());
+  out.push_back(falseJump + " " + endLabel);
+  out.insert(out.end(), loopBody.begin(), loopBody.end());
+  out.push_back("jmp " + startLabel);
+  out.push_back("label " + endLabel);
+  return true;
+}
+
 bool parseStatement(Ctx &ctx, std::vector<std::string> &out) {
   if (peekType(ctx) == LexerToken::Keyword && peekText(ctx) == "if") {
     return parseIf(ctx, out);
+  }
+  if (peekType(ctx) == LexerToken::Keyword && peekText(ctx) == "while") {
+    return parseWhile(ctx, out);
   }
   if (peekType(ctx) == LexerToken::Keyword && peekText(ctx) == "var") {
     ++ctx.pos;
@@ -397,18 +436,21 @@ Compiler::Compiler(kern::ILogger *logger) : m_logger(logger != nullptr ? logger 
 }
 
 bool Compiler::compile(std::istream &sourceCode, std::ostream &asmCode) {
-  // Slice 3: ExternDecl* + one 'func' Ident ['()'] '{' Stmt* '}' where Stmt is
+  // Slice 4: ExternDecl* + one 'func' Ident ['()'] '{' Stmt* '}' where Stmt is
   // VarDecl | Assign | extern call (as in slice 2) plus If with an optional
-  // Else. If conditions are single CmpExpr comparisons over arithmetic
-  // operands; they lower to left/right pushes plus the inverse conditional
-  // jump to a unique per-if else/end label. Logic operators, while and
-  // return remain compile errors.
+  // Else and While. Conditions are single CmpExpr comparisons over
+  // arithmetic operands; they lower to left/right pushes plus the inverse
+  // conditional jump. If uses a unique per-if else/end label; while emits
+  // start label, condition, inverse jump to end, body, jmp back to start
+  // with unique per-loop labels (nesting-safe). Logic operators, params
+  // and return remain compile errors.
   Lexer lexer(m_logger);
   lexer.addKeyword("func");
   lexer.addKeyword("extern");
   lexer.addKeyword("var");
   lexer.addKeyword("if");
   lexer.addKeyword("else");
+  lexer.addKeyword("while");
   // Reserved logic operators: recognized so misuse fails with a clean
   // keyword error instead of parsing as an identifier. Slice 3 conditions
   // are single comparisons only.
