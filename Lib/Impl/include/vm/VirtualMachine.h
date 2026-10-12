@@ -11,7 +11,7 @@
 #include "kern/IVirtualMachine.h"
 #include "kern/VMConfig.h"
 
-#include "Value.h"
+#include "vm/Value.h"
 #include "common/ExternFunction.h"
 #include "common/Instruction.h"
 

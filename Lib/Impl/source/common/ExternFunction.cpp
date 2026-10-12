@@ -1,6 +1,6 @@
-#include "ExternFunction.h"
+#include "common/ExternFunction.h"
 
-#include "Deserialize.h"
+#include "common/Deserialize.h"
 
 bool serialize(const ExternFunction &externFunction, std::ostream &stream) {
   // Sanity checks

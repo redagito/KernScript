@@ -1,6 +1,6 @@
 #include <cassert>
 
-#include "Parser.h"
+#include "comp/Parser.h"
 
 #include "logging/Logger.h"
 

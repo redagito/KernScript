@@ -6,13 +6,13 @@ file (GLOB_RECURSE IMPL_SOURCES CONFIGURE_DEPENDS
 find_package (fmt REQUIRED)
 find_package (spdlog REQUIRED)
 
-# Implementation detail, not for users. Exposes its source tree so the unit
+# Implementation detail, not for users. Exposes its include tree so the unit
 # and integration tests can exercise the implementation classes directly;
 # nothing installs or exports these targets.
 add_library (KernScriptLibImpl ${IMPL_SOURCES})
 
 target_include_directories (KernScriptLibImpl
-	PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/source
+	PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 target_link_libraries (KernScriptLibImpl

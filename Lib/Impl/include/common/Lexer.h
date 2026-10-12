@@ -6,7 +6,7 @@
 
 #include <kern/ILogger.h>
 
-#include "LexerToken.h"
+#include "common/LexerToken.h"
 
 /**
  * \brief Lexer class.

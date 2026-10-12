@@ -1,6 +1,6 @@
-#include "ScriptHeader.h"
+#include "common/ScriptHeader.h"
 
-#include "Deserialize.h"
+#include "common/Deserialize.h"
 
 bool serialize(const ScriptHeader &header, std::ostream &stream) {
   // 4 byte identifier

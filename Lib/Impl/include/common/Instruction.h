@@ -5,7 +5,7 @@
 #include <ostream>
 #include <string>
 
-#include "Instructions.h"
+#include "common/Instructions.h"
 
 typedef int32_t ArgumentType;
 

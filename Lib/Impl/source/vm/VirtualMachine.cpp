@@ -3,7 +3,7 @@
 #include <new>
 #include <stdexcept>
 
-#include "VirtualMachine.h"
+#include "vm/VirtualMachine.h"
 
 #include "kern/RuntimeError.h"
 
