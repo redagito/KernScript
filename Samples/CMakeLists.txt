@@ -3,3 +3,4 @@
 #   HelloScript/ minimal host: compiles a script, runs it, prints the result
 # More sample apps follow.
 add_subdirectory (HelloScript)
+add_subdirectory (Calc)
