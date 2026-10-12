@@ -9,12 +9,14 @@ public:
    * \brief Constructs a compiler.
    * \param logger Receives diagnostics. A null pointer discards them.
    *
-   * NOTE: slice 1 only. compile() accepts ExternDecl* followed by one
-   * 'func' Ident '{' CallStmt* '}' where each statement is a call to a
-   * declared extern with integer literal arguments, and emits assembly
-   * with 'extern <name> <count>' plus pushi/pushu and calle. Anything
-   * else returns false. The Parser module remains the future frontend
-   * (see Parser.h) for later slices.
+   * NOTE: slices 1+2. compile() accepts ExternDecl* followed by one
+   * 'func' Ident '{' Stmt* '}' where Stmt is VarDecl | Assign | extern
+   * call with expression arguments (Add/Mul/Unary/Primary, parens,
+   * int/float/string literals, variables). Emits 'var' decls plus
+   * pushi/pushu/pushf/pushs/pushv, popv, add/sub/mul/div and calle.
+   * Unary minus lowers as 0 - x. Anything else returns false. The
+   * Parser module remains the future frontend (see Parser.h) for later
+   * slices.
    */
   explicit Compiler(kern::ILogger *logger);
 
