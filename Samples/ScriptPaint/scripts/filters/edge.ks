@@ -1,19 +1,26 @@
 // ScriptPaint edge filter: cross-neighbor luminance gradient, in place.
-// Five get_pixel calls per pixel (320000 extern reads over the canvas).
-// Borders clamp by hand (this module imports color only, no geom).
-// Output is 0 or 0xFFFFFF (16777215, signed-safe). run() is void.
+// Banded form: run_band() covers [band_lo(), band_hi()); the host drives
+// bands 0..H across timer ticks. Five get_pixel calls per pixel (320000
+// extern reads over the canvas). Borders clamp by hand against the FULL
+// canvas extents (this module imports color only, no geom), so band splits
+// keep the exact whole-canvas order and output. run() covers the whole
+// canvas through the same rows() helper, so banded output equals
+// whole-canvas output pixel-for-pixel by construction. Both are void.
+// Output is 0 or 0xFFFFFF (16777215, signed-safe).
 module edge;
 import color;
 extern canvas_w();
 extern canvas_h();
+extern band_lo();
+extern band_hi();
 extern get_pixel(x, y);
 extern set_pixel(x, y, rgb);
 extern present();
-export func run() {
+func rows(lo, hi) {
   var w = canvas_w();
   var h = canvas_h();
-  var y = 0;
-  while (y < h) {
+  var y = lo;
+  while (y < hi) {
     var x = 0;
     while (x < w) {
       var x0 = x - 1;
@@ -51,5 +58,15 @@ export func run() {
     }
     y = y + 1;
   }
+}
+export func run() {
+  var hi = canvas_h();
+  rows(0, hi);
+  present();
+}
+export func run_band() {
+  var lo = band_lo();
+  var hi = band_hi();
+  rows(lo, hi);
   present();
 }

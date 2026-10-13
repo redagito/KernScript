@@ -48,6 +48,7 @@ constexpr int kCanvasW = 320;
 constexpr int kCanvasH = 200;
 constexpr int kPixels = kCanvasW * kCanvasH;
 constexpr double kTickSeconds = 0.05;
+constexpr int kBandRows = 20;
 constexpr const char *kWindowTitle = "KernScript Paint";
 constexpr int kPenDefault = 16777215;
 constexpr int kSwatchWhite = 16777215;
@@ -79,15 +80,19 @@ struct ModuleButton
     const char *mod;
     const char *entry;
     const char *call;
+    const char *bandEntry;
+    const char *bandCall;
 };
 
-const ModuleButton kPencil = {"Pencil", "pencil.ks", "pencil", "pencil@paint", "pencil::paint"};
-const ModuleButton kSpray = {"Spray", "spray.ks", "spray", "spray@paint", "spray::paint"};
-const ModuleButton kLine = {"Line", "lines.ks", "lines", "lines@paint", "lines::paint"};
-const ModuleButton kGray = {"Gray", "gray.ks", "gray", "gray@run", "gray::run"};
-const ModuleButton kEdge = {"Edge", "edge.ks", "edge", "edge@run", "edge::run"};
-const ModuleButton kThreshold = {"Threshold", "threshold.ks", "threshold", "threshold@run", "threshold::run"};
-const ModuleButton kMandel = {"Mandel", "mandel.ks", "mandel", "mandel@run", "mandel::run"};
+const ModuleButton kPencil = {"Pencil", "pencil.ks", "pencil", "pencil@paint", "pencil::paint", nullptr, nullptr};
+const ModuleButton kSpray = {"Spray", "spray.ks", "spray", "spray@paint", "spray::paint", nullptr, nullptr};
+const ModuleButton kLine = {"Line", "lines.ks", "lines", "lines@paint", "lines::paint", nullptr, nullptr};
+const ModuleButton kGray = {"Gray", "gray.ks", "gray", "gray@run", "gray::run", "gray@run_band", "gray::run_band"};
+const ModuleButton kEdge = {"Edge", "edge.ks", "edge", "edge@run", "edge::run", "edge@run_band", "edge::run_band"};
+const ModuleButton kThreshold = {"Threshold",      "threshold.ks",       "threshold",          "threshold@run",
+                                 "threshold::run", "threshold@run_band", "threshold::run_band"};
+const ModuleButton kMandel = {"Mandel",      "mandel.ks",       "mandel",          "mandel@run",
+                              "mandel::run", "mandel@run_band", "mandel::run_band"};
 
 struct Swatch
 {
@@ -116,6 +121,21 @@ int g_loadCount = 0;
 int g_paintCalls = 0;
 kern::IVirtualMachine *g_vm = nullptr;
 
+// Banded run state: filter/generator buttons compile+load as before, then
+// the host drives run_band() band-by-band across Fl timer ticks, pumping
+// between bands so the window stays responsive. Bands are row ranges
+// [band_lo(), band_hi()); scripts pull the bounds (callFunction takes no
+// args, same as canvas_w/h). Determinism holds because bands run in row
+// order over the same in-place buffer as the whole-canvas run().
+int g_bandLo = 0;
+int g_bandHi = 0;
+bool g_bandActive = false;
+const ModuleButton *g_bandModule = nullptr;
+int g_bandNextRow = 0;
+int g_bandRowsPerTick = kBandRows;
+int g_bandTicks = 0;
+std::chrono::steady_clock::time_point g_bandStart;
+
 Fl_Window *g_window = nullptr;
 Fl_Box *g_status = nullptr;
 Fl_Button *g_pencilButton = nullptr;
@@ -126,6 +146,7 @@ Fl_Button *g_edgeButton = nullptr;
 Fl_Button *g_thresholdButton = nullptr;
 Fl_Button *g_mandelButton = nullptr;
 Fl_Button *g_clearButton = nullptr;
+Fl_Button *g_cancelButton = nullptr;
 Fl_Button *g_redButton = nullptr;
 
 class PaintCanvas : public Fl_Widget
@@ -188,6 +209,8 @@ void tick_cb(void *data);
 
 int canvas_w_value() { return kCanvasW; }
 int canvas_h_value() { return kCanvasH; }
+int band_lo_value() { return g_bandLo; }
+int band_hi_value() { return g_bandHi; }
 
 int get_pixel_value(int x, int y)
 {
@@ -462,19 +485,194 @@ void tick_cb(void * /*data*/)
     Fl::repeat_timeout(kTickSeconds, tick_cb);
 }
 
+void band_tick_cb(void *data);
+
+void updateBandButtons()
+{
+    if (g_grayButton != nullptr)
+    {
+        if (g_bandActive)
+        {
+            g_grayButton->deactivate();
+        }
+        else
+        {
+            g_grayButton->activate();
+        }
+    }
+    if (g_edgeButton != nullptr)
+    {
+        if (g_bandActive)
+        {
+            g_edgeButton->deactivate();
+        }
+        else
+        {
+            g_edgeButton->activate();
+        }
+    }
+    if (g_thresholdButton != nullptr)
+    {
+        if (g_bandActive)
+        {
+            g_thresholdButton->deactivate();
+        }
+        else
+        {
+            g_thresholdButton->activate();
+        }
+    }
+    if (g_mandelButton != nullptr)
+    {
+        if (g_bandActive)
+        {
+            g_mandelButton->deactivate();
+        }
+        else
+        {
+            g_mandelButton->activate();
+        }
+    }
+    if (g_cancelButton != nullptr)
+    {
+        if (g_bandActive)
+        {
+            g_cancelButton->activate();
+        }
+        else
+        {
+            g_cancelButton->deactivate();
+        }
+    }
+}
+
 void refreshUi()
 {
-    const std::string text = g_activeTool + std::string(" | loads ") + std::to_string(g_loadCount) + " | paints " +
-                             std::to_string(g_paintCalls);
-    g_status->copy_label(text.c_str());
+    if (g_bandActive && g_bandModule != nullptr)
+    {
+        const std::string text = std::string(g_bandModule->label) + " rows " + std::to_string(g_bandNextRow) + "/" +
+                                 std::to_string(kCanvasH);
+        g_status->copy_label(text.c_str());
+    }
+    else
+    {
+        const std::string text = g_activeTool + std::string(" | loads ") + std::to_string(g_loadCount) + " | paints " +
+                                 std::to_string(g_paintCalls);
+        g_status->copy_label(text.c_str());
+    }
     if (g_canvasWidget != nullptr)
     {
         g_canvasWidget->redraw();
     }
 }
 
+void finishBandRun(bool completed)
+{
+    Fl::remove_timeout(band_tick_cb);
+    const auto end = std::chrono::steady_clock::now();
+    const long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - g_bandStart).count();
+    const char *label = (g_bandModule != nullptr) ? g_bandModule->label : "?";
+    if (completed)
+    {
+        present_value();
+        std::cout << "filter " << label << " banded ran in " << ms << " ms over " << g_bandTicks << " ticks, checksum "
+                  << std::hex << pixelChecksum() << std::dec << " nonzero " << countNonzero() << '\n';
+    }
+    else
+    {
+        std::cout << "filter " << label << " cancelled at rows " << g_bandNextRow << "/" << kCanvasH << '\n';
+    }
+    g_bandActive = false;
+    g_bandModule = nullptr;
+    g_bandNextRow = 0;
+    updateBandButtons();
+    refreshUi();
+}
+
+void cancelBandRun()
+{
+    if (!g_bandActive)
+    {
+        return;
+    }
+    finishBandRun(false);
+}
+
+bool runBandStep()
+{
+    if (!g_bandActive || g_bandModule == nullptr)
+    {
+        return false;
+    }
+    int lo = g_bandNextRow;
+    int hi = lo + g_bandRowsPerTick;
+    if (hi > kCanvasH)
+    {
+        hi = kCanvasH;
+    }
+    g_bandLo = lo;
+    g_bandHi = hi;
+    if (!callEntry(g_bandModule->bandEntry))
+    {
+        finishBandRun(false);
+        return false;
+    }
+    g_bandNextRow = hi;
+    ++g_bandTicks;
+    present_value();
+    refreshUi();
+    return g_bandNextRow < kCanvasH;
+}
+
+void band_tick_cb(void * /*data*/)
+{
+    if (!g_bandActive)
+    {
+        return;
+    }
+    if (runBandStep())
+    {
+        Fl::repeat_timeout(kTickSeconds, band_tick_cb);
+    }
+    else if (g_bandActive)
+    {
+        finishBandRun(true);
+    }
+}
+
+void startBandRun(const ModuleButton *module)
+{
+    g_bandModule = module;
+    g_bandNextRow = 0;
+    g_bandLo = 0;
+    g_bandHi = 0;
+    g_bandTicks = 0;
+    g_bandStart = std::chrono::steady_clock::now();
+    g_bandActive = true;
+    updateBandButtons();
+    refreshUi();
+    std::cout << "filter " << module->label << " banded start (" << kCanvasH << " rows, " << g_bandRowsPerTick
+              << "/tick)\n";
+    Fl::remove_timeout(band_tick_cb);
+    Fl::add_timeout(kTickSeconds, band_tick_cb);
+}
+
+int escHandler(int event)
+{
+    if (event == FL_SHORTCUT && Fl::event_key() == FL_Escape && g_bandActive)
+    {
+        cancelBandRun();
+        return 1;
+    }
+    return 0;
+}
+
 void onTool(Fl_Widget * /*widget*/, void *data)
 {
+    if (g_bandActive)
+    {
+        cancelBandRun();
+    }
     const ModuleButton *module = static_cast<const ModuleButton *>(data);
     if (!loadSelection(*module, nullptr))
     {
@@ -489,26 +687,31 @@ void onTool(Fl_Widget * /*widget*/, void *data)
 
 void onFilter(Fl_Widget * /*widget*/, void *data)
 {
+    if (g_bandActive)
+    {
+        std::cout << "filter busy, ignoring press\n";
+        return;
+    }
     const ModuleButton *module = static_cast<const ModuleButton *>(data);
+    if (module->bandEntry == nullptr || module->bandCall == nullptr)
+    {
+        return;
+    }
     if (!loadSelection(*module, g_activeModule.c_str()))
     {
         return;
     }
-    const auto start = std::chrono::steady_clock::now();
-    if (!callEntry(module->entry))
-    {
-        return;
-    }
-    const auto end = std::chrono::steady_clock::now();
-    const long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-    present_value();
-    refreshUi();
-    std::cout << "filter " << module->label << " ran in " << ms << " ms, checksum " << std::hex << pixelChecksum()
-              << std::dec << " nonzero " << countNonzero() << '\n';
+    startBandRun(module);
 }
+
+void onCancel(Fl_Widget * /*widget*/, void * /*data*/) { cancelBandRun(); }
 
 void onClear(Fl_Widget * /*widget*/, void * /*data*/)
 {
+    if (g_bandActive)
+    {
+        cancelBandRun();
+    }
     // Host-side zeroing: clearing 64k ints needs no script.
     for (int &packed : g_pixels)
     {
@@ -528,6 +731,36 @@ void onSwatch(Fl_Widget * /*widget*/, void *data)
 }
 
 void seedPixel(int x, int y, int rgb) { set_pixel_value(x, y, rgb); }
+
+std::string statusText()
+{
+    if (g_status == nullptr || g_status->label() == nullptr)
+    {
+        return "";
+    }
+    return std::string(g_status->label());
+}
+
+// Pumps the Fl event loop until the active band run finishes (or timeout).
+// Band ticks fire through Fl::wait, so a return means the pump stayed alive
+// long enough to drive the run to completion. Returns true when no run is
+// active afterwards.
+bool pumpBandRun(int timeoutMs)
+{
+    const auto start = std::chrono::steady_clock::now();
+    while (g_bandActive)
+    {
+        Fl::wait(0.05);
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        if (std::chrono::steady_clock::now() - start > std::chrono::milliseconds(timeoutMs))
+        {
+            return false;
+        }
+    }
+    // Drain one extra pump so the completion status settles.
+    Fl::wait(0.05);
+    return true;
+}
 
 int checkPixel(const char *label, int x, int y, int want)
 {
@@ -621,6 +854,7 @@ int runVerify()
     // red (255,0,0): lum = 255/3 = 85, pack = 85*65536+85*256+85 = 5592405.
     // 0x123456: r = 18, g = 52, b = 86, lum = 156/3 = 52,
     // pack = 52*65536+52*256+52 = 3421236. black stays 0.
+    // Banded: the REAL button press only starts the run; ticks finish it.
     g_clearButton->do_callback();
     seedPixel(5, 5, 16711680);
     seedPixel(6, 5, 1193046);
@@ -633,6 +867,26 @@ int runVerify()
         std::cout << "MISMATCH: gray press did not recompile\n";
         ok = false;
     }
+    if (!g_bandActive)
+    {
+        std::cout << "MISMATCH: gray press did not start a band run\n";
+        ok = false;
+    }
+    if (g_grayButton->active() != 0 || g_edgeButton->active() != 0 || g_mandelButton->active() != 0)
+    {
+        std::cout << "MISMATCH: filter buttons stayed enabled during gray run\n";
+        ok = false;
+    }
+    if (!pumpBandRun(60000))
+    {
+        std::cout << "MISMATCH: gray band run timed out\n";
+        ok = false;
+    }
+    if (g_grayButton->active() == 0 || g_edgeButton->active() == 0 || g_mandelButton->active() == 0)
+    {
+        std::cout << "MISMATCH: filter buttons not re-enabled after gray run\n";
+        ok = false;
+    }
     std::cout << "gray math: lum(255,0,0) = 255/3 = 85 -> pack(85,85,85) = 5592405\n";
     std::cout << "gray math: lum(0x123456) = (18+52+86)/3 = 52 -> pack(52,52,52) = 3421236\n";
     ok &= checkPixel("gray red", 5, 5, 5592405) != 0;
@@ -640,13 +894,24 @@ int runVerify()
     ok &= checkPixel("gray black", 7, 5, 0) != 0;
     const unsigned int grayChecksum = pixelChecksum();
     std::cout << "gray: checksum " << std::hex << grayChecksum << std::dec << '\n';
+    if (grayChecksum != 0xa87787d8u)
+    {
+        std::cout << "MISMATCH: gray banded checksum " << std::hex << grayChecksum << " != recorded a87787d8"
+                  << std::dec << '\n';
+        ok = false;
+    }
 
-    // Edge runs the full 5-reads-per-pixel pass to completion.
+    // Edge runs the full 5-reads-per-pixel pass band-by-band to completion.
     loads = g_loadCount;
     g_edgeButton->do_callback();
     if (g_loadCount != loads + 1)
     {
         std::cout << "MISMATCH: edge press did not recompile\n";
+        ok = false;
+    }
+    if (!pumpBandRun(60000))
+    {
+        std::cout << "MISMATCH: edge band run timed out\n";
         ok = false;
     }
     const unsigned int edgeChecksum = pixelChecksum();
@@ -656,15 +921,26 @@ int runVerify()
         std::cout << "MISMATCH: edge left the canvas unchanged\n";
         ok = false;
     }
+    if (edgeChecksum != 0x6baddf7cu)
+    {
+        std::cout << "MISMATCH: edge banded checksum " << std::hex << edgeChecksum << " != recorded 6baddf7c"
+                  << std::dec << '\n';
+        ok = false;
+    }
 
     // Threshold on fresh seeds: white (lum 255 > 128) stays 16777215,
-    // red (lum 85) and black go 0.
+    // red (lum 85) and black go 0. Banded like the other filters.
     g_clearButton->do_callback();
     seedPixel(5, 5, 16777215);
     seedPixel(6, 5, 16711680);
     seedPixel(7, 5, 0);
     present_value();
     g_thresholdButton->do_callback();
+    if (!pumpBandRun(60000))
+    {
+        std::cout << "MISMATCH: threshold band run timed out\n";
+        ok = false;
+    }
     ok &= checkPixel("threshold white", 5, 5, 16777215) != 0;
     ok &= checkPixel("threshold red", 6, 5, 0) != 0;
     ok &= checkPixel("threshold black", 7, 5, 0) != 0;
@@ -703,14 +979,118 @@ int runVerify()
     ok &= checkPixel("line -2", 198, 148, kSwatchRed) != 0;
 
     // Mandel must complete within budget and be deterministic: press twice
-    // (reload + run each time) and require identical checksums. Shade runs
-    // 8..248, so every pixel is nonzero on full coverage.
+    // (reload + banded run each time) and require identical checksums.
+    // Shade runs 8..248, so every pixel is nonzero on full coverage.
+    // Responsiveness evidence: the REAL button press returns quickly
+    // (schedules bands, does not block); the Fl pump then drives ticks,
+    // the status line advances (rows N/200 changes between polls), and the
+    // total wall time is spread across ticks. A single blocking call could
+    // not advance ticks or change status while running.
+    const auto pressStart = std::chrono::steady_clock::now();
     g_mandelButton->do_callback();
+    const auto pressEnd = std::chrono::steady_clock::now();
+    const long long pressMs = std::chrono::duration_cast<std::chrono::milliseconds>(pressEnd - pressStart).count();
+    std::cout << "mandel: button press returned in " << pressMs << " ms (schedules bands, must not block)\n";
+    if (pressMs > 2000)
+    {
+        std::cout << "MISMATCH: mandel press blocked the UI thread (" << pressMs << " ms)\n";
+        ok = false;
+    }
+    if (!g_bandActive)
+    {
+        std::cout << "MISMATCH: mandel press did not start a band run\n";
+        ok = false;
+    }
+    else
+    {
+        // Reentrancy probe: a second filter press mid-run must be ignored
+        // (no recompile, same run continues).
+        const int loadsMid = g_loadCount;
+        g_grayButton->do_callback();
+        if (g_loadCount != loadsMid)
+        {
+            std::cout << "MISMATCH: reentrant filter press recompiled mid-run\n";
+            ok = false;
+        }
+        if (g_bandModule == nullptr || std::string(g_bandModule->label) != "Mandel")
+        {
+            std::cout << "MISMATCH: reentrant press hijacked the band run\n";
+            ok = false;
+        }
+        else
+        {
+            std::cout << "reentrancy: second filter press ignored mid-run (loads " << g_loadCount << ")\n";
+        }
+    }
+    std::vector<std::string> statusSeen;
+    int ticksSeen = g_bandTicks;
+    const auto runStart = std::chrono::steady_clock::now();
+    {
+        const auto deadline = runStart + std::chrono::milliseconds(120000);
+        std::string last;
+        while (g_bandActive)
+        {
+            Fl::wait(0.05);
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            const std::string cur = statusText();
+            if (cur != last)
+            {
+                statusSeen.push_back(cur);
+                last = cur;
+            }
+            ticksSeen = g_bandTicks;
+            if (std::chrono::steady_clock::now() > deadline)
+            {
+                break;
+            }
+        }
+        Fl::wait(0.05);
+    }
+    const auto runEnd = std::chrono::steady_clock::now();
+    const long long runMs = std::chrono::duration_cast<std::chrono::milliseconds>(runEnd - runStart).count();
+    if (g_bandActive)
+    {
+        std::cout << "MISMATCH: mandel band run timed out\n";
+        ok = false;
+    }
+    std::cout << "mandel: pump drove " << ticksSeen << " band ticks, status changed " << statusSeen.size()
+              << " times, spread over " << runMs << " ms\n";
+    for (const std::string &s : statusSeen)
+    {
+        std::cout << "mandel status: " << s << '\n';
+    }
+    if (ticksSeen < 5)
+    {
+        std::cout << "MISMATCH: too few band ticks (" << ticksSeen << "), pump did not drive the run\n";
+        ok = false;
+    }
+    if (statusSeen.size() < 3)
+    {
+        std::cout << "MISMATCH: status never advanced during mandel run (pump starved?)\n";
+        ok = false;
+    }
+    if (!(pressMs * 5 < runMs))
+    {
+        std::cout << "MISMATCH: run wall time not spread across ticks (press " << pressMs << " ms, run " << runMs
+                  << " ms)\n";
+        ok = false;
+    }
     const unsigned int mandelFirst = pixelChecksum();
     const int mandelNonzero = countNonzero();
     std::cout << "mandel run 1: checksum " << std::hex << mandelFirst << std::dec << " nonzero " << mandelNonzero
               << '\n';
+    if (mandelFirst != 0xbb6f3fd5u)
+    {
+        std::cout << "MISMATCH: mandel banded checksum " << std::hex << mandelFirst << " != recorded bb6f3fd5"
+                  << std::dec << '\n';
+        ok = false;
+    }
     g_mandelButton->do_callback();
+    if (!pumpBandRun(120000))
+    {
+        std::cout << "MISMATCH: mandel run 2 timed out\n";
+        ok = false;
+    }
     const unsigned int mandelSecond = pixelChecksum();
     std::cout << "mandel run 2: checksum " << std::hex << mandelSecond << std::dec << '\n';
     if (mandelFirst != mandelSecond)
@@ -724,6 +1104,69 @@ int runVerify()
         ok = false;
     }
     std::cout << "MANDEL CHECKSUM " << std::hex << mandelFirst << std::dec << " RECORDED\n";
+
+    // Cancel: start a third Mandel, let a couple of bands complete, then
+    // abort through the REAL Cancel button. The run must stop cleanly
+    // (no hang, buttons re-enabled) with a partial canvas; a fresh full
+    // run afterwards must still hit the recorded checksum.
+    g_mandelButton->do_callback();
+    {
+        const auto cancelDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(120000);
+        while (g_bandActive && g_bandTicks < 2)
+        {
+            Fl::wait(0.05);
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            if (std::chrono::steady_clock::now() > cancelDeadline)
+            {
+                break;
+            }
+        }
+    }
+    if (!g_bandActive)
+    {
+        std::cout << "MISMATCH: mandel run 3 finished before cancel could be tested\n";
+        ok = false;
+    }
+    else
+    {
+        const int ticksAtCancel = g_bandTicks;
+        std::cout << "cancel: aborting mandel at tick " << ticksAtCancel << " status '" << statusText() << "'\n";
+        g_cancelButton->do_callback();
+        if (g_bandActive)
+        {
+            std::cout << "MISMATCH: cancel did not stop the band run\n";
+            ok = false;
+        }
+        if (g_mandelButton->active() == 0 || g_cancelButton->active() != 0)
+        {
+            std::cout << "MISMATCH: buttons not restored after cancel\n";
+            ok = false;
+        }
+        if (ticksAtCancel <= 0 || ticksAtCancel >= kCanvasH / kBandRows)
+        {
+            std::cout << "MISMATCH: cancel happened outside mid-run (tick " << ticksAtCancel << ")\n";
+            ok = false;
+        }
+        else
+        {
+            std::cout << "cancel: clean abort after " << ticksAtCancel << " ticks\n";
+        }
+    }
+    g_mandelButton->do_callback();
+    if (!pumpBandRun(120000))
+    {
+        std::cout << "MISMATCH: mandel restore run timed out\n";
+        ok = false;
+    }
+    if (pixelChecksum() != mandelFirst)
+    {
+        std::cout << "MISMATCH: mandel restore run diverged after cancel\n";
+        ok = false;
+    }
+    else
+    {
+        std::cout << "cancel: restore run matches recorded checksum\n";
+    }
 
     // Hot-reload: pressing Pencil again recompiles from disk (load +1) and
     // the fresh program still paints.
@@ -867,10 +1310,10 @@ int main(int argc, char **argv)
         }
     }
 
-    // Per-pixel script loops cost millions of steps (Mandel: 64k pixels x
-    // up to 30 iterations plus an extern call per pixel), far past the
-    // default 10M budget. Raise the ceiling explicitly; runaway scripts
-    // still die on it, just later.
+    // Per-pixel script loops cost millions of steps, far past the default
+    // 10M budget, so the VM runs with an explicit raised ceiling. Bands
+    // are small (20 rows per tick) so each callFunction stays far under
+    // it; the budget still backstops runaway scripts, just later.
     kern::VMConfig config;
     config.maxExecutionSteps = 200000000u;
     try
@@ -878,6 +1321,8 @@ int main(int argc, char **argv)
         std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine(config));
         vm->addFunction("canvas_w", kern::createExternFunction(&canvas_w_value));
         vm->addFunction("canvas_h", kern::createExternFunction(&canvas_h_value));
+        vm->addFunction("band_lo", kern::createExternFunction(&band_lo_value));
+        vm->addFunction("band_hi", kern::createExternFunction(&band_hi_value));
         vm->addFunction("get_pixel", kern::createExternFunction(&get_pixel_value));
         vm->addFunction("set_pixel", kern::createExternFunction(&set_pixel_value));
         vm->addFunction("mouse_x", kern::createExternFunction(&mouse_x_value));
@@ -927,6 +1372,10 @@ int main(int argc, char **argv)
         Fl_Button clearButton(115, 282, 100, 28, "Clear");
         clearButton.callback(onClear);
         g_clearButton = &clearButton;
+        Fl_Button cancelButton(220, 282, 100, 28, "Cancel");
+        cancelButton.callback(onCancel);
+        cancelButton.deactivate();
+        g_cancelButton = &cancelButton;
         Fl_Button whiteButton(10, 314, 76, 28, "White");
         whiteButton.callback(onSwatch, const_cast<Swatch *>(&kWhite));
         Fl_Button redButton(90, 314, 76, 28, "Red");
@@ -949,7 +1398,9 @@ int main(int argc, char **argv)
         g_activeEntry = kPencil.entry;
         g_activeModule = kPencil.mod;
         g_activeTool = kPencil.label;
+        updateBandButtons();
         refreshUi();
+        Fl::add_handler(escHandler);
 
         if (verify)
         {

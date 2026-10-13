@@ -1,4 +1,7 @@
 // ScriptPaint Mandelbrot generator: fixed-point integer escape-time.
+// Banded form: run_band() covers [band_lo(), band_hi()); the host drives
+// bands 0..H across timer ticks and pumps between, so the ~13s Debug run
+// no longer starves the message pump.
 //
 // Script ints are 32-bit and floats are 32-bit, so this stays in integers:
 // coordinates are scaled by 256 (cr covers -640..253 = -2.5..1.0 real,
@@ -9,18 +12,22 @@
 // No break/continue in v1: escape encodes iter as 30 + count, then the
 // count is decoded after the loop. Shade is 8 + count*8 (8..248), so every
 // pixel lands nonzero and --verify can prove full-canvas coverage.
-// run() is void.
+// run() covers the whole canvas through the same rows() helper, so banded
+// output equals whole-canvas output pixel-for-pixel by construction.
+// Both are void.
 module mandel;
 import color;
 extern canvas_w();
 extern canvas_h();
+extern band_lo();
+extern band_hi();
 extern set_pixel(x, y, rgb);
 extern present();
-export func run() {
+func rows(lo, hi) {
   var w = canvas_w();
   var h = canvas_h();
-  var y = 0;
-  while (y < h) {
+  var y = lo;
+  while (y < hi) {
     var x = 0;
     while (x < w) {
       var cr = x * 896 / 320 - 640;
@@ -50,5 +57,15 @@ export func run() {
     }
     y = y + 1;
   }
+}
+export func run() {
+  var hi = canvas_h();
+  rows(0, hi);
+  present();
+}
+export func run_band() {
+  var lo = band_lo();
+  var hi = band_hi();
+  rows(lo, hi);
   present();
 }
