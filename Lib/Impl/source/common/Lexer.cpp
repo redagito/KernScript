@@ -313,9 +313,11 @@ void Lexer::lexNumeric(std::istream &stream)
 
 void Lexer::lexIdentifierOrKeyword(std::istream &stream)
 {
-    // Already checked for a leading alphabetic character or underscore
-    // Valid characters in a, identifier are alphabetic, numeric and underscore
-    while (std::isalnum(stream.peek()) || stream.peek() == '_')
+    // Already checked for a leading alphabetic character or underscore.
+    // The body also accepts '@' so mangled names such as "mod@func" lex as
+    // one identifier. A leading '@' still lexes as At; the source frontend
+    // rejects '@' names while tokenizing (see Parser.cpp).
+    while (std::isalnum(stream.peek()) || stream.peek() == '_' || stream.peek() == '@')
     {
         // Build lexeme
         char c;

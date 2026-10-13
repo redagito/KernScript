@@ -6,7 +6,7 @@ every call runs to completion — a script cannot wait across calls.
 
 ## Lexical
 
-- Identifiers: `[A-Za-z_][A-Za-z0-9_]*`.
+- Identifiers: `[A-Za-z_][A-Za-z0-9_]*` (`@` is excluded; it is reserved for mangled names).
 - Keywords: `func extern var if else while return and or xor not`.
 - Integer literals: `-2147483648..2147483647` are signed; `2147483648..4294967295`
   are unsigned; anything larger is a compile error.

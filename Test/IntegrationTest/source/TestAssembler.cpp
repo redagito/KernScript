@@ -1,5 +1,12 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <memory>
+#include <sstream>
+#include <string>
+#include <vector>
+
+#include <kern/Kern.h>
+
 #include "testutil/TestSupport.hpp"
 
 namespace
@@ -8,6 +15,17 @@ namespace
 const std::string header = "extern println 1\nextern print 1\n";
 
 std::string wrap(const std::string &body) { return header + "\nfunc main\n{\n" + body + "\n}\n"; }
+
+std::vector<std::string> compileSource(const std::string &source, const std::string &sourceName, bool &ok)
+{
+    testutil::RecordingLogger logger;
+    std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler(&logger));
+    std::stringstream input(source);
+    std::stringstream asmCode;
+    ok = compiler->compile(input, asmCode, sourceName);
+    return logger.messages();
+}
+
 } // namespace
 
 TEST_CASE("Assembler rejects an overflowing pushi literal", "[integration][assembler][c4]")
@@ -267,4 +285,117 @@ TEST_CASE("Assembler rejects an out-of-range retf literal", "[integration][assem
     std::stringstream byteCode;
 
     REQUIRE_FALSE(testutil::assemble(source, byteCode));
+}
+
+TEST_CASE("Source rejects an at-sign in a func name", "[integration][compiler]")
+{
+    bool ok = true;
+    const std::vector<std::string> messages = compileSource("func ma@in() {\n}\n", "test.ks", ok);
+    REQUIRE_FALSE(ok);
+    REQUIRE(messages.size() == 2);
+    REQUIRE(messages[0] == "test.ks:1:6: error: Invalid character '@' in identifier.");
+    REQUIRE(messages[1] == "note: use letters, digits and underscores only");
+}
+
+TEST_CASE("Source rejects an at-sign in a var name", "[integration][compiler]")
+{
+    bool ok = true;
+    const std::vector<std::string> messages = compileSource("func main() {\nvar v@r;\n}\n", "test.ks", ok);
+    REQUIRE_FALSE(ok);
+    REQUIRE(messages.size() == 2);
+    REQUIRE(messages[0] == "test.ks:2:5: error: Invalid character '@' in identifier.");
+    REQUIRE(messages[1] == "note: use letters, digits and underscores only");
+}
+
+TEST_CASE("Source rejects an at-sign in a param name", "[integration][compiler]")
+{
+    bool ok = true;
+    const std::vector<std::string> messages = compileSource("func main(p@1) {\n}\n", "test.ks", ok);
+    REQUIRE_FALSE(ok);
+    REQUIRE(messages.size() == 2);
+    REQUIRE(messages[0] == "test.ks:1:11: error: Invalid character '@' in identifier.");
+    REQUIRE(messages[1] == "note: use letters, digits and underscores only");
+}
+
+TEST_CASE("Source rejects an at-sign in an extern name", "[integration][compiler]")
+{
+    bool ok = true;
+    const std::vector<std::string> messages = compileSource("extern ex@tern(x);\nfunc main() {\n}\n", "test.ks", ok);
+    REQUIRE_FALSE(ok);
+    REQUIRE(messages.size() == 2);
+    REQUIRE(messages[0] == "test.ks:1:8: error: Invalid character '@' in identifier.");
+    REQUIRE(messages[1] == "note: use letters, digits and underscores only");
+}
+
+TEST_CASE("Source rejects an at-sign in a call name", "[integration][compiler]")
+{
+    bool ok = true;
+    const std::vector<std::string> messages = compileSource("func main() {\nfoo@bar();\n}\n", "test.ks", ok);
+    REQUIRE_FALSE(ok);
+    REQUIRE(messages.size() == 2);
+    REQUIRE(messages[0] == "test.ks:2:1: error: Invalid character '@' in identifier.");
+    REQUIRE(messages[1] == "note: use letters, digits and underscores only");
+}
+
+TEST_CASE("Source still accepts triple underscores without at-signs", "[integration][compiler]")
+{
+    const std::string source = "extern ext___999(x);\nfunc fo___123(p___1) {\n"
+                               "  var v___1 = p___1;\n  ext___999(v___1);\n}\n"
+                               "func main() {\n  fo___123(1);\n}\n";
+    testutil::RecordingLogger logger;
+    std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler(&logger));
+    std::stringstream input(source);
+    std::stringstream asmCode;
+    REQUIRE(compiler->compile(input, asmCode, "test.ks"));
+    REQUIRE_FALSE(asmCode.str().empty());
+}
+
+TEST_CASE("Assembler round-trips an at-function name end-to-end on the VM", "[integration][assembler]")
+{
+    const std::string source = "extern println 1\n\nfunc math@sqrt\n{\npushi 42\ncalle println\nret\n}\n\n"
+                               "func main\n{\ncall math@sqrt\nret\n}\n";
+    std::stringstream byteCode;
+    REQUIRE(testutil::assemble(source, byteCode));
+    REQUIRE_FALSE(byteCode.str().empty());
+
+    std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+    testutil::StringRecorder recorder;
+    testutil::registerHostFunctions(*vm, recorder);
+    REQUIRE(vm->load(byteCode));
+    REQUIRE(vm->callFunction("main"));
+    REQUIRE(recorder.text() == "42\n");
+    // String-keyed lookup of the mangled name itself, through serialization.
+    REQUIRE(vm->callFunction("math@sqrt"));
+    REQUIRE(recorder.text() == "42\n42\n");
+}
+
+TEST_CASE("Assembler rejects a duplicate at-function", "[integration][assembler]")
+{
+    const std::string source = "func math@sqrt\n{\nret\n}\nfunc math@sqrt\n{\nret\n}\n";
+    std::stringstream byteCode;
+
+    REQUIRE_FALSE(testutil::assemble(source, byteCode));
+}
+
+TEST_CASE("Assembler rejects a call to an unknown at-function", "[integration][assembler]")
+{
+    const std::string source = wrap("call other@fn\nret");
+    std::stringstream byteCode;
+
+    REQUIRE_FALSE(testutil::assemble(source, byteCode));
+}
+
+TEST_CASE("Assembler resolves an at-label jump end-to-end on the VM", "[integration][assembler]")
+{
+    const std::string source = wrap("jmp L@1\npushi 999\ncalle println\nlabel L@1\npushi 7\ncalle println\nret");
+    std::stringstream byteCode;
+    REQUIRE(testutil::assemble(source, byteCode));
+    REQUIRE_FALSE(byteCode.str().empty());
+
+    std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+    testutil::StringRecorder recorder;
+    testutil::registerHostFunctions(*vm, recorder);
+    REQUIRE(vm->load(byteCode));
+    REQUIRE(vm->callFunction("main"));
+    REQUIRE(recorder.text() == "7\n");
 }

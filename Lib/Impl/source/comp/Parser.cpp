@@ -54,6 +54,18 @@ bool tokenize(std::istream &sourceCode, kern::ILogger *logger, std::vector<Tok> 
         {
             continue;
         }
+        // The shared lexer folds '@' into identifier bodies for assembler
+        // mangled names. Source identifiers exclude '@', so reject it here at
+        // the single choke point instead of at every name use.
+        if (type == LexerToken::Identifier && lexer.getLexeme().find('@') != std::string::npos)
+        {
+            SrcPos pos;
+            pos.line = lexer.getLine();
+            pos.col = lexer.getColumn();
+            reportError(logger, sourceName, pos, "Invalid character '@' in identifier.",
+                        "use letters, digits and underscores only");
+            return false;
+        }
         Tok tok;
         tok.type = type;
         tok.text = lexer.getLexeme();

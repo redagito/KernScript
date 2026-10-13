@@ -333,3 +333,134 @@ TEST_CASE("Lexer end token carries the end position", "[unit][Lexer]")
     REQUIRE(lexer.getLine() == 1);
     REQUIRE(lexer.getColumn() == 2);
 }
+
+TEST_CASE("Lexer keeps an at-sign inside identifier bodies", "[unit][Lexer]")
+{
+    std::istringstream stream("a@b");
+    Lexer lexer(nullptr);
+
+    lexer.lex(stream);
+    REQUIRE(lexer.getToken() == LexerToken::Identifier);
+    REQUIRE(lexer.getLexeme() == "a@b");
+    REQUIRE(lexer.getLine() == 1);
+    REQUIRE(lexer.getColumn() == 1);
+}
+
+TEST_CASE("Lexer keeps digits after an at-sign in identifiers", "[unit][Lexer]")
+{
+    std::istringstream stream("f@1");
+    Lexer lexer(nullptr);
+
+    lexer.lex(stream);
+    REQUIRE(lexer.getToken() == LexerToken::Identifier);
+    REQUIRE(lexer.getLexeme() == "f@1");
+    REQUIRE(lexer.getLine() == 1);
+    REQUIRE(lexer.getColumn() == 1);
+}
+
+TEST_CASE("Lexer keeps doubled at-signs inside identifiers", "[unit][Lexer]")
+{
+    std::istringstream stream("a@@b");
+    Lexer lexer(nullptr);
+
+    lexer.lex(stream);
+    REQUIRE(lexer.getToken() == LexerToken::Identifier);
+    REQUIRE(lexer.getLexeme() == "a@@b");
+    REQUIRE(lexer.getLine() == 1);
+    REQUIRE(lexer.getColumn() == 1);
+}
+
+TEST_CASE("Lexer keeps a trailing at-sign in identifiers", "[unit][Lexer]")
+{
+    std::istringstream stream("a@");
+    Lexer lexer(nullptr);
+
+    lexer.lex(stream);
+    REQUIRE(lexer.getToken() == LexerToken::Identifier);
+    REQUIRE(lexer.getLexeme() == "a@");
+    REQUIRE(lexer.getLine() == 1);
+    REQUIRE(lexer.getColumn() == 1);
+}
+
+TEST_CASE("Lexer does not merge a leading at-sign into identifiers", "[unit][Lexer]")
+{
+    std::istringstream stream("@a");
+    Lexer lexer(nullptr);
+
+    lexer.lex(stream);
+    REQUIRE(lexer.getToken() == LexerToken::At);
+    REQUIRE(lexer.getLexeme() == "@");
+    REQUIRE(lexer.getLine() == 1);
+    REQUIRE(lexer.getColumn() == 1);
+
+    lexer.lex(stream);
+    REQUIRE(lexer.getToken() == LexerToken::Identifier);
+    REQUIRE(lexer.getLexeme() == "a");
+    REQUIRE(lexer.getLine() == 1);
+    REQUIRE(lexer.getColumn() == 2);
+}
+
+TEST_CASE("Lexer keeps several at-signs in one identifier", "[unit][Lexer]")
+{
+    std::istringstream stream("a@b@c");
+    Lexer lexer(nullptr);
+
+    lexer.lex(stream);
+    REQUIRE(lexer.getToken() == LexerToken::Identifier);
+    REQUIRE(lexer.getLexeme() == "a@b@c");
+    REQUIRE(lexer.getLine() == 1);
+    REQUIRE(lexer.getColumn() == 1);
+}
+
+TEST_CASE("Lexer still scans a lone at-sign as At", "[unit][Lexer]")
+{
+    std::istringstream stream("@");
+    Lexer lexer(nullptr);
+
+    lexer.lex(stream);
+    REQUIRE(lexer.getToken() == LexerToken::At);
+    REQUIRE(lexer.getLexeme() == "@");
+    REQUIRE(lexer.getLine() == 1);
+    REQUIRE(lexer.getColumn() == 1);
+
+    lexer.lex(stream);
+    REQUIRE(lexer.getToken() == LexerToken::End);
+    REQUIRE(lexer.getLine() == 1);
+    REQUIRE(lexer.getColumn() == 2);
+}
+
+TEST_CASE("Lexer tracks the column of an at-identifier after blanks", "[unit][Lexer]")
+{
+    std::istringstream stream("  a@b");
+    Lexer lexer(nullptr);
+
+    lexer.lex(stream);
+    REQUIRE(lexer.getToken() == LexerToken::Identifier);
+    REQUIRE(lexer.getLexeme() == "a@b");
+    REQUIRE(lexer.getLine() == 1);
+    REQUIRE(lexer.getColumn() == 3);
+}
+
+TEST_CASE("Lexer keeps at-signs verbatim inside strings", "[unit][Lexer]")
+{
+    std::istringstream stream("\"a@b\"");
+    Lexer lexer(nullptr);
+
+    lexer.lex(stream);
+    REQUIRE(lexer.getToken() == LexerToken::String);
+    REQUIRE(lexer.getLexeme() == "a@b");
+    REQUIRE(lexer.getLine() == 1);
+    REQUIRE(lexer.getColumn() == 1);
+}
+
+TEST_CASE("Lexer keeps at-signs verbatim inside comments", "[unit][Lexer]")
+{
+    std::istringstream stream("// a@b");
+    Lexer lexer(nullptr);
+
+    lexer.lex(stream);
+    REQUIRE(lexer.getToken() == LexerToken::Comment);
+    REQUIRE(lexer.getLexeme() == "// a@b");
+    REQUIRE(lexer.getLine() == 1);
+    REQUIRE(lexer.getColumn() == 1);
+}
