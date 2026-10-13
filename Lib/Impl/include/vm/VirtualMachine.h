@@ -99,6 +99,18 @@ protected:
 
     bool execute();
 
+    // Outlined function-call paths of execute(). The hot switch keeps only
+    // stack operations, arithmetic and jumps inline; these run at most once
+    // per call, so the extra call costs nothing measurable while keeping the
+    // generated hot loop small and stable. Each returns whether to continue.
+    bool executeCall(const Instruction &instruction);
+    bool executeCalle(const Instruction &instruction);
+    bool executeRet();
+    bool executeRetv(const Instruction &instruction);
+    bool executeReti(const Instruction &instruction);
+    bool executeRetf(const Instruction &instruction);
+    bool executeRets(const Instruction &instruction);
+
     /**
      * \brief Pushes value on top of runtime stack.
      */

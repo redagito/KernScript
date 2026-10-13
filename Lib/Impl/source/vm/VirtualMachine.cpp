@@ -778,6 +778,291 @@ bool VirtualMachine::getFunctionIndexByName(const std::string &functionName, uin
     return false;
 }
 
+bool VirtualMachine::executeCall(const Instruction &instruction)
+{
+    // Arg 0 is function index of the called function
+    const int32_t functionIndex = instruction.args[0];
+    if (functionIndex < 0 || static_cast<uint64_t>(functionIndex) >= m_functions.size())
+    {
+        throwRuntimeError(m_logger, "Call function index out of range.");
+    }
+    const Function &newCurrentFunction = m_functions.at(static_cast<size_t>(functionIndex));
+    const uint32_t runtimeStackSize = static_cast<uint32_t>(m_runtimeStack.size());
+    if (newCurrentFunction.parameterSize > runtimeStackSize)
+    {
+        throwRuntimeError(m_logger, "Call needs {} parameters on the runtime stack.", newCurrentFunction.parameterSize);
+    }
+    if (m_callStack.size() >= m_maxCallDepth)
+    {
+        throwRuntimeError(m_logger, "Maximum call depth exceeded.");
+    }
+    // All arithmetic below runs in 64 bit: 32 bit stack sizes from corrupt
+    // input wrap around and would otherwise resize the stack small.
+    const uint64_t newSize = static_cast<uint64_t>(runtimeStackSize) +
+                             static_cast<uint64_t>(newCurrentFunction.stackSize) -
+                             static_cast<uint64_t>(newCurrentFunction.parameterSize);
+    if (newSize > m_maxStackSize)
+    {
+        throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
+    }
+    // Push current function index, next instruction index and base stack index
+    // for
+    // return call.
+    m_callStack.push(
+        FunctionFrame(m_currentFunctionIndex, m_currentInstructionIndex + 1, m_currentRuntimeStackBaseIndex));
+    m_currentFunctionIndex = static_cast<uint32_t>(functionIndex);
+    m_currentFunction = &m_functions.at(m_currentFunctionIndex);
+    // Reset instruction index
+    m_currentInstructionIndex = 0;
+    // Set new runtime stack base index for the called function, modified by
+    // the function parameter size
+    m_currentRuntimeStackBaseIndex = runtimeStackSize - newCurrentFunction.parameterSize;
+    // Resize runtime stack with local stack size of called function. The
+    // budget check passes when the configured budget itself is absurd, so a
+    // failing allocation must still surface as a typed error instead of
+    // bad_alloc, matching the deserialize pattern.
+    try
+    {
+        m_runtimeStack.resize(static_cast<size_t>(newSize));
+    }
+    catch (const std::bad_alloc &)
+    {
+        throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
+    }
+    catch (const std::length_error &)
+    {
+        throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
+    }
+    return true;
+}
+
+bool VirtualMachine::executeCalle(const Instruction &instruction)
+{
+    // Call external, arg 0 is extern function index
+    const int32_t externIndex = instruction.args[0];
+    if (externIndex < 0 || static_cast<uint64_t>(externIndex) >= m_externFunctions.size())
+    {
+        throwRuntimeError(m_logger, "Calle extern function index out of range.");
+    }
+    const ExternFunction &externFunction = m_externFunctions.at(static_cast<size_t>(externIndex));
+
+    // Arguments are the values pushed above the current frame, whose slots
+    // run from the base index for stackSize entries. Anything else on the
+    // stack belongs to locals or parameters, not to this call.
+    //
+    // Pop discipline: return values a previous extern call left on the stack
+    // count toward the next call, so scripts must consume or pop values they
+    // do not need before pushing the next call's arguments. Counting only
+    // script pushes since the last calle cannot distinguish such a stale
+    // return from a legitimate return flowing directly into the next call
+    // (calle get_value followed by calle println), which the stack-contents
+    // count accepts; keeping the strict count is what makes both the
+    // too-few/too-many refusals and the return-chaining pattern work.
+    const uint64_t frameEnd =
+        static_cast<uint64_t>(m_currentRuntimeStackBaseIndex) + static_cast<uint64_t>(m_currentFunction->stackSize);
+    const uint64_t stackSizeNow = static_cast<uint64_t>(m_runtimeStack.size());
+    if (stackSizeNow < frameEnd)
+    {
+        throwRuntimeError(m_logger, "The runtime stack is below the frame.");
+    }
+    const uint64_t pushed = stackSizeNow - frameEnd;
+    if (pushed != externFunction.argCount)
+    {
+        throwRuntimeError(m_logger,
+                          "The extern function '{}' expects {} arguments, but "
+                          "{} were pushed.",
+                          externFunction.name, externFunction.argCount, pushed);
+    }
+
+    // Check if function exists
+    auto entry = m_externFunctionsMap.find(externFunction.name);
+    if (entry == m_externFunctionsMap.end())
+    {
+        // Function does not exist
+        throwRuntimeError(m_logger, "The extern function '{}' does not exist.", externFunction.name);
+    }
+    // Call if found, a failing call stops the script instead of continuing
+    // with missing values on the stack.
+    if (!entry->second->call(*this))
+    {
+        throwRuntimeError(m_logger, "The extern function '{}' reported failure.", externFunction.name);
+    }
+    ++m_currentInstructionIndex;
+    return true;
+}
+
+bool VirtualMachine::executeRet()
+{
+    // Return from script function
+    if (m_callStack.empty())
+    {
+        // Empty stack indicates either error state or end of script
+        return false;
+    }
+    // Resize runtime stack to remove local function variables.
+    m_runtimeStack.resize(m_currentRuntimeStackBaseIndex);
+
+    // Retrieve function index of previous function
+    m_currentFunctionIndex = m_callStack.top().functionIndex;
+    m_currentFunction = &m_functions.at(m_currentFunctionIndex);
+    // Restore active function index
+    m_currentInstructionIndex = m_callStack.top().instructionIndex;
+    // Restore runtime stack base index for the active function
+    m_currentRuntimeStackBaseIndex = m_callStack.top().runtimeStackBaseIndex;
+    m_callStack.pop();
+    return true;
+}
+
+bool VirtualMachine::executeRetv(const Instruction &instruction)
+{
+    // Returns variable from script function
+    if (m_callStack.empty())
+    {
+        // No caller exists to receive the value
+        throwRuntimeError(m_logger, "Retv without a caller.");
+    }
+    // Arg 0 is local variable index
+    // The caller's stack ends at the runtime stack base index, so slot base
+    // holds the first argument. It is the slot the caller reads the return
+    // value from once the frame is dropped, so the return value goes there.
+    uint32_t varIndex = 0;
+    memcpy(&varIndex, &instruction.args[0], sizeof(varIndex));
+    if (varIndex == 0 && m_currentRuntimeStackBaseIndex >= m_runtimeStack.size())
+    {
+        // The frame is empty, so the return slot does not exist. Growing the
+        // stack below would plant an Invalid value as the return value.
+        throwRuntimeError(m_logger, "Retv variable index out of range.");
+    }
+    if (varIndex != 0)
+    {
+        if (!frameIndexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0], m_currentFunction->stackSize,
+                               m_runtimeStack.size()))
+        {
+            throwRuntimeError(m_logger, "Retv variable index out of range.");
+        }
+        m_runtimeStack[m_currentRuntimeStackBaseIndex] = m_runtimeStack.at(m_currentRuntimeStackBaseIndex + varIndex);
+    }
+
+    // Resize runtime stack to remove local function variables but the one
+    // holding the return value. No budget check: the empty frame returns
+    // above, so base + 1 is at most the current size and this only shrinks.
+    m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
+
+    // Retrieve function index of previous function
+    m_currentFunctionIndex = m_callStack.top().functionIndex;
+    m_currentFunction = &m_functions.at(m_currentFunctionIndex);
+    // Restore active function index
+    m_currentInstructionIndex = m_callStack.top().instructionIndex;
+    // Restore runtime stack base index for the active function
+    m_currentRuntimeStackBaseIndex = m_callStack.top().runtimeStackBaseIndex;
+    m_callStack.pop();
+    return true;
+}
+
+bool VirtualMachine::executeReti(const Instruction &instruction)
+{
+    // Returns variable from script function
+    if (m_callStack.empty())
+    {
+        // No caller exists to receive the value
+        throwRuntimeError(m_logger, "Reti without a caller.");
+    }
+    // Arg 0 is integer constant
+    // The caller's stack ends at the runtime stack base index, so slot base
+    // is the slot the caller reads the return value from. A function without
+    // parameters or locals leaves the frame empty, so the slot is grown
+    // first rather than assumed to exist.
+    if (static_cast<uint64_t>(m_currentRuntimeStackBaseIndex) + 1 > m_maxStackSize)
+    {
+        throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
+    }
+    m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
+    int32_t intValue = 0;
+    memcpy(&intValue, &instruction.args[0], sizeof(intValue));
+    m_runtimeStack[m_currentRuntimeStackBaseIndex] = intValue;
+
+    // Retrieve function index of previous function
+    m_currentFunctionIndex = m_callStack.top().functionIndex;
+    m_currentFunction = &m_functions.at(m_currentFunctionIndex);
+    // Restore active function index
+    m_currentInstructionIndex = m_callStack.top().instructionIndex;
+    // Restore runtime stack base index for the active function
+    m_currentRuntimeStackBaseIndex = m_callStack.top().runtimeStackBaseIndex;
+    m_callStack.pop();
+    return true;
+}
+
+bool VirtualMachine::executeRetf(const Instruction &instruction)
+{
+    // Returns float from script function
+    if (m_callStack.empty())
+    {
+        // No caller exists to receive the value
+        throwRuntimeError(m_logger, "Retf without a caller.");
+    }
+    // Arg 0 is float constant
+    // The caller's stack ends at the runtime stack base index, so slot base
+    // is the slot the caller reads the return value from. A function without
+    // parameters or locals leaves the frame empty, so the slot is grown
+    // first rather than assumed to exist.
+    if (static_cast<uint64_t>(m_currentRuntimeStackBaseIndex) + 1 > m_maxStackSize)
+    {
+        throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
+    }
+    m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
+    float floatValue = 0.f;
+    memcpy(&floatValue, &instruction.args[0], sizeof(floatValue));
+    m_runtimeStack[m_currentRuntimeStackBaseIndex] = floatValue;
+
+    // Retrieve function index of previous function
+    m_currentFunctionIndex = m_callStack.top().functionIndex;
+    m_currentFunction = &m_functions.at(m_currentFunctionIndex);
+    // Restore active function index
+    m_currentInstructionIndex = m_callStack.top().instructionIndex;
+    // Restore runtime stack base index for the active function
+    m_currentRuntimeStackBaseIndex = m_callStack.top().runtimeStackBaseIndex;
+    m_callStack.pop();
+    return true;
+}
+
+bool VirtualMachine::executeRets(const Instruction &instruction)
+{
+    // Returns string from script function
+    if (m_callStack.empty())
+    {
+        // No caller exists to receive the value
+        throwRuntimeError(m_logger, "Rets without a caller.");
+    }
+    // Arg 0 is index of string
+    // The caller's stack ends at the runtime stack base index, so slot base
+    // is the slot the caller reads the return value from. A function without
+    // parameters or locals leaves the frame empty, so the slot is grown
+    // first rather than assumed to exist. The string index is validated
+    // before growing, so corrupt input cannot leave a grown frame behind.
+    if (!indexInRange(0, instruction.args[0], m_strings.size()))
+    {
+        throwRuntimeError(m_logger, "Rets string index out of range.");
+    }
+    if (static_cast<uint64_t>(m_currentRuntimeStackBaseIndex) + 1 > m_maxStackSize)
+    {
+        throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
+    }
+    m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
+    uint32_t stringIndex = 0;
+    memcpy(&stringIndex, &instruction.args[0], sizeof(stringIndex));
+    m_runtimeStack[m_currentRuntimeStackBaseIndex] = m_strings.at(stringIndex);
+
+    // Retrieve function index of previous function
+    m_currentFunctionIndex = m_callStack.top().functionIndex;
+    m_currentFunction = &m_functions.at(m_currentFunctionIndex);
+    // Restore active function index
+    m_currentInstructionIndex = m_callStack.top().instructionIndex;
+    // Restore runtime stack base index for the active function
+    m_currentRuntimeStackBaseIndex = m_callStack.top().runtimeStackBaseIndex;
+    m_callStack.pop();
+    return true;
+}
+
 bool VirtualMachine::execute()
 {
     // Profiling is runtime-gated: without an active recording these are a few
@@ -1026,288 +1311,24 @@ bool VirtualMachine::execute()
     break;
 
     case Opcode::Call:
-    {
-        // Arg 0 is function index of the called function
-        const int32_t functionIndex = instruction.args[0];
-        if (functionIndex < 0 || static_cast<uint64_t>(functionIndex) >= m_functions.size())
-        {
-            throwRuntimeError(m_logger, "Call function index out of range.");
-        }
-        const Function &newCurrentFunction = m_functions.at(static_cast<size_t>(functionIndex));
-        const uint32_t runtimeStackSize = static_cast<uint32_t>(m_runtimeStack.size());
-        if (newCurrentFunction.parameterSize > runtimeStackSize)
-        {
-            throwRuntimeError(m_logger, "Call needs {} parameters on the runtime stack.",
-                              newCurrentFunction.parameterSize);
-        }
-        if (m_callStack.size() >= m_maxCallDepth)
-        {
-            throwRuntimeError(m_logger, "Maximum call depth exceeded.");
-        }
-        // All arithmetic below runs in 64 bit: 32 bit stack sizes from corrupt
-        // input wrap around and would otherwise resize the stack small.
-        const uint64_t newSize = static_cast<uint64_t>(runtimeStackSize) +
-                                 static_cast<uint64_t>(newCurrentFunction.stackSize) -
-                                 static_cast<uint64_t>(newCurrentFunction.parameterSize);
-        if (newSize > m_maxStackSize)
-        {
-            throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
-        }
-        // Push current function index, next instruction index and base stack index
-        // for
-        // return call.
-        m_callStack.push(
-            FunctionFrame(m_currentFunctionIndex, m_currentInstructionIndex + 1, m_currentRuntimeStackBaseIndex));
-        m_currentFunctionIndex = static_cast<uint32_t>(functionIndex);
-        m_currentFunction = &m_functions.at(m_currentFunctionIndex);
-        // Reset instruction index
-        m_currentInstructionIndex = 0;
-        // Set new runtime stack base index for the called function, modified by
-        // the function parameter size
-        m_currentRuntimeStackBaseIndex = runtimeStackSize - newCurrentFunction.parameterSize;
-        // Resize runtime stack with local stack size of called function. The
-        // budget check passes when the configured budget itself is absurd, so a
-        // failing allocation must still surface as a typed error instead of
-        // bad_alloc, matching the deserialize pattern.
-        try
-        {
-            m_runtimeStack.resize(static_cast<size_t>(newSize));
-        }
-        catch (const std::bad_alloc &)
-        {
-            throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
-        }
-        catch (const std::length_error &)
-        {
-            throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
-        }
-        break;
-    }
+        return executeCall(instruction);
 
     case Opcode::Calle:
-    {
-        // Call external, arg 0 is extern function index
-        const int32_t externIndex = instruction.args[0];
-        if (externIndex < 0 || static_cast<uint64_t>(externIndex) >= m_externFunctions.size())
-        {
-            throwRuntimeError(m_logger, "Calle extern function index out of range.");
-        }
-        const ExternFunction &externFunction = m_externFunctions.at(static_cast<size_t>(externIndex));
-
-        // Arguments are the values pushed above the current frame, whose slots
-        // run from the base index for stackSize entries. Anything else on the
-        // stack belongs to locals or parameters, not to this call.
-        //
-        // Pop discipline: return values a previous extern call left on the stack
-        // count toward the next call, so scripts must consume or pop values they
-        // do not need before pushing the next call's arguments. Counting only
-        // script pushes since the last calle cannot distinguish such a stale
-        // return from a legitimate return flowing directly into the next call
-        // (calle get_value followed by calle println), which the stack-contents
-        // count accepts; keeping the strict count is what makes both the
-        // too-few/too-many refusals and the return-chaining pattern work.
-        const uint64_t frameEnd =
-            static_cast<uint64_t>(m_currentRuntimeStackBaseIndex) + static_cast<uint64_t>(currentFunction.stackSize);
-        const uint64_t stackSizeNow = static_cast<uint64_t>(m_runtimeStack.size());
-        if (stackSizeNow < frameEnd)
-        {
-            throwRuntimeError(m_logger, "The runtime stack is below the frame.");
-        }
-        const uint64_t pushed = stackSizeNow - frameEnd;
-        if (pushed != externFunction.argCount)
-        {
-            throwRuntimeError(m_logger,
-                              "The extern function '{}' expects {} arguments, but "
-                              "{} were pushed.",
-                              externFunction.name, externFunction.argCount, pushed);
-        }
-
-        // Check if function exists
-        auto entry = m_externFunctionsMap.find(externFunction.name);
-        if (entry == m_externFunctionsMap.end())
-        {
-            // Function does not exist
-            throwRuntimeError(m_logger, "The extern function '{}' does not exist.", externFunction.name);
-        }
-        // Call if found, a failing call stops the script instead of continuing
-        // with missing values on the stack.
-        if (!entry->second->call(*this))
-        {
-            throwRuntimeError(m_logger, "The extern function '{}' reported failure.", externFunction.name);
-        }
-        ++m_currentInstructionIndex;
-        break;
-    }
+        return executeCalle(instruction);
     case Opcode::Ret:
-        // Return from script function
-        if (m_callStack.empty())
-        {
-            // Empty stack indicates either error state or end of script
-            return false;
-        }
-        // Resize runtime stack to remove local function variables.
-        m_runtimeStack.resize(m_currentRuntimeStackBaseIndex);
-
-        // Retrieve function index of previous function
-        m_currentFunctionIndex = m_callStack.top().functionIndex;
-        m_currentFunction = &m_functions.at(m_currentFunctionIndex);
-        // Restore active function index
-        m_currentInstructionIndex = m_callStack.top().instructionIndex;
-        // Restore runtime stack base index for the active function
-        m_currentRuntimeStackBaseIndex = m_callStack.top().runtimeStackBaseIndex;
-        m_callStack.pop();
-        break;
+        return executeRet();
 
     case Opcode::Retv:
-    {
-        // Returns variable from script function
-        if (m_callStack.empty())
-        {
-            // No caller exists to receive the value
-            throwRuntimeError(m_logger, "Retv without a caller.");
-        }
-        // Arg 0 is local variable index
-        // The caller's stack ends at the runtime stack base index, so slot base
-        // holds the first argument. It is the slot the caller reads the return
-        // value from once the frame is dropped, so the return value goes there.
-        uint32_t varIndex = 0;
-        memcpy(&varIndex, &instruction.args[0], sizeof(varIndex));
-        if (varIndex == 0 && m_currentRuntimeStackBaseIndex >= m_runtimeStack.size())
-        {
-            // The frame is empty, so the return slot does not exist. Growing the
-            // stack below would plant an Invalid value as the return value.
-            throwRuntimeError(m_logger, "Retv variable index out of range.");
-        }
-        if (varIndex != 0)
-        {
-            if (!frameIndexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0], currentFunction.stackSize,
-                                   m_runtimeStack.size()))
-            {
-                throwRuntimeError(m_logger, "Retv variable index out of range.");
-            }
-            m_runtimeStack[m_currentRuntimeStackBaseIndex] =
-                m_runtimeStack.at(m_currentRuntimeStackBaseIndex + varIndex);
-        }
-
-        // Resize runtime stack to remove local function variables but the one
-        // holding the return value. No budget check: the empty frame returns
-        // above, so base + 1 is at most the current size and this only shrinks.
-        m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
-
-        // Retrieve function index of previous function
-        m_currentFunctionIndex = m_callStack.top().functionIndex;
-        m_currentFunction = &m_functions.at(m_currentFunctionIndex);
-        // Restore active function index
-        m_currentInstructionIndex = m_callStack.top().instructionIndex;
-        // Restore runtime stack base index for the active function
-        m_currentRuntimeStackBaseIndex = m_callStack.top().runtimeStackBaseIndex;
-        m_callStack.pop();
-        break;
-    }
+        return executeRetv(instruction);
 
     case Opcode::Reti:
-    {
-        // Returns variable from script function
-        if (m_callStack.empty())
-        {
-            // No caller exists to receive the value
-            throwRuntimeError(m_logger, "Reti without a caller.");
-        }
-        // Arg 0 is integer constant
-        // The caller's stack ends at the runtime stack base index, so slot base
-        // is the slot the caller reads the return value from. A function without
-        // parameters or locals leaves the frame empty, so the slot is grown
-        // first rather than assumed to exist.
-        if (static_cast<uint64_t>(m_currentRuntimeStackBaseIndex) + 1 > m_maxStackSize)
-        {
-            throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
-        }
-        m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
-        int32_t intValue = 0;
-        memcpy(&intValue, &instruction.args[0], sizeof(intValue));
-        m_runtimeStack[m_currentRuntimeStackBaseIndex] = intValue;
-
-        // Retrieve function index of previous function
-        m_currentFunctionIndex = m_callStack.top().functionIndex;
-        m_currentFunction = &m_functions.at(m_currentFunctionIndex);
-        // Restore active function index
-        m_currentInstructionIndex = m_callStack.top().instructionIndex;
-        // Restore runtime stack base index for the active function
-        m_currentRuntimeStackBaseIndex = m_callStack.top().runtimeStackBaseIndex;
-        m_callStack.pop();
-        break;
-    }
+        return executeReti(instruction);
 
     case Opcode::Retf:
-    {
-        // Returns float from script function
-        if (m_callStack.empty())
-        {
-            // No caller exists to receive the value
-            throwRuntimeError(m_logger, "Retf without a caller.");
-        }
-        // Arg 0 is float constant
-        // The caller's stack ends at the runtime stack base index, so slot base
-        // is the slot the caller reads the return value from. A function without
-        // parameters or locals leaves the frame empty, so the slot is grown
-        // first rather than assumed to exist.
-        if (static_cast<uint64_t>(m_currentRuntimeStackBaseIndex) + 1 > m_maxStackSize)
-        {
-            throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
-        }
-        m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
-        float floatValue = 0.f;
-        memcpy(&floatValue, &instruction.args[0], sizeof(floatValue));
-        m_runtimeStack[m_currentRuntimeStackBaseIndex] = floatValue;
-
-        // Retrieve function index of previous function
-        m_currentFunctionIndex = m_callStack.top().functionIndex;
-        m_currentFunction = &m_functions.at(m_currentFunctionIndex);
-        // Restore active function index
-        m_currentInstructionIndex = m_callStack.top().instructionIndex;
-        // Restore runtime stack base index for the active function
-        m_currentRuntimeStackBaseIndex = m_callStack.top().runtimeStackBaseIndex;
-        m_callStack.pop();
-        break;
-    }
+        return executeRetf(instruction);
 
     case Opcode::Rets:
-    {
-        // Returns string from script function
-        if (m_callStack.empty())
-        {
-            // No caller exists to receive the value
-            throwRuntimeError(m_logger, "Rets without a caller.");
-        }
-        // Arg 0 is index of string
-        // The caller's stack ends at the runtime stack base index, so slot base
-        // is the slot the caller reads the return value from. A function without
-        // parameters or locals leaves the frame empty, so the slot is grown
-        // first rather than assumed to exist. The string index is validated
-        // before growing, so corrupt input cannot leave a grown frame behind.
-        if (!indexInRange(0, instruction.args[0], m_strings.size()))
-        {
-            throwRuntimeError(m_logger, "Rets string index out of range.");
-        }
-        if (static_cast<uint64_t>(m_currentRuntimeStackBaseIndex) + 1 > m_maxStackSize)
-        {
-            throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
-        }
-        m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
-        uint32_t stringIndex = 0;
-        memcpy(&stringIndex, &instruction.args[0], sizeof(stringIndex));
-        m_runtimeStack[m_currentRuntimeStackBaseIndex] = m_strings.at(stringIndex);
-
-        // Retrieve function index of previous function
-        m_currentFunctionIndex = m_callStack.top().functionIndex;
-        m_currentFunction = &m_functions.at(m_currentFunctionIndex);
-        // Restore active function index
-        m_currentInstructionIndex = m_callStack.top().instructionIndex;
-        // Restore runtime stack base index for the active function
-        m_currentRuntimeStackBaseIndex = m_callStack.top().runtimeStackBaseIndex;
-        m_callStack.pop();
-        break;
-    }
+        return executeRets(instruction);
 
     case Opcode::Add:
     {
