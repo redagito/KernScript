@@ -1035,3 +1035,149 @@ TEST_CASE("Compiler drops literal expression statement", "[integration][compiler
     REQUIRE(asmText.find("pushi 42") == std::string::npos);
     REQUIRE(runSource(source) == "1\n");
 }
+
+TEST_CASE("Compiler rejects second module declaration", "[integration][compiler]")
+{
+    const std::string source = "module a;\nmodule b;\nfunc main() {}\n";
+
+    std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+    std::stringstream input(source);
+    std::stringstream asmCode;
+    REQUIRE_FALSE(compiler->compile(input, asmCode));
+}
+
+TEST_CASE("Compiler rejects module declaration after func", "[integration][compiler]")
+{
+    const std::string source = "func main() {}\nmodule m;\n";
+
+    std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+    std::stringstream input(source);
+    std::stringstream asmCode;
+    REQUIRE_FALSE(compiler->compile(input, asmCode));
+}
+
+TEST_CASE("Compiler rejects module declaration after import", "[integration][compiler]")
+{
+    const std::string source = "import a;\nmodule m;\nfunc main() {}\n";
+
+    std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+    std::stringstream input(source);
+    std::stringstream asmCode;
+    REQUIRE_FALSE(compiler->compile(input, asmCode));
+}
+
+TEST_CASE("Compiler rejects import declaration after func", "[integration][compiler]")
+{
+    const std::string source = "func main() {}\nimport a;\n";
+
+    std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+    std::stringstream input(source);
+    std::stringstream asmCode;
+    REQUIRE_FALSE(compiler->compile(input, asmCode));
+}
+
+TEST_CASE("Compiler rejects import declaration after extern", "[integration][compiler]")
+{
+    const std::string source = "extern f(x);\nimport a;\nfunc main() {\n  f(1);\n}\n";
+
+    std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+    std::stringstream input(source);
+    std::stringstream asmCode;
+    REQUIRE_FALSE(compiler->compile(input, asmCode));
+}
+
+TEST_CASE("Compiler rejects export on extern declaration", "[integration][compiler]")
+{
+    const std::string source = "export extern f(x);\nfunc main() {}\n";
+
+    std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+    std::stringstream input(source);
+    std::stringstream asmCode;
+    REQUIRE_FALSE(compiler->compile(input, asmCode));
+}
+
+TEST_CASE("Compiler rejects export on non-func declaration", "[integration][compiler]")
+{
+    const std::string source = "export var x;\nfunc main() {}\n";
+
+    std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+    std::stringstream input(source);
+    std::stringstream asmCode;
+    REQUIRE_FALSE(compiler->compile(input, asmCode));
+}
+
+TEST_CASE("Compiler rejects doubly qualified call", "[integration][compiler]")
+{
+    const std::string source = "func main() {\n  a::b::c();\n}\n";
+
+    std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+    std::stringstream input(source);
+    std::stringstream asmCode;
+    REQUIRE_FALSE(compiler->compile(input, asmCode));
+}
+
+TEST_CASE("Compiler rejects call with empty qualifier", "[integration][compiler]")
+{
+    std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+
+    const std::string stmtSource = "func main() {\n  ::f();\n}\n";
+    {
+        std::stringstream input(stmtSource);
+        std::stringstream asmCode;
+        REQUIRE_FALSE(compiler->compile(input, asmCode));
+    }
+
+    const std::string exprSource = "func main() {\n  var x = ::f();\n}\n";
+    {
+        std::stringstream input(exprSource);
+        std::stringstream asmCode;
+        REQUIRE_FALSE(compiler->compile(input, asmCode));
+    }
+}
+
+TEST_CASE("Compiler rejects module import export used as identifiers", "[integration][compiler]")
+{
+    std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+
+    const std::string funcName = "func module() {}\n";
+    {
+        std::stringstream input(funcName);
+        std::stringstream asmCode;
+        REQUIRE_FALSE(compiler->compile(input, asmCode));
+    }
+
+    const std::string varName = "func main() {\n  var import;\n}\n";
+    {
+        std::stringstream input(varName);
+        std::stringstream asmCode;
+        REQUIRE_FALSE(compiler->compile(input, asmCode));
+    }
+
+    const std::string paramName = "func f(export) {\n}\nfunc main() {}\n";
+    {
+        std::stringstream input(paramName);
+        std::stringstream asmCode;
+        REQUIRE_FALSE(compiler->compile(input, asmCode));
+    }
+}
+
+TEST_CASE("Compiler compiles module imports and export end-to-end", "[integration][compiler]")
+{
+    const std::string source = "module mymod;\nimport other;\nextern println(x);\nexport func helper(v) {\n"
+                               "  return v * 2;\n}\nfunc main() {\n  println(helper(21));\n}\n";
+
+    std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+    std::stringstream input(source);
+    std::stringstream asmCode;
+    REQUIRE(compiler->compile(input, asmCode));
+
+    std::stringstream byteCode;
+    REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+
+    std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+    testutil::StringRecorder recorder;
+    testutil::registerHostFunctions(*vm, recorder);
+    REQUIRE(vm->load(byteCode));
+    REQUIRE(vm->callFunction("main"));
+    REQUIRE(recorder.text() == "42\n");
+}

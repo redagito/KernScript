@@ -1,13 +1,14 @@
 # KernScript Scripting Language (v1 Draft)
 
-Source compiles to KernScript assembly. One source file holds `extern`
-declarations followed by `func` declarations, with at least one `func`. Execution starts at a host-chosen function;
+Source compiles to KernScript assembly. One source file holds an optional
+`module` header, then `import` declarations, then `extern` declarations
+followed by `func` declarations, with at least one `func`. Execution starts at a host-chosen function;
 every call runs to completion — a script cannot wait across calls.
 
 ## Lexical
 
 - Identifiers: `[A-Za-z_][A-Za-z0-9_]*` (`@` is excluded; it is reserved for mangled names).
-- Keywords: `func extern var if else while return and or xor not`.
+- Keywords: `func extern var if else while return and or xor not module import export`.
 - Integer literals: `-2147483648..2147483647` are signed; `2147483648..4294967295`
   are unsigned; anything larger is a compile error.
 - Float literals: 32-bit, e.g. `3.5`. No exponents.
@@ -18,9 +19,11 @@ every call runs to completion — a script cannot wait across calls.
 ## Grammar
 
 ```ebnf
-Program    := ExternDecl* FuncDecl+
+Program    := [ModuleDecl] ImportDecl* ExternDecl* FuncDecl+
+ModuleDecl := "module" Ident ";"
+ImportDecl := "import" Ident ";"
 ExternDecl := "extern" Ident "(" [Ident ("," Ident)*] ")" ";"
-FuncDecl   := "func" Ident "(" [Ident ("," Ident)*] ")" Block
+FuncDecl   := ["export"] "func" Ident "(" [Ident ("," Ident)*] ")" Block
 Block      := "{" Stmt* "}"
 Stmt       := VarDecl | Assign | If | While | Return | ExprStmt
 VarDecl    := "var" Ident ["=" Expr] ";"
@@ -38,8 +41,15 @@ AddExpr    := MulExpr (("+" | "-") MulExpr)*
 MulExpr    := Unary (("*" | "/") Unary)*
 Unary      := ("-" | "not") Unary | Primary
 Primary    := Integer | Float | String | Ident | Call | "(" Expr ")"
-Call       := Ident "(" [Expr ("," Expr)*] ")"
+Call       := [Ident "::"] Ident "(" [Expr ("," Expr)*] ")"
 ```
+
+At most one `module` declaration is allowed and it must come first.
+`import` declarations sit between the module header (if any) and the
+`extern`/`func` declarations; an `import` after an `extern` or `func` is
+a compile error. `export` prefixes `func` declarations only. A call may
+qualify its target once (`mod::func(...)`); the qualifier is recorded but
+not resolved here, and imports are recorded but not loaded.
 
 No `for`, `break` or `continue` in v1.
 

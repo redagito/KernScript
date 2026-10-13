@@ -540,3 +540,231 @@ TEST_CASE("Parser still accepts moderate nesting", "[integration][compiler][pars
     const std::vector<std::string> messages = compileWithName(makeNestedSource(100), "test.ks", ok);
     REQUIRE(ok);
 }
+
+TEST_CASE("AST records module imports and export flag with spans", "[integration][compiler][parser]")
+{
+    const std::string source = "module mymod;\nimport other;\nimport third;\nexport func helper() {\n}\n"
+                               "func main() {\nhelper();\n}\n";
+    std::vector<Tok> toks;
+    ast::Program program;
+    REQUIRE(parseAstSource(source, toks, program));
+
+    REQUIRE(program.hasModule);
+    REQUIRE(program.module.name == "mymod");
+    REQUIRE(program.module.namePos.line == 1);
+    REQUIRE(program.module.namePos.col == 8);
+    REQUIRE(program.module.pos.line == 1);
+    REQUIRE(program.module.pos.col == 1);
+    REQUIRE(program.module.end.line == 1);
+    REQUIRE(program.module.end.col == 13);
+
+    REQUIRE(program.imports.size() == 2);
+    REQUIRE(program.imports[0].name == "other");
+    REQUIRE(program.imports[0].namePos.line == 2);
+    REQUIRE(program.imports[0].namePos.col == 8);
+    REQUIRE(program.imports[0].pos.line == 2);
+    REQUIRE(program.imports[0].pos.col == 1);
+    REQUIRE(program.imports[0].end.line == 2);
+    REQUIRE(program.imports[0].end.col == 13);
+    REQUIRE(program.imports[1].name == "third");
+    REQUIRE(program.imports[1].namePos.line == 3);
+    REQUIRE(program.imports[1].namePos.col == 8);
+    REQUIRE(program.imports[1].pos.line == 3);
+    REQUIRE(program.imports[1].pos.col == 1);
+    REQUIRE(program.imports[1].end.line == 3);
+    REQUIRE(program.imports[1].end.col == 13);
+
+    REQUIRE(program.funcs.size() == 2);
+    REQUIRE(program.funcs[0].name == "helper");
+    REQUIRE(program.funcs[0].exported);
+    REQUIRE(program.funcs[0].pos.line == 4);
+    REQUIRE(program.funcs[0].pos.col == 1);
+    REQUIRE(program.funcs[1].name == "main");
+    REQUIRE_FALSE(program.funcs[1].exported);
+    REQUIRE(program.funcs[1].pos.line == 6);
+    REQUIRE(program.funcs[1].pos.col == 1);
+
+    REQUIRE(program.funcs[1].body.size() == 1);
+    const auto *stmt = std::get_if<ast::Stmt::ExprStmt>(&program.funcs[1].body[0].node);
+    REQUIRE(stmt != nullptr);
+    const auto *call = std::get_if<ast::Expr::Call>(&stmt->expr->node);
+    REQUIRE(call != nullptr);
+    REQUIRE(call->name == "helper");
+    REQUIRE(call->qualifier.empty());
+}
+
+TEST_CASE("AST records qualified calls in expression and statement position", "[integration][compiler][parser]")
+{
+    const std::string source = "func main() {\nvar r = m::helper(1);\nm::helper(2);\n}\n";
+    std::vector<Tok> toks;
+    ast::Program program;
+    REQUIRE(parseAstSource(source, toks, program));
+    REQUIRE(program.funcs.size() == 1);
+    const ast::Func &main = program.funcs[0];
+    REQUIRE(main.body.size() == 2);
+
+    const auto *varDecl = std::get_if<ast::Stmt::VarDecl>(&main.body[0].node);
+    REQUIRE(varDecl != nullptr);
+    const auto *valueCall = std::get_if<ast::Expr::Call>(&varDecl->init->node);
+    REQUIRE(valueCall != nullptr);
+    REQUIRE(valueCall->qualifier == "m");
+    REQUIRE(valueCall->qualifierPos.line == 2);
+    REQUIRE(valueCall->qualifierPos.col == 9);
+    REQUIRE(valueCall->name == "helper");
+    REQUIRE(valueCall->namePos.line == 2);
+    REQUIRE(valueCall->namePos.col == 12);
+    REQUIRE(varDecl->init->pos.line == 2);
+    REQUIRE(varDecl->init->pos.col == 9);
+    REQUIRE(varDecl->init->end.line == 2);
+    REQUIRE(varDecl->init->end.col == 20);
+    REQUIRE(valueCall->args.size() == 1);
+
+    const auto *stmt = std::get_if<ast::Stmt::ExprStmt>(&main.body[1].node);
+    REQUIRE(stmt != nullptr);
+    const auto *stmtCall = std::get_if<ast::Expr::Call>(&stmt->expr->node);
+    REQUIRE(stmtCall != nullptr);
+    REQUIRE(stmtCall->qualifier == "m");
+    REQUIRE(stmtCall->qualifierPos.line == 3);
+    REQUIRE(stmtCall->qualifierPos.col == 1);
+    REQUIRE(stmtCall->name == "helper");
+    REQUIRE(stmtCall->namePos.line == 3);
+    REQUIRE(stmtCall->namePos.col == 4);
+    REQUIRE(main.body[1].pos.line == 3);
+    REQUIRE(main.body[1].pos.col == 1);
+    REQUIRE(main.body[1].end.line == 3);
+    REQUIRE(main.body[1].end.col == 13);
+}
+
+TEST_CASE("Diagnostic reports duplicate module declaration", "[integration][compiler][diagnostic]")
+{
+    const std::string source = "module a;\nmodule b;\nfunc main() {}\n";
+    bool ok = true;
+    const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
+    REQUIRE_FALSE(ok);
+    REQUIRE(messages.size() == 2);
+    REQUIRE(messages[0] == "test.ks:2:1: error: Duplicate module declaration.");
+    REQUIRE(messages[1] == "note: only one module declaration is allowed");
+}
+
+TEST_CASE("Diagnostic reports module declaration after func", "[integration][compiler][diagnostic]")
+{
+    const std::string source = "func main() {}\nmodule m;\n";
+    bool ok = true;
+    const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
+    REQUIRE_FALSE(ok);
+    REQUIRE(messages.size() == 2);
+    REQUIRE(messages[0] == "test.ks:2:1: error: Module declaration must be first.");
+    REQUIRE(messages[1] == "note: move module declaration to the top of the file");
+}
+
+TEST_CASE("Diagnostic reports module declaration after import", "[integration][compiler][diagnostic]")
+{
+    const std::string source = "import a;\nmodule m;\nfunc main() {}\n";
+    bool ok = true;
+    const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
+    REQUIRE_FALSE(ok);
+    REQUIRE(messages.size() == 2);
+    REQUIRE(messages[0] == "test.ks:2:1: error: Module declaration must be first.");
+    REQUIRE(messages[1] == "note: move module declaration to the top of the file");
+}
+
+TEST_CASE("Diagnostic reports import declaration after func", "[integration][compiler][diagnostic]")
+{
+    const std::string source = "func main() {}\nimport a;\n";
+    bool ok = true;
+    const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
+    REQUIRE_FALSE(ok);
+    REQUIRE(messages.size() == 2);
+    REQUIRE(messages[0] == "test.ks:2:1: error: Import declarations must precede extern and func declarations.");
+    REQUIRE(messages[1] == "note: move import declarations above extern and func");
+}
+
+TEST_CASE("Diagnostic reports import declaration after extern", "[integration][compiler][diagnostic]")
+{
+    const std::string source = "extern f(x);\nimport a;\nfunc main() {\nf(1);\n}\n";
+    bool ok = true;
+    const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
+    REQUIRE_FALSE(ok);
+    REQUIRE(messages.size() == 2);
+    REQUIRE(messages[0] == "test.ks:2:1: error: Import declarations must precede extern and func declarations.");
+    REQUIRE(messages[1] == "note: move import declarations above extern and func");
+}
+
+TEST_CASE("Diagnostic reports export on extern declaration", "[integration][compiler][diagnostic]")
+{
+    const std::string source = "export extern f(x);\nfunc main() {}\n";
+    bool ok = true;
+    const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
+    REQUIRE_FALSE(ok);
+    REQUIRE(messages.size() == 2);
+    REQUIRE(messages[0] == "test.ks:1:1: error: Export applies to func declarations only.");
+    REQUIRE(messages[1] == "note: use export on a func declaration");
+}
+
+TEST_CASE("Diagnostic reports export on non-func declaration", "[integration][compiler][diagnostic]")
+{
+    const std::string source = "export var x;\nfunc main() {}\n";
+    bool ok = true;
+    const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
+    REQUIRE_FALSE(ok);
+    REQUIRE(messages.size() == 2);
+    REQUIRE(messages[0] == "test.ks:1:1: error: Export applies to func declarations only.");
+    REQUIRE(messages[1] == "note: use export on a func declaration");
+}
+
+TEST_CASE("Diagnostic reports doubly qualified call", "[integration][compiler][diagnostic]")
+{
+    const std::string source = "func main() {\na::b::c();\n}\n";
+    bool ok = true;
+    const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
+    REQUIRE_FALSE(ok);
+    REQUIRE(messages.size() == 2);
+    REQUIRE(messages[0] == "test.ks:2:5: error: Only one qualifier is allowed.");
+    REQUIRE(messages[1] == "note: write module::func with a single qualifier");
+}
+
+TEST_CASE("Diagnostic reports call with empty qualifier", "[integration][compiler][diagnostic]")
+{
+    const std::string stmtSource = "func main() {\n::f();\n}\n";
+    {
+        bool ok = true;
+        const std::vector<std::string> messages = compileWithName(stmtSource, "test.ks", ok);
+        REQUIRE_FALSE(ok);
+        REQUIRE(messages.size() == 1);
+        REQUIRE(messages[0] == "test.ks:2:1: error: Expected a statement.");
+    }
+    const std::string exprSource = "func main() {\nvar x = ::f();\n}\n";
+    {
+        bool ok = true;
+        const std::vector<std::string> messages = compileWithName(exprSource, "test.ks", ok);
+        REQUIRE_FALSE(ok);
+        REQUIRE(messages.size() == 1);
+        REQUIRE(messages[0] == "test.ks:2:9: error: Expected an expression.");
+    }
+}
+
+TEST_CASE("Diagnostic reports module import export used as identifiers", "[integration][compiler][diagnostic]")
+{
+    {
+        bool ok = true;
+        const std::vector<std::string> messages = compileWithName("func module() {}\n", "test.ks", ok);
+        REQUIRE_FALSE(ok);
+        REQUIRE(messages.size() == 1);
+        REQUIRE(messages[0] == "test.ks:1:6: error: Expected a function name.");
+    }
+    {
+        bool ok = true;
+        const std::vector<std::string> messages = compileWithName("func main() {\nvar import;\n}\n", "test.ks", ok);
+        REQUIRE_FALSE(ok);
+        REQUIRE(messages.size() == 1);
+        REQUIRE(messages[0] == "test.ks:2:5: error: Expected a variable name.");
+    }
+    {
+        bool ok = true;
+        const std::vector<std::string> messages =
+            compileWithName("func f(export) {\n}\nfunc main() {}\n", "test.ks", ok);
+        REQUIRE_FALSE(ok);
+        REQUIRE(messages.size() == 1);
+        REQUIRE(messages[0] == "test.ks:1:8: error: Expected ')'.");
+    }
+}

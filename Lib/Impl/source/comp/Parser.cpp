@@ -31,6 +31,11 @@ bool tokenize(std::istream &sourceCode, kern::ILogger *logger, std::vector<Tok> 
     lexer.addKeyword("or");
     lexer.addKeyword("xor");
     lexer.addKeyword("not");
+    // Module system words: reserved the same way, so using them as names
+    // fails with a clean keyword error instead of parsing as an identifier.
+    lexer.addKeyword("module");
+    lexer.addKeyword("import");
+    lexer.addKeyword("export");
 
     // Buffer significant tokens for lookahead.
     toks.clear();
@@ -259,6 +264,7 @@ bool parseAstAdd(AstBuild &build, std::unique_ptr<ast::Expr> &expr);
 bool parseAstMul(AstBuild &build, std::unique_ptr<ast::Expr> &expr);
 bool parseAstUnary(AstBuild &build, std::unique_ptr<ast::Expr> &expr);
 bool parseAstPrimary(AstBuild &build, std::unique_ptr<ast::Expr> &expr);
+bool parseAstQualifiedCall(AstBuild &build, const Tok &qualTok, std::unique_ptr<ast::Expr> &expr);
 
 std::unique_ptr<ast::Expr> makeBinary(std::string op, std::unique_ptr<ast::Expr> left, std::unique_ptr<ast::Expr> right)
 {
@@ -298,6 +304,42 @@ bool parseAstCallArgs(AstBuild &build, std::vector<std::unique_ptr<ast::Expr>> &
     return astExpect(build, LexerToken::CloseParenthesis, "')'");
 }
 
+// Parses 'qualifier "::" name "(" args ")"' with the cursor on the
+// qualifier. Only one qualifier is allowed; the name must be followed by
+// the argument list (qualified names are calls only, never plain refs).
+// Resolution runs later: the qualifier is only recorded on the Call node.
+bool parseAstQualifiedCall(AstBuild &build, const Tok &qualTok, std::unique_ptr<ast::Expr> &expr)
+{
+    const SrcPos qualPos = qualTok.pos;
+    const std::string qualifier = qualTok.text;
+    build.pos += 2; // consume qualifier and '::'
+    if (astPeek(build) != LexerToken::Identifier)
+    {
+        astError(build, "Expected a function name.");
+        return false;
+    }
+    const SrcPos namePos = astTok(build).pos;
+    const std::string name = astTok(build).text;
+    ++build.pos;
+    if (astPeek(build) == LexerToken::DoubleColon)
+    {
+        reportError(build.logger, build.sourceName, astHere(build), "Only one qualifier is allowed.",
+                    "write module::func with a single qualifier");
+        return false;
+    }
+    std::vector<std::unique_ptr<ast::Expr>> args;
+    if (!parseAstCallArgs(build, args))
+    {
+        return false;
+    }
+    auto node = std::make_unique<ast::Expr>();
+    node->pos = qualPos;
+    node->end = (*build.toks)[build.pos - 1].pos;
+    node->node = ast::Expr::Call{name, namePos, std::move(args), qualifier, qualPos};
+    expr = std::move(node);
+    return true;
+}
+
 bool parseAstPrimary(AstBuild &build, std::unique_ptr<ast::Expr> &expr)
 {
     if (astAtEnd(build))
@@ -328,6 +370,10 @@ bool parseAstPrimary(AstBuild &build, std::unique_ptr<ast::Expr> &expr)
     }
     if (tok.type == LexerToken::Identifier)
     {
+        if (astPeek(build, 1) == LexerToken::DoubleColon)
+        {
+            return parseAstQualifiedCall(build, tok, expr);
+        }
         if (astPeek(build, 1) == LexerToken::OpenParenthesis)
         {
             const SrcPos namePos = tok.pos;
@@ -856,6 +902,53 @@ bool laterPos(SrcPos a, SrcPos b)
     return a.col > b.col;
 }
 
+// Parses 'module name ";"' with the cursor on 'module'. Placement (at most
+// one, first in the file) is checked by the caller; this only builds the node.
+bool parseAstModuleDecl(AstBuild &build, ast::ModuleDecl &decl)
+{
+    const SrcPos start = astTok(build).pos;
+    ++build.pos; // consume 'module'
+    if (astPeek(build) != LexerToken::Identifier)
+    {
+        astError(build, "Expected a module name.");
+        return false;
+    }
+    decl.name = astTok(build).text;
+    decl.namePos = astTok(build).pos;
+    ++build.pos;
+    if (!astExpect(build, LexerToken::Semicolon, "';'"))
+    {
+        return false;
+    }
+    decl.pos = start;
+    decl.end = (*build.toks)[build.pos - 1].pos;
+    return true;
+}
+
+// Parses 'import name ";"' with the cursor on 'import'. Placement (before
+// extern/func declarations) is checked by the caller; this only builds the
+// node. Imports are recorded, not loaded.
+bool parseAstImportDecl(AstBuild &build, ast::ImportDecl &decl)
+{
+    const SrcPos start = astTok(build).pos;
+    ++build.pos; // consume 'import'
+    if (astPeek(build) != LexerToken::Identifier)
+    {
+        astError(build, "Expected an import name.");
+        return false;
+    }
+    decl.name = astTok(build).text;
+    decl.namePos = astTok(build).pos;
+    ++build.pos;
+    if (!astExpect(build, LexerToken::Semicolon, "';'"))
+    {
+        return false;
+    }
+    decl.pos = start;
+    decl.end = (*build.toks)[build.pos - 1].pos;
+    return true;
+}
+
 bool parseAstExternDecl(AstBuild &build, ast::Extern &ext, bool haveFunc, const std::vector<ast::Extern> &externs,
                         const std::vector<ast::Func> &funcs)
 {
@@ -925,10 +1018,12 @@ bool parseAstExternDecl(AstBuild &build, ast::Extern &ext, bool haveFunc, const 
 }
 
 bool parseAstFuncDecl(AstBuild &build, ast::Func &func, const std::vector<ast::Extern> &externs,
-                      const std::vector<ast::Func> &funcs)
+                      const std::vector<ast::Func> &funcs, bool exported, SrcPos exportPos)
 {
-    const SrcPos start = astTok(build).pos;
+    // An exported function spans from the 'export' keyword.
+    const SrcPos start = exported ? exportPos : astTok(build).pos;
     ++build.pos; // consume 'func'
+    func.exported = exported;
     if (astPeek(build) != LexerToken::Identifier)
     {
         astError(build, "Expected a function name.");
@@ -1029,7 +1124,66 @@ bool ast::parseProgram(const std::vector<Tok> &toks, kern::ILogger *logger, cons
             return false;
         }
         const std::string keyword = astTok(build).text;
-        if (keyword == "extern")
+        if (keyword == "module")
+        {
+            const SrcPos start = astTok(build).pos;
+            if (program.hasModule)
+            {
+                reportError(build.logger, build.sourceName, start, "Duplicate module declaration.",
+                            "only one module declaration is allowed");
+                return false;
+            }
+            if (!program.imports.empty() || !program.externs.empty() || haveFunc)
+            {
+                reportError(build.logger, build.sourceName, start, "Module declaration must be first.",
+                            "move module declaration to the top of the file");
+                return false;
+            }
+            ast::ModuleDecl decl;
+            if (!parseAstModuleDecl(build, decl))
+            {
+                return false;
+            }
+            program.module = decl;
+            program.hasModule = true;
+        }
+        else if (keyword == "import")
+        {
+            const SrcPos start = astTok(build).pos;
+            if (!program.externs.empty() || haveFunc)
+            {
+                reportError(build.logger, build.sourceName, start,
+                            "Import declarations must precede extern and func declarations.",
+                            "move import declarations above extern and func");
+                return false;
+            }
+            ast::ImportDecl decl;
+            if (!parseAstImportDecl(build, decl))
+            {
+                return false;
+            }
+            program.imports.push_back(std::move(decl));
+        }
+        else if (keyword == "export")
+        {
+            const SrcPos exportPos = astTok(build).pos;
+            ++build.pos; // consume 'export'
+            // Export applies to func declarations only.
+            if (!astKeywordIs(build, "func"))
+            {
+                reportError(build.logger, build.sourceName, exportPos, "Export applies to func declarations only.",
+                            "use export on a func declaration");
+                return false;
+            }
+            ast::Func func;
+            if (!parseAstFuncDecl(build, func, program.externs, program.funcs, true, exportPos))
+            {
+                return false;
+            }
+            program.funcs.push_back(std::move(func));
+            haveFunc = true;
+        }
+        else if (keyword == "extern")
         {
             ast::Extern ext;
             if (!parseAstExternDecl(build, ext, haveFunc, program.externs, program.funcs))
@@ -1041,7 +1195,7 @@ bool ast::parseProgram(const std::vector<Tok> &toks, kern::ILogger *logger, cons
         else if (keyword == "func")
         {
             ast::Func func;
-            if (!parseAstFuncDecl(build, func, program.externs, program.funcs))
+            if (!parseAstFuncDecl(build, func, program.externs, program.funcs, false, SrcPos{}))
             {
                 return false;
             }
