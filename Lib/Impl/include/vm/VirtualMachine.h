@@ -145,6 +145,13 @@ private:
     std::unordered_map<std::string, std::unique_ptr<kern::IExternFunction>>
         m_externFunctionsMap; /**< Extern functions. */
 
+    // Resolved extern objects parallel to m_externFunctions, so Calle skips
+    // the map lookup per call. Null means unregistered (same error as a
+    // missing map entry). Rebuilt on deserialize, patched on add/remove,
+    // cleared with the vector; never touched mid-execution (all mutators
+    // refuse while running).
+    std::vector<kern::IExternFunction *> m_externFunctionPtrs;
+
     std::vector<Value> m_runtimeStack;     /**< Active runtime stack. */
     std::stack<FunctionFrame> m_callStack; /**< Function call stack for instruction ret. */
 

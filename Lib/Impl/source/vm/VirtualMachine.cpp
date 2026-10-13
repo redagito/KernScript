@@ -293,6 +293,7 @@ void VirtualMachine::clearScripts()
     // Clear script data
     m_strings.clear();
     m_externFunctions.clear();
+    m_externFunctionPtrs.clear();
     m_functions.clear();
     // Drop any values and frames a previous call left behind.
     m_runtimeStack.clear();
@@ -450,6 +451,15 @@ void VirtualMachine::addFunction(const std::string &functionName, kern::IExternF
         throwRuntimeError(m_logger, "Extern function must not be null.");
     }
     m_externFunctionsMap[functionName].reset(function);
+    // The bytecode table may already name this extern (registered after
+    // load); patch any matching slots so Calle sees it without a lookup.
+    for (size_t i = 0; i < m_externFunctions.size() && i < m_externFunctionPtrs.size(); ++i)
+    {
+        if (m_externFunctions[i].name == functionName)
+        {
+            m_externFunctionPtrs[i] = function;
+        }
+    }
 }
 
 void VirtualMachine::removeFunction(const ::std::string &functionName)
@@ -461,6 +471,13 @@ void VirtualMachine::removeFunction(const ::std::string &functionName)
         throwRuntimeError(m_logger, "removeFunction is not reentrant.");
     }
     m_externFunctionsMap.erase(functionName);
+    for (size_t i = 0; i < m_externFunctions.size() && i < m_externFunctionPtrs.size(); ++i)
+    {
+        if (m_externFunctions[i].name == functionName)
+        {
+            m_externFunctionPtrs[i] = nullptr;
+        }
+    }
 }
 
 bool VirtualMachine::popParameter(int &value)
@@ -634,6 +651,14 @@ bool VirtualMachine::deserializeExternFunctions(std::istream &stream)
         {
             return false;
         }
+    }
+    // Resolve what the host already registered; later addFunction calls patch
+    // the rest. A failure below still wipes everything via clearScripts.
+    m_externFunctionPtrs.clear();
+    for (const auto &externFunction : m_externFunctions)
+    {
+        const auto entry = m_externFunctionsMap.find(externFunction.name);
+        m_externFunctionPtrs.push_back(entry != m_externFunctionsMap.end() ? entry->second.get() : nullptr);
     }
     return stream.good();
 }
@@ -1123,15 +1148,19 @@ bool VirtualMachine::execute()
         }
 
         // Check if function exists
-        auto entry = m_externFunctionsMap.find(externFunction.name);
-        if (entry == m_externFunctionsMap.end())
+        kern::IExternFunction *externObject = nullptr;
+        if (static_cast<size_t>(externIndex) < m_externFunctionPtrs.size())
+        {
+            externObject = m_externFunctionPtrs[static_cast<size_t>(externIndex)];
+        }
+        if (externObject == nullptr)
         {
             // Function does not exist
             throwRuntimeError(m_logger, "The extern function '{}' does not exist.", externFunction.name);
         }
         // Call if found, a failing call stops the script instead of continuing
         // with missing values on the stack.
-        if (!entry->second->call(*this))
+        if (!externObject->call(*this))
         {
             throwRuntimeError(m_logger, "The extern function '{}' reported failure.", externFunction.name);
         }
