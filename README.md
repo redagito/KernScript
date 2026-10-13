@@ -11,9 +11,10 @@ executes it with host extern calls in between.
 
 The language is dynamically typed (signed/unsigned int, float, string;
 zero is false), single-return functions with explicit `return`, `if`/`else`,
-`while`, C-like operator precedence, and string equality only. Each VM call
+`while`, C-like operator precedence, and string equality only. Modules with
+`import` and `export` organize multi-file programs. Each VM call
 runs to completion; a bounded instruction count stops runaway scripts
-instead of hanging the host. There are no modules yet (`import` is planned).
+instead of hanging the host.
 
 ## Layout
 
