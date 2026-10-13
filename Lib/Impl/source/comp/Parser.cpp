@@ -1225,6 +1225,11 @@ bool ast::parseProgram(const std::vector<Tok> &toks, kern::ILogger *logger, cons
                         "use one return form in each function");
             return false;
         }
+        // Tag the owning module now, while the file's own header is at hand.
+        // The compiler merges parsed files untouched, so the tag rides along
+        // and lowering can resolve calls per module ("" is the anonymous root
+        // and keeps flat names).
+        func.owner = program.hasModule ? program.module.name : std::string();
     }
     return true;
 }

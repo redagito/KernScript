@@ -1224,7 +1224,8 @@ ImportCompileResult compileWithPaths(const std::string &source, const std::vecto
     return result;
 }
 
-std::string runWithPaths(const std::string &source, const std::vector<std::string> &searchPaths)
+std::string runWithPaths(const std::string &source, const std::vector<std::string> &searchPaths,
+                         const std::string &func = "main")
 {
     const ImportCompileResult compiled = compileWithPaths(source, searchPaths);
     REQUIRE(compiled.ok);
@@ -1235,7 +1236,7 @@ std::string runWithPaths(const std::string &source, const std::vector<std::strin
     testutil::StringRecorder recorder;
     testutil::registerHostFunctions(*vm, recorder);
     REQUIRE(vm->load(byteCode));
-    REQUIRE(vm->callFunction("main"));
+    REQUIRE(vm->callFunction(func));
     return recorder.text();
 }
 
@@ -1284,17 +1285,18 @@ TEST_CASE("Compiler compiles module imports and export end-to-end", "[integratio
 {
     const std::string dir = ksFixtureDir();
     REQUIRE_FALSE(dir.empty());
-    const std::string source = "module mymod;\nimport other;\nextern println(x);\nexport func helper(v) {\n"
-                               "  return v * 2;\n}\nfunc main() {\n  println(helper(21));\n  println(triple(7));\n}\n";
+    const std::string source =
+        "module mymod;\nimport other;\nextern println(x);\nexport func helper(v) {\n"
+        "  return v * 2;\n}\nfunc main() {\n  println(helper(21));\n  println(other::triple(7));\n}\n";
 
-    REQUIRE(runWithPaths(source, {dir}) == "42\n21\n");
+    REQUIRE(runWithPaths(source, {dir}, "mymod@main") == "42\n21\n");
 }
 
 TEST_CASE("Compiler resolves a single import end-to-end", "[integration][compiler]")
 {
     const std::string dir = ksFixtureDir();
     REQUIRE_FALSE(dir.empty());
-    const std::string source = "import math;\nextern println(x);\nfunc main() {\n  println(double(21));\n}\n";
+    const std::string source = "import math;\nextern println(x);\nfunc main() {\n  println(math::double(21));\n}\n";
 
     REQUIRE(runWithPaths(source, {dir}) == "42\n");
 }
@@ -1303,7 +1305,7 @@ TEST_CASE("Compiler resolves a transitive import chain end-to-end", "[integratio
 {
     const std::string dir = ksFixtureDir();
     REQUIRE_FALSE(dir.empty());
-    const std::string source = "import c1;\nextern println(x);\nfunc main() {\n  println(f1());\n}\n";
+    const std::string source = "import c1;\nextern println(x);\nfunc main() {\n  println(c1::f1());\n}\n";
 
     REQUIRE(runWithPaths(source, {dir}) == "12\n");
 }
@@ -1316,7 +1318,7 @@ TEST_CASE("Compiler shares a diamond import once", "[integration][compiler]")
     const std::string dir = ksFixtureDir();
     REQUIRE_FALSE(dir.empty());
     const std::string source =
-        "import dia_a;\nimport dia_b;\nextern println(x);\nfunc main() {\n  println(fa() + fb());\n}\n";
+        "import dia_a;\nimport dia_b;\nextern println(x);\nfunc main() {\n  println(dia_a::fa() + dia_b::fb());\n}\n";
 
     REQUIRE(runWithPaths(source, {dir}) == "23\n");
 }
@@ -1326,7 +1328,7 @@ TEST_CASE("Compiler resolves the same import twice without duplication", "[integ
     const std::string dir = ksFixtureDir();
     REQUIRE_FALSE(dir.empty());
     const std::string source = "import math;\nimport math;\nextern println(x);\nfunc main() {\n  "
-                               "println(double(1));\n}\n";
+                               "println(math::double(1));\n}\n";
 
     REQUIRE(runWithPaths(source, {dir}) == "2\n");
 }
@@ -1458,7 +1460,7 @@ TEST_CASE("Compiler takes the first search path hit for an import", "[integratio
     REQUIRE_FALSE(dir.empty());
     const std::string first = dir + "/ord1";
     const std::string second = dir + "/ord2";
-    const std::string source = "import which;\nextern println(x);\nfunc main() {\n  println(whichfn());\n}\n";
+    const std::string source = "import which;\nextern println(x);\nfunc main() {\n  println(which::whichfn());\n}\n";
 
     REQUIRE(runWithPaths(source, {first, second}) == "1\n");
     REQUIRE(runWithPaths(source, {second, first}) == "2\n");
@@ -1469,10 +1471,12 @@ TEST_CASE("Compiler still compiles anonymous and named roots without imports", "
     const std::string anon = "extern println(x);\nfunc main() {\n  println(1);\n}\n";
     const std::string named = "module standalone;\nextern println(x);\nfunc main() {\n  println(2);\n}\n";
 
-    for (const std::string *source : {&anon, &named})
+    for (const bool isNamed : {false, true})
     {
+        const std::string &source = isNamed ? named : anon;
+        const std::string entry = isNamed ? "standalone@main" : "main";
         std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
-        std::stringstream input(*source);
+        std::stringstream input(source);
         std::stringstream asmCode;
         REQUIRE(compiler->compile(input, asmCode));
 
@@ -1483,7 +1487,7 @@ TEST_CASE("Compiler still compiles anonymous and named roots without imports", "
         testutil::StringRecorder recorder;
         testutil::registerHostFunctions(*vm, recorder);
         REQUIRE(vm->load(byteCode));
-        REQUIRE(vm->callFunction("main"));
+        REQUIRE(vm->callFunction(entry));
         REQUIRE_FALSE(recorder.text().empty());
     }
 }
@@ -1494,14 +1498,378 @@ TEST_CASE("Compiler rejects an import chain past the depth bound", "[integration
     const int depth = 150;
     for (int i = 0; i < depth; ++i)
     {
-        const std::string next = i + 1 < depth ? "import m" + std::to_string(i + 1) + ";\n" : "";
-        dir.write("m" + std::to_string(i) + ".ks", "module m" + std::to_string(i) + ";\n" + next + "func f" +
-                                                       std::to_string(i) + "() {\n  return " + std::to_string(i) +
-                                                       ";\n}\n");
+        const bool last = i + 1 >= depth;
+        const std::string next = last ? "" : "import m" + std::to_string(i + 1) + ";\n";
+        const std::string call = last ? "return " + std::to_string(i) + ";"
+                                      : "return m" + std::to_string(i + 1) + "::f" + std::to_string(i + 1) + "() + " +
+                                            std::to_string(i) + ";";
+        dir.write("m" + std::to_string(i) + ".ks", "module m" + std::to_string(i) + ";\n" + next + "export func f" +
+                                                       std::to_string(i) + "() {\n  " + call + "\n}\n");
     }
-    const std::string source = "import m0;\nextern println(x);\nfunc main() {\n  println(f0());\n}\n";
+    const std::string source = "import m0;\nextern println(x);\nfunc main() {\n  println(m0::f0());\n}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {dir.path.string()});
     REQUIRE_FALSE(result.ok);
     REQUIRE(contains(result.messages, "too deep"));
+}
+
+namespace
+{
+
+std::string compileFlatToAsm(const std::string &source)
+{
+    std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+    std::stringstream input(source);
+    std::stringstream asmCode;
+    REQUIRE(compiler->compile(input, asmCode, "test.ks"));
+    return asmCode.str();
+}
+
+std::string runAsmText(const std::string &asmText, const std::string &func = "main")
+{
+    std::stringstream byteCode;
+    REQUIRE(testutil::assemble(asmText, byteCode));
+
+    std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+    testutil::StringRecorder recorder;
+    testutil::registerHostFunctions(*vm, recorder);
+    REQUIRE(vm->load(byteCode));
+    REQUIRE(vm->callFunction(func));
+    return recorder.text();
+}
+
+void writeSliceMath(TempDir &dir)
+{
+    dir.write("math.ks", "module math;\n"
+                         "export func double(v) {\n"
+                         "  return v * 2;\n"
+                         "}\n"
+                         "func helper(v) {\n"
+                         "  return v + 1;\n"
+                         "}\n");
+}
+
+} // namespace
+
+TEST_CASE("Slice4 keeps anonymous root lowering byte-identical", "[integration][compiler][slice4]")
+{
+    const std::string emptyMain = "func main() {}";
+    const std::string factorial = "extern println(x);\nfunc fact(n) {\n"
+                                  "  if (n == 1) {\n    return 1;\n  }\n"
+                                  "  var m = n - 1;\n"
+                                  "  var r = fact(m);\n"
+                                  "  return n * r;\n"
+                                  "}\nfunc main() {\n  println(fact(5));\n}\n";
+    const std::string fib = "extern println(x);\nfunc fib(n) {\n"
+                            "  if (n < 2) {\n    return n;\n  }\n"
+                            "  return fib(n - 1) + fib(n - 2);\n"
+                            "}\nfunc main() {\n  println(fib(10));\n}\n";
+
+    const std::string emptyAsm = "func main\n{\nret\n}\n";
+    const std::string factorialAsm = "extern println 1\n"
+                                     "func fact\n"
+                                     "{\n"
+                                     "param n\n"
+                                     "var retmp\n"
+                                     "var m\n"
+                                     "var r\n"
+                                     "pushv n\n"
+                                     "pushi 1\n"
+                                     "je cmp_true_0\n"
+                                     "pushi 0\n"
+                                     "jmp cmp_end_0\n"
+                                     "label cmp_true_0\n"
+                                     "pushi 1\n"
+                                     "label cmp_end_0\n"
+                                     "pushi 0\n"
+                                     "je if_end_1\n"
+                                     "reti 1\n"
+                                     "label if_end_1\n"
+                                     "pushv n\n"
+                                     "pushi 1\n"
+                                     "sub\n"
+                                     "popv m\n"
+                                     "pushv m\n"
+                                     "call fact\n"
+                                     "popv r\n"
+                                     "pushv n\n"
+                                     "pushv r\n"
+                                     "mul\n"
+                                     "popv retmp\n"
+                                     "retv retmp\n"
+                                     "ret\n"
+                                     "}\n"
+                                     "func main\n"
+                                     "{\n"
+                                     "pushi 5\n"
+                                     "call fact\n"
+                                     "calle println\n"
+                                     "ret\n"
+                                     "}\n";
+    const std::string fibAsm = "extern println 1\n"
+                               "func fib\n"
+                               "{\n"
+                               "param n\n"
+                               "var retmp\n"
+                               "pushv n\n"
+                               "pushi 2\n"
+                               "jl cmp_true_0\n"
+                               "pushi 0\n"
+                               "jmp cmp_end_0\n"
+                               "label cmp_true_0\n"
+                               "pushi 1\n"
+                               "label cmp_end_0\n"
+                               "pushi 0\n"
+                               "je if_end_1\n"
+                               "retv n\n"
+                               "label if_end_1\n"
+                               "pushv n\n"
+                               "pushi 1\n"
+                               "sub\n"
+                               "call fib\n"
+                               "pushv n\n"
+                               "pushi 2\n"
+                               "sub\n"
+                               "call fib\n"
+                               "add\n"
+                               "popv retmp\n"
+                               "retv retmp\n"
+                               "ret\n"
+                               "}\n"
+                               "func main\n"
+                               "{\n"
+                               "pushi 10\n"
+                               "call fib\n"
+                               "calle println\n"
+                               "ret\n"
+                               "}\n";
+
+    REQUIRE(compileFlatToAsm(emptyMain) == emptyAsm);
+    REQUIRE(compileFlatToAsm(factorial) == factorialAsm);
+    REQUIRE(compileFlatToAsm(fib) == fibAsm);
+    REQUIRE(compileFlatToAsm(emptyMain).find('@') == std::string::npos);
+    REQUIRE(compileFlatToAsm(factorial).find('@') == std::string::npos);
+    REQUIRE(compileFlatToAsm(fib).find('@') == std::string::npos);
+    REQUIRE(runAsmText(factorialAsm) == "120\n");
+    REQUIRE(runAsmText(fibAsm) == "55\n");
+}
+
+TEST_CASE("Slice4 qualified exported call runs end-to-end with mangled names", "[integration][compiler][slice4]")
+{
+    TempDir dir("kernscript_slice4_qualified");
+    writeSliceMath(dir);
+    const std::string source = "import math;\nextern println(x);\nfunc main() {\n  println(math::double(21));\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {dir.path.string()});
+    REQUIRE(result.ok);
+    REQUIRE(result.asmText.find("func math@double") != std::string::npos);
+    REQUIRE(result.asmText.find("call math@double") != std::string::npos);
+    REQUIRE(result.asmText.find("func math@helper") != std::string::npos);
+    REQUIRE(result.asmText.find("func double") == std::string::npos);
+    REQUIRE(result.asmText.find("call double") == std::string::npos);
+    REQUIRE(runAsmText(result.asmText) == "42\n");
+}
+
+TEST_CASE("Slice4 private helper runs unqualified inside its module", "[integration][compiler][slice4]")
+{
+    TempDir dir("kernscript_slice4_private_inside");
+    dir.write("priv.ks", "module priv;\nexport func f(v) {\n"
+                         "  return helper(v) * 2;\n"
+                         "}\nfunc helper(v) {\n"
+                         "  return v + 1;\n"
+                         "}\n");
+    const std::string source = "import priv;\nextern println(x);\nfunc main() {\n  println(priv::f(5));\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {dir.path.string()});
+    REQUIRE(result.ok);
+    REQUIRE(result.asmText.find("call priv@helper") != std::string::npos);
+    REQUIRE(runAsmText(result.asmText) == "12\n");
+}
+
+TEST_CASE("Slice4 qualified private call is rejected with an exact diagnostic", "[integration][compiler][slice4]")
+{
+    TempDir dir("kernscript_slice4_private_outside");
+    writeSliceMath(dir);
+    const std::string source = "import math;\nextern println(x);\nfunc main() {\n  println(math::helper(1));\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {dir.path.string()}, "main.ks");
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(result.messages.size() == 2);
+    REQUIRE(result.messages[0] == "main.ks:4:17: error: math::helper is not exported.");
+    REQUIRE(result.messages[1] == "note: export it in math.ks or call it from inside math");
+}
+
+TEST_CASE("Slice4 unknown module is rejected with an exact diagnostic", "[integration][compiler][slice4]")
+{
+    TempDir dir("kernscript_slice4_unknown_module");
+    writeSliceMath(dir);
+    const std::string source = "import math;\nextern println(x);\nfunc main() {\n  println(nosuch::f(1));\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {dir.path.string()}, "main.ks");
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(result.messages.size() == 2);
+    REQUIRE(result.messages[0] == "main.ks:4:11: error: Unknown module 'nosuch'.");
+    REQUIRE(result.messages[1] == "note: check the name or import it directly");
+}
+
+TEST_CASE("Slice4 unknown func is rejected with an exact diagnostic", "[integration][compiler][slice4]")
+{
+    TempDir dir("kernscript_slice4_unknown_func");
+    writeSliceMath(dir);
+    const std::string source = "import math;\nextern println(x);\nfunc main() {\n  println(math::nosuch(1));\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {dir.path.string()}, "main.ks");
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(result.messages.size() == 2);
+    REQUIRE(result.messages[0] == "main.ks:4:17: error: Unknown function 'nosuch' in module 'math'.");
+    REQUIRE(result.messages[1] == "note: check the function name");
+}
+
+TEST_CASE("Slice4 unqualified cross-module call is rejected", "[integration][compiler][slice4]")
+{
+    TempDir dir("kernscript_slice4_unqualified");
+    writeSliceMath(dir);
+    const std::string source = "import math;\nextern println(x);\nfunc main() {\n  println(double(21));\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {dir.path.string()}, "main.ks");
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(contains(result.messages, "Call to undeclared function."));
+}
+
+TEST_CASE("Slice4 qualified calls work in statement and expression positions", "[integration][compiler][slice4]")
+{
+    const std::string dir = ksFixtureDir();
+    REQUIRE_FALSE(dir.empty());
+    const std::string source = "import vis_math;\nextern println(x);\nfunc main() {\n"
+                               "  vis_math::show(7);\n"
+                               "  println(vis_math::add(vis_math::one(), 2));\n"
+                               "}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {dir});
+    REQUIRE(result.ok);
+    REQUIRE(result.asmText.find("call vis_math@show") != std::string::npos);
+    REQUIRE(result.asmText.find("call vis_math@add") != std::string::npos);
+    REQUIRE(result.asmText.find("call vis_math@one") != std::string::npos);
+    REQUIRE(runAsmText(result.asmText) == "7\n3\n");
+}
+
+TEST_CASE("Slice4 arity and void violations are caught through qualified names", "[integration][compiler][slice4]")
+{
+    const std::string dir = ksFixtureDir();
+    REQUIRE_FALSE(dir.empty());
+
+    const std::string aritySource = "import vis_math;\nextern println(x);\nfunc main() {\n"
+                                    "  println(vis_math::add(1));\n}\n";
+    const ImportCompileResult arity = compileWithPaths(aritySource, {dir});
+    REQUIRE_FALSE(arity.ok);
+    REQUIRE(contains(arity.messages, "Wrong argument count."));
+    REQUIRE(contains(arity.messages, "declared 2 parameters here"));
+
+    const std::string voidSource = "import vis_math;\nextern println(x);\nfunc main() {\n"
+                                   "  var x = vis_math::show(1);\n}\n";
+    const ImportCompileResult voidUse = compileWithPaths(voidSource, {dir});
+    REQUIRE_FALSE(voidUse.ok);
+    REQUIRE(contains(voidUse.messages, "Void call used as a value."));
+}
+
+TEST_CASE("Slice4 same func name in two modules stays distinct", "[integration][compiler][slice4]")
+{
+    const std::string dir = ksFixtureDir();
+    REQUIRE_FALSE(dir.empty());
+    const std::string source = "import vis_math;\nimport vis_util;\nextern println(x);\nfunc main() {\n"
+                               "  println(vis_math::id(5));\n"
+                               "  println(vis_util::id(5));\n"
+                               "}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {dir});
+    REQUIRE(result.ok);
+    REQUIRE(result.asmText.find("call vis_math@id") != std::string::npos);
+    REQUIRE(result.asmText.find("call vis_util@id") != std::string::npos);
+    REQUIRE(runAsmText(result.asmText) == "105\n5\n");
+}
+
+TEST_CASE("Slice4 transitive import chain runs end-to-end through the VM", "[integration][compiler][slice4]")
+{
+    const std::string dir = ksFixtureDir();
+    REQUIRE_FALSE(dir.empty());
+    const std::string source = "import vis_math;\nextern println(x);\nfunc main() {\n"
+                               "  println(vis_math::f(10));\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {dir});
+    REQUIRE(result.ok);
+    REQUIRE(result.asmText.find("call vis_math@f") != std::string::npos);
+    REQUIRE(result.asmText.find("call vis_util@g") != std::string::npos);
+    REQUIRE(result.asmText.find("func vis_util@g") != std::string::npos);
+    REQUIRE(runAsmText(result.asmText) == "31\n");
+}
+
+TEST_CASE("Slice4 transitive module is invisible to the root", "[integration][compiler][slice4]")
+{
+    const std::string dir = ksFixtureDir();
+    REQUIRE_FALSE(dir.empty());
+    const std::string source = "import vis_math;\nextern println(x);\nfunc main() {\n"
+                               "  println(vis_util::g(1));\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {dir}, "main.ks");
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(result.messages.size() == 2);
+    REQUIRE(result.messages[0] == "main.ks:4:11: error: Unknown module 'vis_util'.");
+    REQUIRE(result.messages[1] == "note: check the name or import it directly");
+}
+
+TEST_CASE("Slice4 same-name externs merge silently on matching arity", "[integration][compiler][slice4]")
+{
+    TempDir dir("kernscript_slice4_extern_merge");
+    dir.write("ea.ks", "module ea;\nextern println(x);\nexport func fa() {\n"
+                       "  println(1);\n"
+                       "  return 1;\n"
+                       "}\n");
+    dir.write("eb.ks", "module eb;\nextern println(y);\nexport func fb() {\n"
+                       "  println(2);\n"
+                       "  return 2;\n"
+                       "}\n");
+    const std::string source = "import ea;\nimport eb;\nextern println(x);\nfunc main() {\n"
+                               "  println(ea::fa() + eb::fb());\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {dir.path.string()});
+    REQUIRE(result.ok);
+    REQUIRE(runAsmText(result.asmText) == "1\n2\n3\n");
+}
+
+TEST_CASE("Slice4 same-name externs conflict on arity mismatch", "[integration][compiler][slice4]")
+{
+    TempDir dir("kernscript_slice4_extern_conflict");
+    dir.write("ec.ks", "module ec;\nextern println(x, y);\nexport func fc() {\n  return 3;\n}\n");
+    const std::string source = "import ec;\nextern println(x);\nfunc main() {\n  println(1);\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {dir.path.string()});
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(contains(result.messages, "Conflicting extern 'println'"));
+}
+
+TEST_CASE("Slice4 qualified extern call is rejected with an exact diagnostic", "[integration][compiler][slice4]")
+{
+    TempDir dir("kernscript_slice4_qualified_extern");
+    writeSliceMath(dir);
+    const std::string source = "import math;\nextern println(x);\nfunc main() {\n  println(math::println(1));\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {dir.path.string()}, "main.ks");
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(result.messages.size() == 2);
+    REQUIRE(result.messages[0] == "main.ks:4:17: error: Extern 'println' has no module.");
+    REQUIRE(result.messages[1] == "note: call externs unqualified, without '::'");
+}
+
+TEST_CASE("Slice4 named root main mangles but stays host-callable by mangled name", "[integration][compiler][slice4]")
+{
+    const std::string source = "module mymod;\nextern println(x);\nfunc main() {\n  println(1);\n}\n";
+
+    std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+    std::stringstream input(source);
+    std::stringstream asmCode;
+    REQUIRE(compiler->compile(input, asmCode, "main.ks"));
+    const std::string asmText = asmCode.str();
+    REQUIRE(asmText.find("func mymod@main") != std::string::npos);
+    REQUIRE(asmText.find("func main") == std::string::npos);
+    REQUIRE(runAsmText(asmText, "mymod@main") == "1\n");
 }

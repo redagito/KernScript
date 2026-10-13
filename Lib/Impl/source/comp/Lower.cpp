@@ -16,14 +16,27 @@
 namespace
 {
 
+// Index of every merged function by mangled and by (module, name) key.
+// Unqualified calls resolve in the caller's own module only, so the flat
+// name is looked up under the caller's owner; qualified calls resolve in the
+// named module's exported set only. Anonymous roots own "" and keep today's
+// flat names; named modules lower under "mod@func".
+struct ModuleIndex
+{
+    std::map<std::string, const ast::Func *> byMangled;
+    std::map<std::string, std::map<std::string, const ast::Func *>> byModule;
+};
+
 // Mutable per-function lowering state. It mirrors the old token-walking
 // state one for one (symbol tables, emitted body lines, label counter,
 // logger) so the tree walk emits identical assembly.
 struct LowerCtx
 {
     const std::map<std::string, unsigned> *externArity = nullptr;
-    const std::map<std::string, const ast::Func *> *funcs = nullptr;
+    const ModuleIndex *modules = nullptr;
     std::map<std::string, int> *externUse = nullptr; // 1 = value, 2 = statement
+    std::string owner;                               // owning module of the function being lowered, "" for roots
+    std::vector<std::string> callerImports;          // direct imports of owner
     std::map<std::string, unsigned> vars;
     std::vector<std::string> paramOrder;
     std::vector<std::string> varOrder;
@@ -91,10 +104,109 @@ bool emitPushUint(LowerCtx &ctx, SrcPos pos, const std::string &digits, std::vec
 
 bool lowerExpr(LowerCtx &ctx, const ast::Expr &expr, std::vector<std::string> &out, bool &isString);
 
+// Direct imports of one module for call resolution. Merged programs carry a
+// row per module; single-file programs lowered directly only have the root
+// import list, which is the caller's list when no row was recorded.
+std::vector<std::string> importsOf(const ast::Program &program, const std::string &owner)
+{
+    const auto row = program.moduleImports.find(owner);
+    if (row != program.moduleImports.end())
+    {
+        return row->second;
+    }
+    std::vector<std::string> fallback;
+    for (const auto &item : program.imports)
+    {
+        fallback.push_back(item.name);
+    }
+    return fallback;
+}
+
+bool isDirectImport(const std::vector<std::string> &imports, const std::string &name)
+{
+    for (const std::string &item : imports)
+    {
+        if (item == name)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Resolves one script call to its target function and mangled name.
+// Unqualified calls look in the caller's own module only (private functions
+// included). Qualified calls need the qualifier to be the caller's own module
+// or one of its direct imports and resolve in that module's exported set
+// only. Anything else reports the module-scoped diagnostic and returns false.
+bool resolveScriptCall(LowerCtx &ctx, SrcPos qualifierPos, const std::string &qualifier, SrcPos namePos,
+                       const std::string &name, const ast::Func *&target, std::string &mangled)
+{
+    if (qualifier.empty())
+    {
+        mangled = ast::mangleName(ctx.owner, name);
+        const auto found = ctx.modules->byMangled.find(mangled);
+        if (found == ctx.modules->byMangled.end())
+        {
+            lowerError(ctx, namePos, "Call to undeclared function.", "declare it with extern or func");
+            return false;
+        }
+        target = found->second;
+        return true;
+    }
+    if (qualifier == ctx.owner || isDirectImport(ctx.callerImports, qualifier))
+    {
+        const auto module = ctx.modules->byModule.find(qualifier);
+        const ast::Func *candidate = nullptr;
+        if (module != ctx.modules->byModule.end())
+        {
+            const auto found = module->second.find(name);
+            if (found != module->second.end())
+            {
+                candidate = found->second;
+            }
+        }
+        if (candidate == nullptr)
+        {
+            // A bare extern name under a qualifier is a qualified extern, not
+            // an unknown function: externs have no module to resolve in.
+            if (ctx.externArity->find(name) != ctx.externArity->end())
+            {
+                lowerError(ctx, namePos, "Extern '" + name + "' has no module.",
+                           "call externs unqualified, without '::'");
+                return false;
+            }
+            lowerError(ctx, namePos, "Unknown function '" + name + "' in module '" + qualifier + "'.",
+                       "check the function name");
+            return false;
+        }
+        if (!candidate->exported)
+        {
+            lowerError(ctx, namePos, qualifier + "::" + name + " is not exported.",
+                       "export it in " + qualifier + ".ks or call it from inside " + qualifier);
+            return false;
+        }
+        target = candidate;
+        mangled = ast::mangleName(qualifier, name);
+        return true;
+    }
+    // A qualifier naming an extern is a qualified extern: externs have no
+    // module, so they can only be called unqualified.
+    if (ctx.externArity->find(qualifier) != ctx.externArity->end())
+    {
+        lowerError(ctx, qualifierPos, "Extern '" + qualifier + "' has no module.",
+                   "call externs unqualified, without '::'");
+        return false;
+    }
+    lowerError(ctx, qualifierPos, "Unknown module '" + qualifier + "'.", "check the name or import it directly");
+    return false;
+}
+
 // Lowers a call used as a value. Extern calls mark value-use; script calls
 // require a valued callee and leave the return value on the stack.
-bool lowerValueCall(LowerCtx &ctx, SrcPos namePos, const std::string &name,
-                    const std::vector<std::unique_ptr<ast::Expr>> &args, std::vector<std::string> &out)
+bool lowerValueCall(LowerCtx &ctx, SrcPos qualifierPos, const std::string &qualifier, SrcPos namePos,
+                    const std::string &name, const std::vector<std::unique_ptr<ast::Expr>> &args,
+                    std::vector<std::string> &out)
 {
     std::vector<std::string> lowered;
     for (const auto &arg : args)
@@ -106,48 +218,54 @@ bool lowerValueCall(LowerCtx &ctx, SrcPos namePos, const std::string &name,
         }
     }
     const unsigned count = static_cast<unsigned>(args.size());
-    const auto ext = ctx.externArity->find(name);
-    if (ext != ctx.externArity->end())
+    // Externs stay global and unqualified: a qualified call never resolves to
+    // one (resolveScriptCall reports it instead).
+    if (qualifier.empty())
     {
-        if (count != ext->second)
+        const auto ext = ctx.externArity->find(name);
+        if (ext != ctx.externArity->end())
         {
-            lowerError(ctx, namePos, "Wrong argument count.", arityHint(ext->second));
-            return false;
+            if (count != ext->second)
+            {
+                lowerError(ctx, namePos, "Wrong argument count.", arityHint(ext->second));
+                return false;
+            }
+            if (!markExternUse(ctx, namePos, name, true))
+            {
+                return false;
+            }
+            out.insert(out.end(), lowered.begin(), lowered.end());
+            out.push_back("calle " + name);
+            return true;
         }
-        if (!markExternUse(ctx, namePos, name, true))
-        {
-            return false;
-        }
-        out.insert(out.end(), lowered.begin(), lowered.end());
-        out.push_back("calle " + name);
-        return true;
     }
-    const auto fn = ctx.funcs->find(name);
-    if (fn != ctx.funcs->end())
+    const ast::Func *target = nullptr;
+    std::string mangled;
+    if (!resolveScriptCall(ctx, qualifierPos, qualifier, namePos, name, target, mangled))
     {
-        const unsigned expected = static_cast<unsigned>(fn->second->params.size());
-        if (count != expected)
-        {
-            lowerError(ctx, namePos, "Wrong argument count.", arityHint(expected));
-            return false;
-        }
-        if (!fn->second->hasValuedReturn)
-        {
-            lowerError(ctx, namePos, "Void call used as a value.", "use it as a statement instead");
-            return false;
-        }
-        out.insert(out.end(), lowered.begin(), lowered.end());
-        out.push_back("call " + name);
-        return true;
+        return false;
     }
-    lowerError(ctx, namePos, "Call to undeclared function.", "declare it with extern or func");
-    return false;
+    const unsigned expected = static_cast<unsigned>(target->params.size());
+    if (count != expected)
+    {
+        lowerError(ctx, namePos, "Wrong argument count.", arityHint(expected));
+        return false;
+    }
+    if (!target->hasValuedReturn)
+    {
+        lowerError(ctx, namePos, "Void call used as a value.", "use it as a statement instead");
+        return false;
+    }
+    out.insert(out.end(), lowered.begin(), lowered.end());
+    out.push_back("call " + mangled);
+    return true;
 }
 
 // Lowers a call used as a statement. Valued script calls discard the return
 // value with pop; extern calls mark statement-use and emit a bare calle.
-bool lowerCallStmt(LowerCtx &ctx, SrcPos namePos, const std::string &name,
-                   const std::vector<std::unique_ptr<ast::Expr>> &args, std::vector<std::string> &out)
+bool lowerCallStmt(LowerCtx &ctx, SrcPos qualifierPos, const std::string &qualifier, SrcPos namePos,
+                   const std::string &name, const std::vector<std::unique_ptr<ast::Expr>> &args,
+                   std::vector<std::string> &out)
 {
     std::vector<std::string> lowered;
     for (const auto &arg : args)
@@ -159,41 +277,44 @@ bool lowerCallStmt(LowerCtx &ctx, SrcPos namePos, const std::string &name,
         }
     }
     const unsigned count = static_cast<unsigned>(args.size());
-    const auto ext = ctx.externArity->find(name);
-    if (ext != ctx.externArity->end())
+    if (qualifier.empty())
     {
-        if (count != ext->second)
+        const auto ext = ctx.externArity->find(name);
+        if (ext != ctx.externArity->end())
         {
-            lowerError(ctx, namePos, "Wrong argument count.", arityHint(ext->second));
-            return false;
+            if (count != ext->second)
+            {
+                lowerError(ctx, namePos, "Wrong argument count.", arityHint(ext->second));
+                return false;
+            }
+            if (!markExternUse(ctx, namePos, name, false))
+            {
+                return false;
+            }
+            out.insert(out.end(), lowered.begin(), lowered.end());
+            out.push_back("calle " + name);
+            return true;
         }
-        if (!markExternUse(ctx, namePos, name, false))
-        {
-            return false;
-        }
-        out.insert(out.end(), lowered.begin(), lowered.end());
-        out.push_back("calle " + name);
-        return true;
     }
-    const auto fn = ctx.funcs->find(name);
-    if (fn != ctx.funcs->end())
+    const ast::Func *target = nullptr;
+    std::string mangled;
+    if (!resolveScriptCall(ctx, qualifierPos, qualifier, namePos, name, target, mangled))
     {
-        const unsigned expected = static_cast<unsigned>(fn->second->params.size());
-        if (count != expected)
-        {
-            lowerError(ctx, namePos, "Wrong argument count.", arityHint(expected));
-            return false;
-        }
-        out.insert(out.end(), lowered.begin(), lowered.end());
-        out.push_back("call " + name);
-        if (fn->second->hasValuedReturn)
-        {
-            out.push_back("pop");
-        }
-        return true;
+        return false;
     }
-    lowerError(ctx, namePos, "Call to undeclared function.", "declare it with extern or func");
-    return false;
+    const unsigned expected = static_cast<unsigned>(target->params.size());
+    if (count != expected)
+    {
+        lowerError(ctx, namePos, "Wrong argument count.", arityHint(expected));
+        return false;
+    }
+    out.insert(out.end(), lowered.begin(), lowered.end());
+    out.push_back("call " + mangled);
+    if (target->hasValuedReturn)
+    {
+        out.push_back("pop");
+    }
+    return true;
 }
 
 // Lowers one optional comparison to a 1/0 value. Plain arithmetic passes
@@ -300,7 +421,7 @@ bool lowerExpr(LowerCtx &ctx, const ast::Expr &expr, std::vector<std::string> &o
     if (const auto *call = std::get_if<ast::Expr::Call>(&expr.node))
     {
         isString = false;
-        return lowerValueCall(ctx, call->namePos, call->name, call->args, out);
+        return lowerValueCall(ctx, call->qualifierPos, call->qualifier, call->namePos, call->name, call->args, out);
     }
     if (const auto *unary = std::get_if<ast::Expr::Unary>(&expr.node))
     {
@@ -728,7 +849,7 @@ bool lowerStmt(LowerCtx &ctx, const ast::Stmt &stmt, std::vector<std::string> &o
     // is a general expression statement whose value is discarded.
     if (const auto *call = std::get_if<ast::Expr::Call>(&node->expr->node))
     {
-        return lowerCallStmt(ctx, call->namePos, call->name, call->args, out);
+        return lowerCallStmt(ctx, call->qualifierPos, call->qualifier, call->namePos, call->name, call->args, out);
     }
     std::vector<std::string> value;
     bool valueIsString = false;
@@ -752,18 +873,22 @@ bool lowerProgram(const ast::Program &program, kern::ILogger *logger, const std:
     {
         externArity[ext.name] = static_cast<unsigned>(ext.params.size());
     }
-    std::map<std::string, const ast::Func *> funcs;
+    ModuleIndex modules;
     for (const auto &func : program.funcs)
     {
-        funcs[func.name] = &func;
+        const std::string mangled = ast::mangleName(func.owner, func.name);
+        modules.byMangled[mangled] = &func;
+        modules.byModule[func.owner][func.name] = &func;
     }
     std::map<std::string, int> externUse;
     for (const auto &func : program.funcs)
     {
         LowerCtx ctx;
         ctx.externArity = &externArity;
-        ctx.funcs = &funcs;
+        ctx.modules = &modules;
         ctx.externUse = &externUse;
+        ctx.owner = func.owner;
+        ctx.callerImports = importsOf(program, func.owner);
         ctx.logger = logger;
         ctx.sourceName = sourceName;
         ctx.funcValued = func.hasValuedReturn;
@@ -824,7 +949,7 @@ bool lowerProgram(const ast::Program &program, kern::ILogger *logger, const std:
             }
         }
         Lowered out;
-        out.name = func.name;
+        out.name = ast::mangleName(func.owner, func.name);
         out.params = ctx.paramOrder;
         out.vars = ctx.varOrder;
         out.body = body;

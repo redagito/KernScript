@@ -1,5 +1,6 @@
 #pragma once
 
+#include <map>
 #include <memory>
 #include <string>
 #include <variant>
@@ -151,8 +152,15 @@ struct Func
     SrcPos end;
     bool hasValuedReturn = false;
     bool hasBareReturn = false;
-    // Set by the "export" prefix; an inert flag until later slices.
+    // Set by the "export" prefix; qualified calls from other modules resolve
+    // in the exported set only, while unqualified calls in the defining
+    // module see private functions too.
     bool exported = false;
+    // Owning module name, empty for functions parsed from a file without a
+    // module header (only the root file may omit it). Set at parse time from
+    // the file's own header, so it rides along untouched when the compiler
+    // merges imported files into one program.
+    std::string owner;
 };
 
 struct Program
@@ -163,7 +171,29 @@ struct Program
     std::vector<ImportDecl> imports;
     std::vector<Extern> externs;
     std::vector<Func> funcs;
+    // Direct imports per module, keyed by module name ("" is the anonymous
+    // root). Filled by the compiler when it merges imported files; a missing
+    // key means no imports are known, so lowering falls back to the root
+    // import list for single-file programs.
+    std::map<std::string, std::vector<std::string>> moduleImports;
 };
+
+/**
+ * \brief Mangles a function name for lowering ("mod@func", flat for roots).
+ *
+ * Named-module definitions and the calls resolving to them lower under
+ * "owner@name"; functions owned by the anonymous root keep their flat name.
+ * Both sides are @-free (source identifiers exclude '@'), so a mangled name
+ * holds exactly one '@' by construction.
+ */
+inline std::string mangleName(const std::string &owner, const std::string &name)
+{
+    if (owner.empty())
+    {
+        return name;
+    }
+    return owner + "@" + name;
+}
 
 /**
  * \brief Parses buffered tokens into an AST, one Program per EBNF Decl*.

@@ -1,4 +1,4 @@
 module other;
-func triple(v) {
+export func triple(v) {
   return v * 3;
 }

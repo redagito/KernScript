@@ -16,11 +16,14 @@
 namespace
 {
 
-// Slice 3 import resolution: search paths, file loading, identity, cycles.
-// Resolution merges every reachable module's externs and funcs into one
-// program table; lowering stays as-is (unqualified, so qualified calls still
-// lower unqualified here) and only load failures fail the compile now.
-// Visibility and mangling arrive in a later slice.
+// Slice 4 visibility and mangling: resolution merges every reachable
+// module's externs and funcs into one program table, tagging each function
+// with its owning module and recording every module's direct imports.
+// Same-name functions from different modules coexist (their mangled
+// "mod@func" keys differ); same-name externs merge silently when arities
+// match and conflict otherwise. Lowering resolves unqualified calls in the
+// caller's own module, qualified calls in the named module's exported set,
+// and mangles definitions and resolved calls (flat for anonymous roots).
 
 // Cap on the active import chain. Each level is C++ recursion through
 // resolve/load/parse, so a runaway chain fails clean like the parser nesting
@@ -129,9 +132,11 @@ struct ImportResolver
     // Active resolution chain for cycle reports, outer to inner.
     std::vector<std::string> stackNames;
     std::vector<std::string> stackKeys;
-    // Function name to defining file display, so a cross-file duplicate can
-    // name both definitions. Merged lowering is one unqualified table, so a
-    // silent overwrite here would change which body a call runs.
+    // Function mangled name to defining file display, so a cross-file
+    // duplicate on the same mangled name can name both definitions. Each
+    // module lowers under its own "mod@func" keys (anonymous roots stay
+    // flat), so the same function name in two modules maps to two keys and
+    // coexists; a silent overwrite here would change which body a call runs.
     std::map<std::string, std::string> funcSource;
 
     // Resolves one import of "name" written at namePos in the file shown as
@@ -228,6 +233,14 @@ struct ImportResolver
             return false;
         }
         moduleSource[name] = display;
+        // Record this module's direct imports for lowering: a qualified call
+        // resolves only in the caller's own module or its direct imports.
+        std::vector<std::string> childImports;
+        for (const ast::ImportDecl &child : module.imports)
+        {
+            childImports.push_back(child.name);
+        }
+        merged.moduleImports[module.module.name] = childImports;
         stackNames.push_back(name);
         stackKeys.push_back(key);
         for (const ast::ImportDecl &child : module.imports)
@@ -247,7 +260,11 @@ struct ImportResolver
                 if (have.name == ext.name)
                 {
                     known = true;
-                    if (have.params != ext.params)
+                    // Externs merge on arity only: parameter names never reach
+                    // the assembly (only the count is emitted), so the same
+                    // host function declared with different names is one
+                    // declaration, while a count mismatch is a conflict.
+                    if (have.params.size() != ext.params.size())
                     {
                         reportError(logger, importerDisplay, namePos,
                                     "Conflicting extern '" + ext.name + "' from '" + display + "'.",
@@ -264,7 +281,8 @@ struct ImportResolver
         }
         for (const ast::Func &func : module.funcs)
         {
-            const auto defined = funcSource.find(func.name);
+            const std::string key = ast::mangleName(func.owner, func.name);
+            const auto defined = funcSource.find(key);
             if (defined != funcSource.end())
             {
                 reportError(logger, importerDisplay, namePos,
@@ -276,7 +294,7 @@ struct ImportResolver
         }
         for (ast::Func &func : module.funcs)
         {
-            funcSource[func.name] = display;
+            funcSource[ast::mangleName(func.owner, func.name)] = display;
             merged.funcs.push_back(std::move(func));
         }
         loaded[key] = true;
@@ -330,10 +348,19 @@ bool Compiler::compile(std::istream &sourceCode, std::ostream &asmCode, const st
         {
             resolver.moduleSource[program.module.name] = sourceName;
         }
+        const std::string rootOwner = program.hasModule ? program.module.name : std::string();
         for (const ast::Func &func : program.funcs)
         {
-            resolver.funcSource[func.name] = sourceName;
+            resolver.funcSource[ast::mangleName(func.owner, func.name)] = sourceName;
         }
+        // The root's own direct imports, keyed like every other module so
+        // lowering resolves the root's calls with the same table lookup.
+        std::vector<std::string> rootImports;
+        for (const ast::ImportDecl &root : program.imports)
+        {
+            rootImports.push_back(root.name);
+        }
+        program.moduleImports[rootOwner] = rootImports;
         const std::vector<ast::ImportDecl> roots = program.imports;
         for (const ast::ImportDecl &root : roots)
         {

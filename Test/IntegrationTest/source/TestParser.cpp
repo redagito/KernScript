@@ -768,3 +768,76 @@ TEST_CASE("Diagnostic reports module import export used as identifiers", "[integ
         REQUIRE(messages[0] == "test.ks:1:8: error: Expected ')'.");
     }
 }
+
+namespace
+{
+
+bool lowerSingleFile(const std::string &source, const std::string &sourceName, ast::Program &program,
+                     std::vector<Lowered> &lowered, std::vector<std::string> &messages)
+{
+    std::istringstream input(source);
+    std::vector<Tok> toks;
+    if (!tokenize(input, nullLogger(), toks, sourceName))
+    {
+        return false;
+    }
+    if (!ast::parseProgram(toks, nullLogger(), sourceName, program))
+    {
+        return false;
+    }
+    testutil::RecordingLogger lowerLogger;
+    const bool ok = lowerProgram(program, &lowerLogger, sourceName, lowered);
+    messages = lowerLogger.messages();
+    return ok;
+}
+
+} // namespace
+
+TEST_CASE("Slice4 lower mangles named-module definitions and keeps roots flat",
+          "[integration][compiler][parser][slice4]")
+{
+    ast::Program named;
+    std::vector<Lowered> namedLowered;
+    std::vector<std::string> namedMessages;
+    REQUIRE(lowerSingleFile("module mymod;\nexport func f(v) {\n  return v;\n}\nfunc main() {\n  f(1);\n}\n", "test.ks",
+                            named, namedLowered, namedMessages));
+    REQUIRE(namedLowered.size() == 2);
+    REQUIRE(namedLowered[0].name == "mymod@f");
+    REQUIRE(namedLowered[1].name == "mymod@main");
+    REQUIRE(namedLowered[1].body == std::vector<std::string>{"pushi 1", "call mymod@f", "pop"});
+
+    ast::Program anon;
+    std::vector<Lowered> anonLowered;
+    std::vector<std::string> anonMessages;
+    REQUIRE(lowerSingleFile("func main() {\n  f(1);\n}\nfunc f(v) {\n  return v;\n}\n", "test.ks", anon, anonLowered,
+                            anonMessages));
+    REQUIRE(anonLowered.size() == 2);
+    REQUIRE(anonLowered[0].name == "main");
+    REQUIRE(anonLowered[1].name == "f");
+    REQUIRE(anonLowered[0].body == std::vector<std::string>{"pushi 1", "call f", "pop"});
+}
+
+TEST_CASE("Slice4 lower resolves qualified self calls to mangled targets", "[integration][compiler][parser][slice4]")
+{
+    ast::Program program;
+    std::vector<Lowered> lowered;
+    std::vector<std::string> messages;
+    REQUIRE(lowerSingleFile("module mymod;\nexport func f(v) {\n  return v;\n}\nfunc main() {\n"
+                            "  var r = mymod::f(2);\n}\n",
+                            "test.ks", program, lowered, messages));
+    REQUIRE(lowered.size() == 2);
+    REQUIRE(lowered[1].body == std::vector<std::string>{"pushi 2", "call mymod@f", "popv r"});
+}
+
+TEST_CASE("Slice4 lower rejects an unknown module with an exact diagnostic", "[integration][compiler][parser][slice4]")
+{
+    ast::Program program;
+    std::vector<Lowered> lowered;
+    std::vector<std::string> messages;
+    REQUIRE_FALSE(lowerSingleFile("module mymod;\nexport func f(v) {\n  return v;\n}\nfunc main() {\n"
+                                  "  nosuch::f(1);\n}\n",
+                                  "test.ks", program, lowered, messages));
+    REQUIRE(messages.size() == 2);
+    REQUIRE(messages[0] == "test.ks:6:3: error: Unknown module 'nosuch'.");
+    REQUIRE(messages[1] == "note: check the name or import it directly");
+}

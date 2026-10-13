@@ -36,8 +36,12 @@ public:
      * follow-up where a hint exists; the two-argument compile() reports
      * "<input>" as the file name. Imports resolve through the search-paths
      * overload (first hit wins, exact case; missing files, mismatches,
-     * cycles and duplicate module names fail the compile) and lower into
-     * one unqualified table.
+     * cycles and duplicate module names fail the compile). Merged functions
+     * carry their owning module and each module's direct imports: unqualified
+     * calls resolve in the caller's own module, qualified calls in the named
+     * module's exported set (self or a direct import), and named-module
+     * definitions and resolved calls lower mangled as mod@func while
+     * anonymous roots stay flat.
      */
     explicit Compiler(kern::ILogger *logger);
 

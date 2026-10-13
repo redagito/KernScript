@@ -1,5 +1,5 @@
 module dia_a;
 import dia_u;
-func fa() {
-  return fu() + 1;
+export func fa() {
+  return dia_u::fu() + 1;
 }

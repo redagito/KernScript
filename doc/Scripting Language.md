@@ -55,6 +55,19 @@ an exact case-sensitive match), the file must declare the matching `module`,
 and each file loads once (diamonds and repeats share; cycles, mismatches,
 missing files and duplicate module names are compile errors).
 
+Name resolution and mangling: an unqualified call resolves in the calling
+function's own module only, private functions included. A qualified call
+`m::f` resolves in `m`'s exported set only, and `m` must be the caller's own
+module or one of its direct imports; anything else is a compile error
+(unknown module, unknown function, or `m::f is not exported`). Visibility is
+transitive only through direct imports: a module sees its own functions and
+its direct imports' exports, never its imports' imports. Lowering mangles
+every named-module definition and every resolved qualified call to
+`mod@func` (exactly one `@`: both sides are `@`-free); functions owned by
+the anonymous root keep today's flat names. `main` mangles along with its
+module (`math@main`); only the anonymous root's `main` stays host-callable
+under the flat name.
+
 No `for`, `break` or `continue` in v1.
 
 ## Types
@@ -84,7 +97,16 @@ Recursion is allowed.
 `extern name(params);` declares a host function; calls look like script
 calls. A call needs exactly the declared argument count pushed; values
 a previous extern call left behind count toward the next call, so
-consume what you do not need.
+consume what you do not need. Externs are global: declare them per file
+as needed and call them unqualified. The same extern name declared in
+several files merges silently when the arities match and is a compile
+error on mismatch; a qualified call never resolves to an extern since
+externs have no module.
+
+Valued/void, arity, duplicate and forward-reference rules run on the
+mangled names exactly as they ran on flat names, so the same function name
+in two modules (`math::id` vs `util::id`) coexists and each call site checks
+against its own resolved target.
 
 ## Errors
 

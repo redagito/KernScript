@@ -16,7 +16,9 @@
  * record (per-function setup with the retTemp spill slot plus the
  * statement walk), and emitProgram writes the final asm text for the
  * collected externs and lowered functions. Both are also exercised
- * directly by parser unit tests.
+ * directly by parser unit tests. Resolution is module scoped (see Ast.h):
+ * definitions lower under their mangled name, calls emit call to the
+ * resolved mangled target, and misses report the module diagnostics.
  */
 
 struct Lowered

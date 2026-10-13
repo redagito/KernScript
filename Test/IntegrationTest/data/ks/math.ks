@@ -1,4 +1,4 @@
 module math;
-func double(v) {
+export func double(v) {
   return v * 2;
 }
