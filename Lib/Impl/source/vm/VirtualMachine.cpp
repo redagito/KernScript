@@ -940,7 +940,19 @@ bool VirtualMachine::executeRetv(const Instruction &instruction)
         {
             throwRuntimeError(m_logger, "Retv variable index out of range.");
         }
+        // Returning would spread Invalid to the caller, so refuse it here
+        // like pushValue and popValue do instead of erroring late.
+        if (m_runtimeStack.at(m_currentRuntimeStackBaseIndex + varIndex).getType() == Value::Type::Invalid)
+        {
+            throwRuntimeError(m_logger, "Retv of an uninitialized value.");
+        }
         m_runtimeStack[m_currentRuntimeStackBaseIndex] = m_runtimeStack.at(m_currentRuntimeStackBaseIndex + varIndex);
+    }
+    else if (m_runtimeStack.at(m_currentRuntimeStackBaseIndex).getType() == Value::Type::Invalid)
+    {
+        // Slot zero returns in place, so the same check applies to the slot
+        // itself instead of a copy source.
+        throwRuntimeError(m_logger, "Retv of an uninitialized value.");
     }
 
     // Resize runtime stack to remove local function variables but the one
@@ -1142,6 +1154,12 @@ bool VirtualMachine::execute()
         uint32_t srcIndex = 0;
         memcpy(&destIndex, &instruction.args[0], sizeof(destIndex));
         memcpy(&srcIndex, &instruction.args[1], sizeof(srcIndex));
+        // Copying would spread Invalid through assignment, so refuse it here
+        // like pushValue and popValue do instead of erroring late.
+        if (m_runtimeStack.at(m_currentRuntimeStackBaseIndex + srcIndex).getType() == Value::Type::Invalid)
+        {
+            throwRuntimeError(m_logger, "Movv of an uninitialized value.");
+        }
         m_runtimeStack[m_currentRuntimeStackBaseIndex + destIndex] =
             m_runtimeStack.at(m_currentRuntimeStackBaseIndex + srcIndex);
         ++m_currentInstructionIndex;

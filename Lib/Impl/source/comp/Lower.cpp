@@ -557,7 +557,11 @@ bool splitLine(const std::string &line, std::string &mnemonic, std::string &oper
 //   pushv x | pushi n | pushf f | pushs s  +  popv v  ->  movv|movi|movf|movs v, ...
 //   pushu n + popv v -> movi v, n only when n fits int32, else kept
 //   push... + popv t + retv t  ->  reti|retf|rets|retv (return spill bypass)
-//   push... + pop  ->  dropped (value computed and discarded)
+//   pushi|pushu|pushf|pushs + pop  ->  dropped (value computed and discarded)
+// A pushv reads a slot that may hold Invalid, and pushing it throws, so
+// pushv + pop is kept: only constant pushes (always valid) fold away. The
+// movv/retv folds stay sound because those opcodes refuse Invalid sources
+// the same way the unfolded push does.
 // Labels are lines too, so control flow always breaks a pair. Pops below the
 // frame or of uninitialized values still throw in the unfolded paths; folded
 // movs carry the same range checks through the assembler.
@@ -667,7 +671,15 @@ void peephole(std::vector<std::string> &body)
         }
         if (isPush && hasNext && nextOp == "pop" && nextArg.empty())
         {
-            // Computed and discarded: drop both lines.
+            // Computed and discarded: drop both lines. A variable push reads a
+            // slot that may hold Invalid, and pushing it throws, so only
+            // constant pushes (which always hold a valid value) fold away.
+            if (pushOp == "pushv")
+            {
+                folded.push_back(body[i]);
+                ++i;
+                continue;
+            }
             i += 2;
             continue;
         }
