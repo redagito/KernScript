@@ -288,6 +288,8 @@ void VirtualMachine::clearScripts()
     m_currentFunctionIndex = 0;
     m_currentInstructionIndex = 0;
     m_currentRuntimeStackBaseIndex = 0;
+    // The vector below is cleared, so any cached pointer into it would dangle.
+    m_currentFunction = nullptr;
     // Clear script data
     m_strings.clear();
     m_externFunctions.clear();
@@ -367,6 +369,7 @@ bool VirtualMachine::callFunction(const std::string &functionName)
     {
         return false;
     }
+    m_currentFunction = &m_functions.at(m_currentFunctionIndex);
     const CallGuard guard(m_running);
     // Committed calls only: unknown names return above and are not entries.
     if (m_profile != nullptr)
@@ -384,7 +387,7 @@ bool VirtualMachine::callFunction(const std::string &functionName)
     }
     m_currentRuntimeStackBaseIndex = 0;
     m_currentInstructionIndex = 0;
-    const uint32_t stackSize = m_functions.at(m_currentFunctionIndex).stackSize;
+    const uint32_t stackSize = m_currentFunction->stackSize;
     if (stackSize > m_maxStackSize)
     {
         throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
@@ -785,7 +788,7 @@ bool VirtualMachine::execute()
     const auto t_fetch =
         m_profile != nullptr ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     // Cache current function
-    const Function &currentFunction = m_functions.at(m_currentFunctionIndex);
+    const Function &currentFunction = *m_currentFunction;
 
     // An instruction index past the last instruction implicitly returns instead
     // of throwing. This is deliberate: a trailing label resolves to exactly
@@ -1056,6 +1059,7 @@ bool VirtualMachine::execute()
         m_callStack.push(
             FunctionFrame(m_currentFunctionIndex, m_currentInstructionIndex + 1, m_currentRuntimeStackBaseIndex));
         m_currentFunctionIndex = static_cast<uint32_t>(functionIndex);
+        m_currentFunction = &m_functions.at(m_currentFunctionIndex);
         // Reset instruction index
         m_currentInstructionIndex = 0;
         // Set new runtime stack base index for the called function, modified by
@@ -1146,6 +1150,7 @@ bool VirtualMachine::execute()
 
         // Retrieve function index of previous function
         m_currentFunctionIndex = m_callStack.top().functionIndex;
+        m_currentFunction = &m_functions.at(m_currentFunctionIndex);
         // Restore active function index
         m_currentInstructionIndex = m_callStack.top().instructionIndex;
         // Restore runtime stack base index for the active function
@@ -1191,6 +1196,7 @@ bool VirtualMachine::execute()
 
         // Retrieve function index of previous function
         m_currentFunctionIndex = m_callStack.top().functionIndex;
+        m_currentFunction = &m_functions.at(m_currentFunctionIndex);
         // Restore active function index
         m_currentInstructionIndex = m_callStack.top().instructionIndex;
         // Restore runtime stack base index for the active function
@@ -1223,6 +1229,7 @@ bool VirtualMachine::execute()
 
         // Retrieve function index of previous function
         m_currentFunctionIndex = m_callStack.top().functionIndex;
+        m_currentFunction = &m_functions.at(m_currentFunctionIndex);
         // Restore active function index
         m_currentInstructionIndex = m_callStack.top().instructionIndex;
         // Restore runtime stack base index for the active function
@@ -1255,6 +1262,7 @@ bool VirtualMachine::execute()
 
         // Retrieve function index of previous function
         m_currentFunctionIndex = m_callStack.top().functionIndex;
+        m_currentFunction = &m_functions.at(m_currentFunctionIndex);
         // Restore active function index
         m_currentInstructionIndex = m_callStack.top().instructionIndex;
         // Restore runtime stack base index for the active function
@@ -1292,6 +1300,7 @@ bool VirtualMachine::execute()
 
         // Retrieve function index of previous function
         m_currentFunctionIndex = m_callStack.top().functionIndex;
+        m_currentFunction = &m_functions.at(m_currentFunctionIndex);
         // Restore active function index
         m_currentInstructionIndex = m_callStack.top().instructionIndex;
         // Restore runtime stack base index for the active function

@@ -147,14 +147,21 @@ private:
 
     uint32_t m_currentRuntimeStackBaseIndex = 0; /**< Runtime stack base index of current function. */
     uint32_t m_currentFunctionIndex = 0;         /**< Index of active function. */
-    uint32_t m_currentInstructionIndex = 0;      /**< Index of active instruction. */
-    kern::ILogger *m_logger = nullptr;           /**< Receives diagnostics. */
-    size_t m_maxStackSize = 0;                   /**< Runtime stack budget in slots. */
-    uint32_t m_maxCallDepth = 0;                 /**< Nested call budget in frames. */
-    size_t m_maxStringBytes = 0;                 /**< Longest single string or name accepted from byte code. */
-    uint32_t m_maxTableEntries = 0;              /**< Most entries accepted in one byte code table. */
-    uint64_t m_maxExecutionSteps = 0;            /**< Instruction budget per callFunction, reset on every call. */
-    bool m_running = false;                      /**< Reentrancy guard for execute, reset on every exit. */
+    // Cached pointer into m_functions for the active function: execute() runs
+    // millions of iterations, so it dereferences this instead of
+    // bounds-checking the vector on every instruction. Refreshed wherever the
+    // index changes (callFunction, Call, all Ret forms) and nulled by
+    // clearScripts, which is the only path that reallocates the vector while
+    // the pointer could be observed (execute() never runs mid-load).
+    const Function *m_currentFunction = nullptr;
+    uint32_t m_currentInstructionIndex = 0; /**< Index of active instruction. */
+    kern::ILogger *m_logger = nullptr;      /**< Receives diagnostics. */
+    size_t m_maxStackSize = 0;              /**< Runtime stack budget in slots. */
+    uint32_t m_maxCallDepth = 0;            /**< Nested call budget in frames. */
+    size_t m_maxStringBytes = 0;            /**< Longest single string or name accepted from byte code. */
+    uint32_t m_maxTableEntries = 0;         /**< Most entries accepted in one byte code table. */
+    uint64_t m_maxExecutionSteps = 0;       /**< Instruction budget per callFunction, reset on every call. */
+    bool m_running = false;                 /**< Reentrancy guard for execute, reset on every exit. */
 
     // Profiling state, null unless resetProfile() started recording. The
     // pointer is always present so the class layout never depends on build
