@@ -38,6 +38,15 @@ The build type given to Conan must match the configuration given to CMake.
 Substitute `Release` for `Debug` throughout to build the release
 configuration (benchmarks are only meaningful in Release).
 
+## Documentation
+
+- `docs/Getting Started.md`: build, first script, first extern.
+- `docs/Host Manual.md`: API, budgets, ownership, errors.
+- `docs/Scripting Cookbook.md`: runnable host/script patterns.
+- `docs/Diagnostics Guide.md`: error catalog with fixes.
+- `docs/Scripting Language.md`: grammar and semantics.
+- `docs/Assembly Language.md`: instruction set.
+
 ## License
 
 MIT, see `LICENSE`.
