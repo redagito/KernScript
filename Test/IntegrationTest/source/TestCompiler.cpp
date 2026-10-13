@@ -1,8 +1,11 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include <kern/Kern.h>
 
@@ -1161,23 +1164,344 @@ TEST_CASE("Compiler rejects module import export used as identifiers", "[integra
     }
 }
 
-TEST_CASE("Compiler compiles module imports and export end-to-end", "[integration][compiler]")
+namespace
 {
-    const std::string source = "module mymod;\nimport other;\nextern println(x);\nexport func helper(v) {\n"
-                               "  return v * 2;\n}\nfunc main() {\n  println(helper(21));\n}\n";
 
-    std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+// Slice 3 import tests keep the root program in memory (a stringstream) and
+// load only imports from disk: each test passes a search path pointing at a
+// directory of committed .ks fixtures (or at a temp dir it created at
+// runtime). Fixture lookup tries data/ks next to the working directory first
+// (the EndToEndTest copy_directory layout) and then walks up to the source
+// tree, so the tests hold both under CTest and for manual runs from the repo
+// root.
+std::string ksFixtureDir()
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    if (fs::is_directory(fs::path("data/ks"), ec))
+    {
+        return "data/ks";
+    }
+    fs::path cwd = fs::current_path(ec);
+    if (ec)
+    {
+        return std::string();
+    }
+    for (int i = 0; i < 10; ++i)
+    {
+        if (fs::is_directory(cwd / "Test/IntegrationTest/data/ks", ec))
+        {
+            return (cwd / "Test/IntegrationTest/data/ks").string();
+        }
+        if (!cwd.has_parent_path())
+        {
+            break;
+        }
+        cwd = cwd.parent_path();
+    }
+    return std::string();
+}
+
+struct ImportCompileResult
+{
+    bool ok = false;
+    std::string asmText;
+    std::vector<std::string> messages;
+};
+
+ImportCompileResult compileWithPaths(const std::string &source, const std::vector<std::string> &searchPaths,
+                                     const std::string &sourceName = "<input>")
+{
+    testutil::RecordingLogger logger;
+    std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler(&logger));
     std::stringstream input(source);
     std::stringstream asmCode;
-    REQUIRE(compiler->compile(input, asmCode));
+    const bool ok = compiler->compile(input, asmCode, sourceName, searchPaths);
+    ImportCompileResult result;
+    result.ok = ok;
+    result.asmText = asmCode.str();
+    result.messages = logger.messages();
+    return result;
+}
 
+std::string runWithPaths(const std::string &source, const std::vector<std::string> &searchPaths)
+{
+    const ImportCompileResult compiled = compileWithPaths(source, searchPaths);
+    REQUIRE(compiled.ok);
     std::stringstream byteCode;
-    REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+    REQUIRE(testutil::assemble(compiled.asmText, byteCode));
 
     std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
     testutil::StringRecorder recorder;
     testutil::registerHostFunctions(*vm, recorder);
     REQUIRE(vm->load(byteCode));
     REQUIRE(vm->callFunction("main"));
-    REQUIRE(recorder.text() == "42\n");
+    return recorder.text();
+}
+
+bool contains(const std::vector<std::string> &messages, const std::string &part)
+{
+    for (const std::string &message : messages)
+    {
+        if (message.find(part) != std::string::npos)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Scratch directory removed on destruction, so temp-file tests leave no
+// residue even when a REQUIRE aborts the case.
+struct TempDir
+{
+    explicit TempDir(const std::string &name)
+    {
+        path = std::filesystem::temp_directory_path() / name;
+        std::error_code ec;
+        std::filesystem::remove_all(path, ec);
+        std::filesystem::create_directories(path, ec);
+    }
+
+    ~TempDir()
+    {
+        std::error_code ec;
+        std::filesystem::remove_all(path, ec);
+    }
+
+    void write(const std::string &name, const std::string &content)
+    {
+        std::ofstream out(path / name, std::ios::binary);
+        out << content;
+    }
+
+    std::filesystem::path path;
+};
+
+} // namespace
+
+TEST_CASE("Compiler compiles module imports and export end-to-end", "[integration][compiler]")
+{
+    const std::string dir = ksFixtureDir();
+    REQUIRE_FALSE(dir.empty());
+    const std::string source = "module mymod;\nimport other;\nextern println(x);\nexport func helper(v) {\n"
+                               "  return v * 2;\n}\nfunc main() {\n  println(helper(21));\n  println(triple(7));\n}\n";
+
+    REQUIRE(runWithPaths(source, {dir}) == "42\n21\n");
+}
+
+TEST_CASE("Compiler resolves a single import end-to-end", "[integration][compiler]")
+{
+    const std::string dir = ksFixtureDir();
+    REQUIRE_FALSE(dir.empty());
+    const std::string source = "import math;\nextern println(x);\nfunc main() {\n  println(double(21));\n}\n";
+
+    REQUIRE(runWithPaths(source, {dir}) == "42\n");
+}
+
+TEST_CASE("Compiler resolves a transitive import chain end-to-end", "[integration][compiler]")
+{
+    const std::string dir = ksFixtureDir();
+    REQUIRE_FALSE(dir.empty());
+    const std::string source = "import c1;\nextern println(x);\nfunc main() {\n  println(f1());\n}\n";
+
+    REQUIRE(runWithPaths(source, {dir}) == "12\n");
+}
+
+TEST_CASE("Compiler shares a diamond import once", "[integration][compiler]")
+{
+    // dia_u is reachable through both dia_a and dia_b. Loading it twice would
+    // append fu twice and fail the merge, so success plus the correct output
+    // proves it parsed once and was shared.
+    const std::string dir = ksFixtureDir();
+    REQUIRE_FALSE(dir.empty());
+    const std::string source =
+        "import dia_a;\nimport dia_b;\nextern println(x);\nfunc main() {\n  println(fa() + fb());\n}\n";
+
+    REQUIRE(runWithPaths(source, {dir}) == "23\n");
+}
+
+TEST_CASE("Compiler resolves the same import twice without duplication", "[integration][compiler]")
+{
+    const std::string dir = ksFixtureDir();
+    REQUIRE_FALSE(dir.empty());
+    const std::string source = "import math;\nimport math;\nextern println(x);\nfunc main() {\n  "
+                               "println(double(1));\n}\n";
+
+    REQUIRE(runWithPaths(source, {dir}) == "2\n");
+}
+
+TEST_CASE("Compiler reports a self-import cycle", "[integration][compiler]")
+{
+    const std::string dir = ksFixtureDir();
+    REQUIRE_FALSE(dir.empty());
+    const std::string source = "import selfcyc;\nextern println(x);\nfunc main() {\n  println(1);\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {dir});
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(contains(result.messages, "cycle"));
+    REQUIRE(contains(result.messages, "selfcyc -> selfcyc"));
+}
+
+TEST_CASE("Compiler reports a two-module import cycle", "[integration][compiler]")
+{
+    const std::string dir = ksFixtureDir();
+    REQUIRE_FALSE(dir.empty());
+    const std::string source = "import cyc_a;\nextern println(x);\nfunc main() {\n  println(1);\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {dir});
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(contains(result.messages, "cycle"));
+    REQUIRE(contains(result.messages, "cyc_a -> cyc_b -> cyc_a"));
+}
+
+TEST_CASE("Compiler reports a three-module import cycle", "[integration][compiler]")
+{
+    const std::string dir = ksFixtureDir();
+    REQUIRE_FALSE(dir.empty());
+    const std::string source = "import loop1;\nextern println(x);\nfunc main() {\n  println(1);\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {dir});
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(contains(result.messages, "cycle"));
+    REQUIRE(contains(result.messages, "loop1 -> loop2 -> loop3 -> loop1"));
+}
+
+TEST_CASE("Compiler rejects a duplicate module name from a different file", "[integration][compiler]")
+{
+    // The root claims "dup" and so does dup.ks: two different files, one
+    // module name. This must fail, never silently prefer one file.
+    const std::string dir = ksFixtureDir();
+    REQUIRE_FALSE(dir.empty());
+    const std::string source = "module dup;\nimport dup;\nextern println(x);\nfunc main() {\n  println(1);\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {dir});
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(contains(result.messages, "'dup'"));
+    REQUIRE(contains(result.messages, "dup.ks"));
+}
+
+TEST_CASE("Compiler rejects an import whose file declares another module", "[integration][compiler]")
+{
+    const std::string dir = ksFixtureDir();
+    REQUIRE_FALSE(dir.empty());
+    const std::string source = "import wrong;\nextern println(x);\nfunc main() {\n  println(1);\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {dir});
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(contains(result.messages, "wrong.ks"));
+    REQUIRE(contains(result.messages, "notwrong"));
+}
+
+TEST_CASE("Compiler rejects an imported file without a module declaration", "[integration][compiler]")
+{
+    const std::string dir = ksFixtureDir();
+    REQUIRE_FALSE(dir.empty());
+    const std::string source = "import anon;\nextern println(x);\nfunc main() {\n  println(1);\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {dir});
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(contains(result.messages, "anon.ks"));
+    REQUIRE(contains(result.messages, "no module declaration"));
+}
+
+TEST_CASE("Compiler rejects an import with no search paths configured", "[integration][compiler]")
+{
+    const std::string source = "import math;\nextern println(x);\nfunc main() {\n  println(double(21));\n}\n";
+
+    {
+        testutil::RecordingLogger logger;
+        std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler(&logger));
+        std::stringstream input(source);
+        std::stringstream asmCode;
+        REQUIRE_FALSE(compiler->compile(input, asmCode, "test.ks"));
+        REQUIRE(contains(logger.messages(), "'math'"));
+        REQUIRE(contains(logger.messages(), "search paths"));
+    }
+    {
+        const ImportCompileResult result = compileWithPaths(source, {});
+        REQUIRE_FALSE(result.ok);
+        REQUIRE(contains(result.messages, "'math'"));
+        REQUIRE(contains(result.messages, "search paths"));
+    }
+}
+
+TEST_CASE("Compiler reports a missing import with the searched paths", "[integration][compiler]")
+{
+    const std::string dir = ksFixtureDir();
+    REQUIRE_FALSE(dir.empty());
+    const std::string source = "import missing_mod;\nextern println(x);\nfunc main() {\n  println(1);\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {dir});
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(contains(result.messages, "missing_mod.ks"));
+    REQUIRE(contains(result.messages, dir));
+}
+
+TEST_CASE("Compiler matches import file names case-sensitively", "[integration][compiler]")
+{
+    // Only math.ks exists: a case-insensitive lookup would find it (and then
+    // fail with a mismatch), so the missing-file error naming Math.ks proves
+    // the exact match.
+    const std::string dir = ksFixtureDir();
+    REQUIRE_FALSE(dir.empty());
+    const std::string source = "import Math;\nextern println(x);\nfunc main() {\n  println(1);\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {dir});
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(contains(result.messages, "Math.ks"));
+}
+
+TEST_CASE("Compiler takes the first search path hit for an import", "[integration][compiler]")
+{
+    const std::string dir = ksFixtureDir();
+    REQUIRE_FALSE(dir.empty());
+    const std::string first = dir + "/ord1";
+    const std::string second = dir + "/ord2";
+    const std::string source = "import which;\nextern println(x);\nfunc main() {\n  println(whichfn());\n}\n";
+
+    REQUIRE(runWithPaths(source, {first, second}) == "1\n");
+    REQUIRE(runWithPaths(source, {second, first}) == "2\n");
+}
+
+TEST_CASE("Compiler still compiles anonymous and named roots without imports", "[integration][compiler]")
+{
+    const std::string anon = "extern println(x);\nfunc main() {\n  println(1);\n}\n";
+    const std::string named = "module standalone;\nextern println(x);\nfunc main() {\n  println(2);\n}\n";
+
+    for (const std::string *source : {&anon, &named})
+    {
+        std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+        std::stringstream input(*source);
+        std::stringstream asmCode;
+        REQUIRE(compiler->compile(input, asmCode));
+
+        std::stringstream byteCode;
+        REQUIRE(testutil::assemble(asmCode.str(), byteCode));
+
+        std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+        testutil::StringRecorder recorder;
+        testutil::registerHostFunctions(*vm, recorder);
+        REQUIRE(vm->load(byteCode));
+        REQUIRE(vm->callFunction("main"));
+        REQUIRE_FALSE(recorder.text().empty());
+    }
+}
+
+TEST_CASE("Compiler rejects an import chain past the depth bound", "[integration][compiler]")
+{
+    TempDir dir("kernscript_import_depth");
+    const int depth = 150;
+    for (int i = 0; i < depth; ++i)
+    {
+        const std::string next = i + 1 < depth ? "import m" + std::to_string(i + 1) + ";\n" : "";
+        dir.write("m" + std::to_string(i) + ".ks", "module m" + std::to_string(i) + ";\n" + next + "func f" +
+                                                       std::to_string(i) + "() {\n  return " + std::to_string(i) +
+                                                       ";\n}\n");
+    }
+    const std::string source = "import m0;\nextern println(x);\nfunc main() {\n  println(f0());\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {dir.path.string()});
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(contains(result.messages, "too deep"));
 }

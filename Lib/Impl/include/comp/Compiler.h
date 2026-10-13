@@ -34,12 +34,17 @@ public:
      * returns false. Diagnostics use the clang-style
      * "<file>:<line>:<col>: error: <message>" form with a "note: <hint>"
      * follow-up where a hint exists; the two-argument compile() reports
-     * "<input>" as the file name.
+     * "<input>" as the file name. Imports resolve through the search-paths
+     * overload (first hit wins, exact case; missing files, mismatches,
+     * cycles and duplicate module names fail the compile) and lower into
+     * one unqualified table.
      */
     explicit Compiler(kern::ILogger *logger);
 
     bool compile(std::istream &sourceCode, std::ostream &asmCode) override;
     bool compile(std::istream &sourceCode, std::ostream &asmCode, const std::string &sourceName) override;
+    bool compile(std::istream &sourceCode, std::ostream &asmCode, const std::string &sourceName,
+                 const std::vector<std::string> &searchPaths) override;
 
 private:
     kern::ILogger *m_logger;

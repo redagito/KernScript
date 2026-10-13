@@ -49,7 +49,11 @@ At most one `module` declaration is allowed and it must come first.
 `extern`/`func` declarations; an `import` after an `extern` or `func` is
 a compile error. `export` prefixes `func` declarations only. A call may
 qualify its target once (`mod::func(...)`); the qualifier is recorded but
-not resolved here, and imports are recorded but not loaded.
+not resolved here. Imports resolve at compile time through the search paths
+passed to `compile`: each `import name;` loads `name.ks` (first hit wins with
+an exact case-sensitive match), the file must declare the matching `module`,
+and each file loads once (diamonds and repeats share; cycles, mismatches,
+missing files and duplicate module names are compile errors).
 
 No `for`, `break` or `continue` in v1.
 
