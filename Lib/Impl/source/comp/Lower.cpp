@@ -535,6 +535,31 @@ bool lowerCondition(LowerCtx &ctx, const ast::Expr &cond, std::vector<std::strin
 
 bool lowerStmt(LowerCtx &ctx, const ast::Stmt &stmt, std::vector<std::string> &out);
 
+// Collects every name a function body declares (including nested if/while
+// branches) so the hidden return spill slot can avoid them. The slot is
+// picked before the body lowers, when only parameters are known; without the
+// lookahead a body declaration could collide with the picked name and fail
+// with a spurious duplicate error.
+void collectDeclaredVars(const std::vector<ast::Stmt> &body, std::map<std::string, bool> &declared)
+{
+    for (const auto &stmt : body)
+    {
+        if (const auto *decl = std::get_if<ast::Stmt::VarDecl>(&stmt.node))
+        {
+            declared[decl->name] = true;
+        }
+        else if (const auto *branch = std::get_if<ast::Stmt::If>(&stmt.node))
+        {
+            collectDeclaredVars(branch->thenBranch, declared);
+            collectDeclaredVars(branch->elseBranch, declared);
+        }
+        else if (const auto *loop = std::get_if<ast::Stmt::While>(&stmt.node))
+        {
+            collectDeclaredVars(loop->body, declared);
+        }
+    }
+}
+
 // Splits "mnemonic operand..." into its two parts; operand keeps everything
 // after the first space verbatim (string literals may contain spaces).
 bool splitLine(const std::string &line, std::string &mnemonic, std::string &operand)
@@ -914,10 +939,15 @@ bool lowerProgram(const ast::Program &program, kern::ILogger *logger, const std:
         {
             // Hidden spill slot for 'return expr;' lowering. The name must lex
             // as an identifier (leading letter) and must not collide with a
-            // parameter or it would shadow an argument slot.
+            // parameter (it would shadow an argument slot) or with any variable
+            // the body declares later (the declaration would fail as a
+            // duplicate). The body scan runs first because only parameters are
+            // known at this point.
+            std::map<std::string, bool> declared;
+            collectDeclaredVars(func.body, declared);
             std::string candidate = "retmp";
             unsigned suffix = 0;
-            while (ctx.vars.find(candidate) != ctx.vars.end())
+            while (ctx.vars.find(candidate) != ctx.vars.end() || declared.find(candidate) != declared.end())
             {
                 candidate = "retmp" + std::to_string(suffix++);
             }
