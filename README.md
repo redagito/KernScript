@@ -17,18 +17,11 @@ instead of hanging the host. There are no modules yet (`import` is planned).
 
 ## Layout
 
-- `Lib/` — `ApiHeaders` (public `kern/*` API), `Api` (product library
-  `KernScriptLib`, factories only), `Impl` (`include/` + `source/`, the
-  engine: lexer, assembler, compiler, VM).
-- `Test/` — Catch2 unit, integration and end-to-end suites.
-- `Samples/` — host applications linking `KernScriptLib`: minimal hosts,
-  calculator, text pipeline, rule engine, FLTK/Win32 UI demos, script-driven
-  Life, task board, spreadsheet, Eliza, and a script-built UI shell.
-- `Benchmarks/` — per-stage Release benchmarks with checksums plus a
-  recorded baseline (`Benchmarks/README.md`); `NestedCalls` and
-  `ExternRoundtrip` take `--profile` for opcode tables.
-- `doc/` — `Assembly Language.md` (instruction reference),
-  `Scripting Language.md` (grammar and semantics).
+- Library source: public API, product library, engine internals.
+- Tests: unit, integration and end-to-end suites.
+- Sample host applications, from minimal to script-driven UI.
+- Release benchmarks with checksums and a recorded baseline.
+- Language references: assembly instruction set, scripting grammar.
 
 ## Building
 
