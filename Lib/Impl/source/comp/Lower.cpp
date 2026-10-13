@@ -1,5 +1,6 @@
 #include "comp/Lower.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <cmath>
 #include <cstdlib>
@@ -413,6 +414,147 @@ bool lowerCondition(LowerCtx &ctx, const ast::Expr &cond, std::vector<std::strin
 
 bool lowerStmt(LowerCtx &ctx, const ast::Stmt &stmt, std::vector<std::string> &out);
 
+// Splits "mnemonic operand..." into its two parts; operand keeps everything
+// after the first space verbatim (string literals may contain spaces).
+bool splitLine(const std::string &line, std::string &mnemonic, std::string &operand)
+{
+    const size_t space = line.find(' ');
+    if (space == std::string::npos)
+    {
+        mnemonic = line;
+        operand.clear();
+        return true;
+    }
+    mnemonic = line.substr(0, space);
+    operand = line.substr(space + 1);
+    return true;
+}
+
+// Folds adjacent push/pop pairs in a finished function body. Each rule is
+// stack-neutral (push+pop nets zero, mov touches nothing) and value-identical,
+// so valid programs behave exactly as before:
+//   pushv x | pushi n | pushf f | pushs s  +  popv v  ->  movv|movi|movf|movs v, ...
+//   pushu n + popv v -> movi v, n only when n fits int32, else kept
+//   push... + popv t + retv t  ->  reti|retf|rets|retv (return spill bypass)
+//   push... + pop  ->  dropped (value computed and discarded)
+// Labels are lines too, so control flow always breaks a pair. Pops below the
+// frame or of uninitialized values still throw in the unfolded paths; folded
+// movs carry the same range checks through the assembler.
+void peephole(std::vector<std::string> &body)
+{
+    std::vector<std::string> folded;
+    folded.reserve(body.size());
+    size_t i = 0;
+    while (i < body.size())
+    {
+        std::string pushOp;
+        std::string pushArg;
+        std::string popVar;
+        std::string retVar;
+        std::string retDummy;
+        const bool isPush =
+            splitLine(body[i], pushOp, pushArg) &&
+            (pushOp == "pushv" || pushOp == "pushi" || pushOp == "pushu" || pushOp == "pushf" || pushOp == "pushs");
+        const bool hasNext = i + 1 < body.size();
+        std::string nextOp;
+        std::string nextArg;
+        if (hasNext)
+        {
+            splitLine(body[i + 1], nextOp, nextArg);
+        }
+        const bool isPopv = hasNext && nextOp == "popv" && !nextArg.empty() && nextArg.find(' ') == std::string::npos;
+        if (isPush && isPopv)
+        {
+            popVar = nextArg;
+        }
+        const bool hasThird = i + 2 < body.size();
+        if (hasThird)
+        {
+            splitLine(body[i + 2], retVar, retDummy);
+        }
+        const bool isRetvSame =
+            hasThird && retVar == "retv" && retDummy == popVar && !popVar.empty() && isPush && isPopv;
+        if (isRetvSame)
+        {
+            // Return spill bypass: the pushed value is the return value.
+            if (pushOp == "pushv")
+            {
+                folded.push_back("retv " + pushArg);
+            }
+            else if (pushOp == "pushi")
+            {
+                folded.push_back("reti " + pushArg);
+            }
+            else if (pushOp == "pushf")
+            {
+                folded.push_back("retf " + pushArg);
+            }
+            else if (pushOp == "pushs")
+            {
+                folded.push_back("rets " + pushArg);
+            }
+            else if (pushOp == "pushu")
+            {
+                const unsigned long long value = std::stoull(pushArg);
+                if (value <= 2147483647ULL)
+                {
+                    folded.push_back("reti " + pushArg);
+                }
+                else
+                {
+                    folded.push_back(body[i]);
+                    folded.push_back(body[i + 1]);
+                    folded.push_back(body[i + 2]);
+                }
+            }
+            i += 3;
+            continue;
+        }
+        if (isPush && isPopv)
+        {
+            if (pushOp == "pushv")
+            {
+                folded.push_back("movv " + popVar + ", " + pushArg);
+            }
+            else if (pushOp == "pushi")
+            {
+                folded.push_back("movi " + popVar + ", " + pushArg);
+            }
+            else if (pushOp == "pushf")
+            {
+                folded.push_back("movf " + popVar + ", " + pushArg);
+            }
+            else if (pushOp == "pushs")
+            {
+                folded.push_back("movs " + popVar + ", " + pushArg);
+            }
+            else if (pushOp == "pushu")
+            {
+                const unsigned long long value = std::stoull(pushArg);
+                if (value <= 2147483647ULL)
+                {
+                    folded.push_back("movi " + popVar + ", " + pushArg);
+                }
+                else
+                {
+                    folded.push_back(body[i]);
+                    folded.push_back(body[i + 1]);
+                }
+            }
+            i += 2;
+            continue;
+        }
+        if (isPush && hasNext && nextOp == "pop" && nextArg.empty())
+        {
+            // Computed and discarded: drop both lines.
+            i += 2;
+            continue;
+        }
+        folded.push_back(body[i]);
+        ++i;
+    }
+    body = folded;
+}
 bool lowerIf(LowerCtx &ctx, const ast::Stmt::If &node, std::vector<std::string> &out)
 {
     std::vector<std::string> cond;
@@ -652,6 +794,33 @@ bool lowerProgram(const ast::Program &program, kern::ILogger *logger, const std:
             if (!lowerStmt(ctx, stmt, body))
             {
                 return false;
+            }
+        }
+        // Adjacent push/pop pairs are always redundant (stack-neutral,
+        // value-identical); fold them after the whole body is visible so
+        // pairs across statement boundaries collapse too.
+        peephole(body);
+        if (ctx.funcValued)
+        {
+            // A bypassed return spill leaves the hidden slot dead: the only
+            // lines that can reference it are its own popv/retv pair, matched
+            // whole so user names merely containing it never count.
+            const std::string popLine = "popv " + ctx.retTemp;
+            const std::string retLine = "retv " + ctx.retTemp;
+            bool spillUsed = false;
+            for (const std::string &line : body)
+            {
+                if (line == popLine || line == retLine)
+                {
+                    spillUsed = true;
+                    break;
+                }
+            }
+            if (!spillUsed)
+            {
+                ctx.vars.erase(ctx.retTemp);
+                ctx.varOrder.erase(std::remove(ctx.varOrder.begin(), ctx.varOrder.end(), ctx.retTemp),
+                                   ctx.varOrder.end());
             }
         }
         Lowered out;

@@ -938,3 +938,100 @@ TEST_CASE("Compiler rejects func without parentheses", "[integration][compiler]"
     std::stringstream asmCode;
     REQUIRE_FALSE(compiler->compile(input, asmCode));
 }
+
+namespace
+{
+
+std::string compileToAsm(const std::string &source)
+{
+    std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+    std::stringstream input(source);
+    std::stringstream asmCode;
+    REQUIRE(compiler->compile(input, asmCode));
+    return asmCode.str();
+}
+
+std::string runSource(const std::string &source)
+{
+    const std::string asmText = compileToAsm(source);
+    std::stringstream byteCode;
+    REQUIRE(testutil::assemble(asmText, byteCode));
+
+    std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+    testutil::StringRecorder recorder;
+    testutil::registerHostFunctions(*vm, recorder);
+    REQUIRE(vm->load(byteCode));
+    REQUIRE(vm->callFunction("main"));
+    return recorder.text();
+}
+
+} // namespace
+
+TEST_CASE("Compiler folds literal init into movi", "[integration][compiler][peephole]")
+{
+    const std::string source = "extern println(x);\nfunc main() {\n  var n = 5;\n  println(n);\n}\n";
+    const std::string asmText = compileToAsm(source);
+
+    REQUIRE(asmText.find("movi n, 5") != std::string::npos);
+    REQUIRE(asmText.find("pushi 5") == std::string::npos);
+    REQUIRE(runSource(source) == "5\n");
+}
+
+TEST_CASE("Compiler folds variable copy into movv", "[integration][compiler][peephole]")
+{
+    const std::string source = "extern println(x);\nfunc main() {\n  var a = 1;\n  var b = a;\n  println(b);\n}\n";
+    const std::string asmText = compileToAsm(source);
+
+    REQUIRE(asmText.find("movv b, a") != std::string::npos);
+    REQUIRE(runSource(source) == "1\n");
+}
+
+TEST_CASE("Compiler folds float and string inits", "[integration][compiler][peephole]")
+{
+    const std::string source =
+        "extern println(x);\nfunc main() {\n  var f = 1.5;\n  var s = \"hi\";\n  println(f);\n  println(s);\n}\n";
+    const std::string asmText = compileToAsm(source);
+
+    REQUIRE(asmText.find("movf f, 1.5") != std::string::npos);
+    REQUIRE(asmText.find("movs s, \"hi\"") != std::string::npos);
+    REQUIRE(runSource(source) == "1.5\nhi\n");
+}
+
+TEST_CASE("Compiler keeps oversized pushu init as push pair", "[integration][compiler][peephole]")
+{
+    const std::string source = "extern println(x);\nfunc main() {\n  var u = 3000000000;\n  println(u);\n}\n";
+    const std::string asmText = compileToAsm(source);
+
+    REQUIRE(asmText.find("pushu 3000000000") != std::string::npos);
+    REQUIRE(asmText.find("movi u,") == std::string::npos);
+    REQUIRE(runSource(source) == "3000000000\n");
+}
+
+TEST_CASE("Compiler folds constant return into reti", "[integration][compiler][peephole]")
+{
+    const std::string source = "extern println(x);\nfunc f() {\n  return 42;\n}\nfunc main() {\n  println(f());\n}\n";
+    const std::string asmText = compileToAsm(source);
+
+    REQUIRE(asmText.find("reti 42") != std::string::npos);
+    REQUIRE(asmText.find("retmp") == std::string::npos);
+    REQUIRE(runSource(source) == "42\n");
+}
+
+TEST_CASE("Compiler folds variable return into retv", "[integration][compiler][peephole]")
+{
+    const std::string source =
+        "extern println(x);\nfunc id(v) {\n  return v;\n}\nfunc main() {\n  println(id(7));\n}\n";
+    const std::string asmText = compileToAsm(source);
+
+    REQUIRE(asmText.find("retv v") != std::string::npos);
+    REQUIRE(runSource(source) == "7\n");
+}
+
+TEST_CASE("Compiler drops literal expression statement", "[integration][compiler][peephole]")
+{
+    const std::string source = "extern println(x);\nfunc main() {\n  42;\n  println(1);\n}\n";
+    const std::string asmText = compileToAsm(source);
+
+    REQUIRE(asmText.find("pushi 42") == std::string::npos);
+    REQUIRE(runSource(source) == "1\n");
+}

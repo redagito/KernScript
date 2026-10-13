@@ -192,11 +192,11 @@ TEST_CASE("Compiler lowerProgram and emitProgram shape on tiny program", "[integ
     REQUIRE(lowered.size() == 1);
     REQUIRE(lowered[0].name == "main");
     REQUIRE(lowered[0].vars == std::vector<std::string>{"x"});
-    REQUIRE(lowered[0].body == std::vector<std::string>{"pushi 1", "popv x"});
+    REQUIRE(lowered[0].body == std::vector<std::string>{"movi x, 1"});
 
     std::ostringstream asmCode;
     emitProgram(program, lowered, asmCode);
-    REQUIRE(asmCode.str() == "func main\n{\nvar x\npushi 1\npopv x\nret\n}\n");
+    REQUIRE(asmCode.str() == "func main\n{\nvar x\nmovi x, 1\nret\n}\n");
 }
 
 TEST_CASE("Compiler tokenize records token positions", "[integration][compiler][parser]")
@@ -298,8 +298,7 @@ TEST_CASE("AST builds extern and valued func with spans", "[integration][compile
     std::vector<Lowered> lowered;
     REQUIRE(lowerProgram(program, nullLogger(), "test.ks", lowered));
     REQUIRE(lowered.size() == 1);
-    REQUIRE(lowered[0].body ==
-            std::vector<std::string>{"pushv x", "pushi 1", "add", "popv r", "pushv r", "popv retmp", "retv retmp"});
+    REQUIRE(lowered[0].body == std::vector<std::string>{"pushv x", "pushi 1", "add", "popv r", "retv r"});
 }
 
 TEST_CASE("AST builds if else while with logic precedence", "[integration][compiler][parser]")

@@ -742,6 +742,32 @@ bool parseAstStmt(AstBuild &build, ast::Stmt &stmt)
         stmt.node = std::move(node);
         return true;
     }
+    // General expression statement (spec ExprStmt := Expr ";"): a leading
+    // literal, parenthesized expression or unary operator starts an expression
+    // whose value is discarded. Anything else is not a statement.
+    const LexerToken first = astPeek(build);
+    const bool exprStart = first == LexerToken::Integer || first == LexerToken::Float || first == LexerToken::String ||
+                           first == LexerToken::OpenParenthesis || first == LexerToken::Dash ||
+                           astKeywordIs(build, "not");
+    if (exprStart)
+    {
+        const SrcPos start = astTok(build).pos;
+        std::unique_ptr<ast::Expr> expr;
+        if (!parseAstExpr(build, expr))
+        {
+            return false;
+        }
+        if (!astExpect(build, LexerToken::Semicolon, "';'"))
+        {
+            return false;
+        }
+        ast::Stmt::ExprStmt node;
+        node.expr = std::move(expr);
+        stmt.pos = start;
+        stmt.end = (*build.toks)[build.pos - 1].pos;
+        stmt.node = std::move(node);
+        return true;
+    }
     astError(build, "Expected a statement.");
     return false;
 }
