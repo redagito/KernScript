@@ -13,13 +13,12 @@
 #include "common/Version.h"
 #include "logging/Logger.h"
 
-#ifdef KERNSCRIPT_PROFILING
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <iomanip>
 #include <ostream>
 #include <vector>
-#endif
 
 namespace
 {
@@ -132,7 +131,27 @@ VirtualMachine::FunctionFrame::FunctionFrame(uint32_t funcIndex, uint32_t instrI
     runtimeStackBaseIndex = stackBaseIndex;
 }
 
-#ifdef KERNSCRIPT_PROFILING
+struct VirtualMachine::ProfileData
+{
+    struct Entry
+    {
+        uint64_t count = 0;
+        uint64_t cycles = 0;
+    };
+
+    // One bucket per opcode, indexed by the raw opcode value. Hardcoded so the
+    // storage is a plain array; the asserts pin it to the Opcode enum and the
+    // mnemonic table, so adding an opcode without updating this fails loudly.
+    static constexpr size_t kOpcodeCount = 38;
+    static_assert(static_cast<size_t>(Opcode::Jle) + 1 == kOpcodeCount, "ProfileData size must match the Opcode enum.");
+    static_assert(sizeof(instructions) / sizeof(instructions[0]) == kOpcodeCount, "Opcode mnemonic table out of sync.");
+
+    std::array<Entry, kOpcodeCount> entries{};
+    Entry fetchDecode{};
+    uint64_t loopIterations = 0;
+    uint64_t callEntries = 0;
+};
+
 VirtualMachine::BodyProbe::BodyProbe(VirtualMachine &owner, size_t rawOpcode, bool knownOpcode,
                                      std::chrono::steady_clock::time_point bodyStart)
     : m_owner(owner), m_rawOpcode(rawOpcode), m_knownOpcode(knownOpcode), m_bodyStart(bodyStart)
@@ -141,12 +160,17 @@ VirtualMachine::BodyProbe::BodyProbe(VirtualMachine &owner, size_t rawOpcode, bo
 
 VirtualMachine::BodyProbe::~BodyProbe()
 {
+    ProfileData *data = m_owner.m_profile.get();
+    if (data == nullptr)
+    {
+        return;
+    }
     const auto t_end = std::chrono::steady_clock::now();
     const uint64_t bodyCycles =
         static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(t_end - m_bodyStart).count());
     if (m_knownOpcode)
     {
-        ProfileEntry &entry = m_owner.m_profileEntries[m_rawOpcode];
+        ProfileData::Entry &entry = data->entries[m_rawOpcode];
         entry.count += 1;
         entry.cycles += bodyCycles;
     }
@@ -154,12 +178,18 @@ VirtualMachine::BodyProbe::~BodyProbe()
     {
         // Corrupt bytecode decoded to an unknown id: no bucket exists, so the
         // body time joins the fetch/decode bucket instead of vanishing.
-        m_owner.m_profileFetchDecode.cycles += bodyCycles;
+        data->fetchDecode.cycles += bodyCycles;
     }
 }
-#endif
 
 VirtualMachine::VirtualMachine(kern::ILogger *logger) : VirtualMachine(logger, kern::VMConfig{}) {}
+
+// Defaulted here (not in the header) so the ProfileData deleter and the
+// moved-from state see the complete type; user translation units only hold
+// the pointer.
+VirtualMachine::~VirtualMachine() = default;
+VirtualMachine::VirtualMachine(VirtualMachine &&other) noexcept = default;
+VirtualMachine &VirtualMachine::operator=(VirtualMachine &&other) noexcept = default;
 
 VirtualMachine::VirtualMachine(kern::ILogger *logger, kern::VMConfig config)
     : m_logger(logger != nullptr ? logger : nullLogger()), m_maxStackSize(config.maxStackBytes / sizeof(Value)),
@@ -270,24 +300,21 @@ void VirtualMachine::clearScripts()
     }
 }
 
-#ifdef KERNSCRIPT_PROFILING
-void VirtualMachine::resetProfile()
-{
-    m_profileEntries = {};
-    m_profileFetchDecode = ProfileEntry{};
-    m_profileLoopIterations = 0;
-    m_profileCallEntries = 0;
-}
+void VirtualMachine::resetProfile() { m_profile = std::make_unique<ProfileData>(); }
 
 void VirtualMachine::dumpProfile(std::ostream &output)
 {
-    uint64_t totalCycles = m_profileFetchDecode.cycles;
-    for (const ProfileEntry &entry : m_profileEntries)
+    // Without a recording this prints the empty table (zero iterations and
+    // calls, no rows), so callers never need to special-case it.
+    static const ProfileData kEmpty{};
+    const ProfileData &data = m_profile != nullptr ? *m_profile : kEmpty;
+    uint64_t totalCycles = data.fetchDecode.cycles;
+    for (const ProfileData::Entry &entry : data.entries)
     {
         totalCycles += entry.cycles;
     }
-    output << "profile: " << m_profileLoopIterations << " iterations, " << m_profileCallEntries << " calls, "
-           << totalCycles << " ns total\n";
+    output << "profile: " << data.loopIterations << " iterations, " << data.callEntries << " calls, " << totalCycles
+           << " ns total\n";
     output << "mnemonic count cycles_ns share_pct\n";
     struct ProfileRow
     {
@@ -297,17 +324,16 @@ void VirtualMachine::dumpProfile(std::ostream &output)
         size_t tiebreak = 0;
     };
     std::vector<ProfileRow> rows;
-    for (size_t raw = 0; raw < kProfileOpcodeCount; ++raw)
+    for (size_t raw = 0; raw < ProfileData::kOpcodeCount; ++raw)
     {
-        if (m_profileEntries[raw].count > 0)
+        if (data.entries[raw].count > 0)
         {
-            rows.push_back(
-                {instructions[raw].mnemonic, m_profileEntries[raw].count, m_profileEntries[raw].cycles, raw});
+            rows.push_back({instructions[raw].mnemonic, data.entries[raw].count, data.entries[raw].cycles, raw});
         }
     }
-    if (m_profileFetchDecode.count > 0)
+    if (data.fetchDecode.count > 0)
     {
-        rows.push_back({"fetch", m_profileFetchDecode.count, m_profileFetchDecode.cycles, kProfileOpcodeCount});
+        rows.push_back({"fetch", data.fetchDecode.count, data.fetchDecode.cycles, ProfileData::kOpcodeCount});
     }
     // Hottest first; the tiebreak keeps the order stable across runs.
     std::sort(rows.begin(), rows.end(),
@@ -327,7 +353,6 @@ void VirtualMachine::dumpProfile(std::ostream &output)
         output << row.mnemonic << ' ' << row.count << ' ' << row.cycles << ' ' << share << "%\n";
     }
 }
-#endif
 
 bool VirtualMachine::callFunction(const std::string &functionName)
 {
@@ -343,10 +368,11 @@ bool VirtualMachine::callFunction(const std::string &functionName)
         return false;
     }
     const CallGuard guard(m_running);
-#ifdef KERNSCRIPT_PROFILING
     // Committed calls only: unknown names return above and are not entries.
-    ++m_profileCallEntries;
-#endif
+    if (m_profile != nullptr)
+    {
+        ++m_profile->callEntries;
+    }
     // Start from a clean slate: a previous call may have thrown out of nested
     // frames, leaving stale values, frames and a base index behind. Clearing
     // first also keeps locals from leaking values a previous call left in the
@@ -751,13 +777,13 @@ bool VirtualMachine::getFunctionIndexByName(const std::string &functionName, uin
 
 bool VirtualMachine::execute()
 {
-#ifdef KERNSCRIPT_PROFILING
-    // Timings are RELATIVE, never absolute: each iteration takes three
-    // steady_clock readings, which roughly doubles the loop cost. Enabled
-    // builds measure proportions (fetch vs body, opcode vs opcode), never
-    // production speed.
-    const auto t_fetch = std::chrono::steady_clock::now();
-#endif
+    // Profiling is runtime-gated: without an active recording these are a few
+    // predictable null checks and no clock reads. With recording, timings are
+    // RELATIVE, never absolute: each iteration takes clock readings, which
+    // perturb the loop cost. Enabled runs measure proportions (fetch vs body,
+    // opcode vs opcode), never production speed.
+    const auto t_fetch =
+        m_profile != nullptr ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     // Cache current function
     const Function &currentFunction = m_functions.at(m_currentFunctionIndex);
 
@@ -776,21 +802,23 @@ bool VirtualMachine::execute()
         instruction = currentFunction.instructions.at(m_currentInstructionIndex);
     }
 
-#ifdef KERNSCRIPT_PROFILING
-    const auto t_body = std::chrono::steady_clock::now();
+    const auto t_body =
+        m_profile != nullptr ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     // One probe per iteration, not per case: stamping validation-vs-payload
     // inside all ~40 switch cases would touch every case and perturb the very
     // timings it measures, so each opcode gets a single body bucket while the
     // fetch plus decode share lands in the fetch/decode bucket. The RAII probe
     // attributes on every exit path, returns and throws alike.
     const size_t rawOpcode = static_cast<size_t>(instruction.id);
-    const bool knownOpcode = rawOpcode < kProfileOpcodeCount;
-    m_profileFetchDecode.count += 1;
-    m_profileFetchDecode.cycles +=
-        static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(t_body - t_fetch).count());
-    ++m_profileLoopIterations;
+    const bool knownOpcode = rawOpcode < ProfileData::kOpcodeCount;
+    if (m_profile != nullptr)
+    {
+        m_profile->fetchDecode.count += 1;
+        m_profile->fetchDecode.cycles +=
+            static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(t_body - t_fetch).count());
+        ++m_profile->loopIterations;
+    }
     const BodyProbe probe(*this, rawOpcode, knownOpcode, t_body);
-#endif
 
     switch (instruction.id)
     {

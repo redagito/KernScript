@@ -20,10 +20,3 @@ target_link_libraries (KernScriptLibImpl
 	PUBLIC fmt::fmt
 	PRIVATE spdlog::spdlog
 )
-
-# Profiling instrumentation is an Impl-private build feature: the definition
-# never reaches public headers or dependents, so the option is zero cost
-# unless explicitly enabled.
-if (KERNSCRIPT_ENABLE_PROFILING)
-	target_compile_definitions (KernScriptLibImpl PRIVATE KERNSCRIPT_PROFILING)
-endif ()

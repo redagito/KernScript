@@ -7,11 +7,6 @@ project (KernScript LANGUAGES CXX)
 set (CMAKE_CXX_STANDARD 23)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Optional VM profiling instrumentation. OFF keeps the VM layout and loop
-# byte-identical (zero cost); ON defines KERNSCRIPT_PROFILING for
-# KernScriptLibImpl only, see Lib/Impl/CMakeLists.txt.
-option (KERNSCRIPT_ENABLE_PROFILING "Enable VM profiling instrumentation" OFF)
-
 # Required once at the top level so that projects added below can register
 # their tests with add_test.
 enable_testing ()

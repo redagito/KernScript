@@ -4,6 +4,9 @@
 
 #include <kern/Kern.h>
 
+// Concrete type for the optional --profile dump below.
+#include "vm/VirtualMachine.h"
+
 #include "../../common/bench.h"
 
 namespace
@@ -56,9 +59,10 @@ func main() {
 
 } // namespace
 
-int main()
+int main(int argumentCount, char **arguments)
 {
     std::cout << "machine: " << bench::machineNote() << '\n';
+    const bool profile = argumentCount > 1 && std::string(arguments[1]) == "--profile";
 
     std::unique_ptr<kern::IVirtualMachine> vm = bench::makeVm();
     vm->addFunction("tick", kern::createExternFunction(&tick));
@@ -90,6 +94,12 @@ int main()
     }
 
     // Two extern calls per iteration: report ns per extern call.
+    // Optional opcode profile of the timed region; off by default.
+    // Profiling adds probe overhead to the timing and is relative only.
+    if (profile)
+    {
+        static_cast<VirtualMachine *>(vm.get())->resetProfile();
+    }
     const long long opsPerRun = static_cast<long long>(kIterations) * 2 * kRuns;
     const double nsPerCall = bench::minNsPerOp(
         [&]
@@ -111,5 +121,10 @@ int main()
     const long long mains = 1 + static_cast<long long>(kRuns) * (1 + bench::kRepeats);
     const bool checksumOk = (g_captured == kExpectedAcc) && (g_captureCalls == mains) &&
                             (g_tickCalls == mains * kIterations) && (g_succCalls == mains * kIterations);
+    if (profile)
+    {
+        std::cout << "--- profile externroundtrip ---\n";
+        static_cast<VirtualMachine *>(vm.get())->dumpProfile(std::cout);
+    }
     return bench::report("ExternRoundtrip", nsPerCall, opsPerRun, checksumOk);
 }

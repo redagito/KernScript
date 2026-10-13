@@ -5,6 +5,9 @@
 
 #include <kern/Kern.h>
 
+// Concrete type for the optional --profile dumps below.
+#include "vm/VirtualMachine.h"
+
 #include "../../common/bench.h"
 
 namespace
@@ -61,9 +64,10 @@ std::string buildChainSource()
 
 } // namespace
 
-int main()
+int main(int argumentCount, char **arguments)
 {
     std::cout << "machine: " << bench::machineNote() << '\n';
+    const bool profile = argumentCount > 1 && std::string(arguments[1]) == "--profile";
     int exitCode = 0;
 
     // Part 1: recursive fib(20).
@@ -96,6 +100,13 @@ int main()
             return 1;
         }
 
+        // Optional opcode profile of the timed region; off by default.
+        // Profiling adds probe overhead to the timing and is relative only.
+        if (profile)
+        {
+            static_cast<VirtualMachine *>(vm.get())->resetProfile();
+        }
+
         const double nsPerFib = bench::minNsPerOp(
             [&]
             {
@@ -112,6 +123,11 @@ int main()
 
         const long long expectedCalls = 1 + 1 + bench::kRepeats;
         const bool checksumOk = (g_captured == kExpectedFib) && (g_captureCalls == expectedCalls);
+        if (profile)
+        {
+            std::cout << "--- profile fib20 ---\n";
+            static_cast<VirtualMachine *>(vm.get())->dumpProfile(std::cout);
+        }
         exitCode |= bench::report("NestedCalls/fib20", nsPerFib, 1, checksumOk);
     }
 
@@ -145,6 +161,12 @@ int main()
             return 1;
         }
 
+        // Optional opcode profile of the timed region; off by default.
+        if (profile)
+        {
+            static_cast<VirtualMachine *>(vm.get())->resetProfile();
+        }
+
         const double nsPerChain = bench::minNsPerOp(
             [&]
             {
@@ -164,6 +186,11 @@ int main()
 
         const long long expectedCalls = 1 + static_cast<long long>(kChainRuns) * (1 + bench::kRepeats);
         const bool checksumOk = (g_captured == kExpectedChain) && (g_captureCalls == expectedCalls);
+        if (profile)
+        {
+            std::cout << "--- profile chain200 ---\n";
+            static_cast<VirtualMachine *>(vm.get())->dumpProfile(std::cout);
+        }
         exitCode |= bench::report("NestedCalls/chain200", nsPerChain, kChainRuns, checksumOk);
     }
 

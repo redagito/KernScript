@@ -2872,7 +2872,6 @@ TEST_CASE("Extern return chaining still works", "[integration][vm][m5]")
     REQUIRE(recorder.text() == "35\n");
 }
 
-#ifdef KERNSCRIPT_PROFILING
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -2987,4 +2986,3 @@ TEST_CASE("Profiling reset zeroes the counters", "[integration][vm][profiling]")
     vm.dumpProfile(rerun);
     REQUIRE(parseProfileCounts(rerun.str()).at("pushi") == 1);
 }
-#endif

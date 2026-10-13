@@ -1,6 +1,8 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
+#include <iosfwd>
 #include <memory>
 #include <stack>
 #include <unordered_map>
@@ -14,12 +16,6 @@
 #include "common/ExternFunction.h"
 #include "common/Instruction.h"
 #include "vm/Value.h"
-
-#ifdef KERNSCRIPT_PROFILING
-#include <array>
-#include <chrono>
-#include <iosfwd>
-#endif
 
 class VirtualMachine : public kern::IVirtualMachine
 {
@@ -36,6 +32,13 @@ public:
      * \param config Bounds the runtime stack and the call depth.
      */
     VirtualMachine(kern::ILogger *logger, kern::VMConfig config);
+
+    ~VirtualMachine();
+
+    VirtualMachine(VirtualMachine &&other) noexcept;
+    VirtualMachine &operator=(VirtualMachine &&other) noexcept;
+    VirtualMachine(const VirtualMachine &) = delete;
+    VirtualMachine &operator=(const VirtualMachine &) = delete;
 
     bool load(std::istream &byteCode);
 
@@ -61,11 +64,11 @@ public:
     void setReturnValue(unsigned int value);
     void setReturnValue(bool value);
 
-#ifdef KERNSCRIPT_PROFILING
     /**
-     * \brief Clears all profiling counters.
+     * \brief Clears all profiling counters and starts recording.
      *
-     * Enabled builds only; the method does not exist otherwise.
+     * Always available; profiling is runtime-gated, so there is no build
+     * flag. Until this is called, the loop records nothing.
      */
     void resetProfile();
 
@@ -74,10 +77,10 @@ public:
      *
      * Rows cover executed opcodes plus a fetch/decode row, sorted by cycles
      * descending with the raw opcode value breaking ties. Timings are
-     * RELATIVE (the probe clocks roughly double loop cost), never absolute.
+     * RELATIVE (the probe clocks perturb the loop), never absolute. Prints
+     * a no-data line if resetProfile() was never called.
      */
     void dumpProfile(std::ostream &output);
-#endif
 
 protected:
     /**
@@ -153,32 +156,18 @@ private:
     uint64_t m_maxExecutionSteps = 0;            /**< Instruction budget per callFunction, reset on every call. */
     bool m_running = false;                      /**< Reentrancy guard for execute, reset on every exit. */
 
-#ifdef KERNSCRIPT_PROFILING
-    /**
-     * \brief One counter pair per profiling bucket.
-     *
-     * Cycles hold steady_clock nanoseconds: RELATIVE shares, never absolute
-     * production timings.
-     */
-    struct ProfileEntry
-    {
-        uint64_t count = 0;
-        uint64_t cycles = 0;
-    };
-
-    // One bucket per opcode, indexed by the raw opcode value. Hardcoded so the
-    // storage is a plain array; the asserts pin it to the Opcode enum and the
-    // mnemonic table, so adding an opcode without updating this fails loudly.
-    static constexpr size_t kProfileOpcodeCount = 38;
-    static_assert(static_cast<size_t>(Opcode::Jle) + 1 == kProfileOpcodeCount,
-                  "kProfileOpcodeCount must match the Opcode enum.");
-    static_assert(sizeof(instructions) / sizeof(instructions[0]) == kProfileOpcodeCount,
-                  "Opcode mnemonic table out of sync.");
+    // Profiling state, null unless resetProfile() started recording. The
+    // pointer is always present so the class layout never depends on build
+    // flags (no ODR hazard across targets built with different flags); off
+    // mode costs one predictable null check per loop iteration.
+    struct ProfileData;
+    std::unique_ptr<ProfileData> m_profile;
 
     /**
      * \brief RAII timer attributing one iteration's body time to its opcode.
      *
-     * The destructor stamps the end time, so returns and exception unwinds
+     * Null-safe: when no recording is active it does nothing. Otherwise the
+     * destructor stamps the end time, so returns and exception unwinds
      * attribute alike. Unknown ids (corrupt bytecode) have no bucket; their
      * body time joins the fetch/decode bucket instead of vanishing.
      */
@@ -198,13 +187,4 @@ private:
         bool m_knownOpcode;
         std::chrono::steady_clock::time_point m_bodyStart;
     };
-
-    // Per-instance storage, no globals: the VM is single-threaded by its
-    // m_running reentrancy contract. Guarded, so when KERNSCRIPT_PROFILING is
-    // off the class layout is byte-identical to the uninstrumented VM.
-    std::array<ProfileEntry, kProfileOpcodeCount> m_profileEntries{};
-    ProfileEntry m_profileFetchDecode{};
-    uint64_t m_profileLoopIterations = 0;
-    uint64_t m_profileCallEntries = 0;
-#endif
 };
