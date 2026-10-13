@@ -101,8 +101,11 @@ protected:
 
     /**
      * \brief Pushes value on top of runtime stack.
+     *
+     * Takes the value by value so temporaries move into the stack instead of
+     * copying; lvalue callers copy once at the call, exactly as before.
      */
-    void pushValue(const Value &value);
+    void pushValue(Value value);
 
     /**
      * \brief Pops value from runtime stack into supplied variable.

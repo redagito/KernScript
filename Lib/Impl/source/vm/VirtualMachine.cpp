@@ -1661,7 +1661,7 @@ bool VirtualMachine::execute()
     return true;
 }
 
-void VirtualMachine::pushValue(const Value &val)
+void VirtualMachine::pushValue(Value val)
 {
     if (val.getType() == Value::Type::Invalid)
     {
@@ -1671,7 +1671,7 @@ void VirtualMachine::pushValue(const Value &val)
     {
         throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
     }
-    m_runtimeStack.push_back(val);
+    m_runtimeStack.push_back(std::move(val));
 }
 
 bool VirtualMachine::popValue(Value &val)
