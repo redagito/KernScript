@@ -28,3 +28,5 @@ add_subdirectory (ScriptUi)
 add_subdirectory (ScriptPaint)
 # Script-driven visual novel on FLTK. No system guard: cross-platform like ScriptPaint.
 add_subdirectory (ScriptNovel)
+# Algorithmic music workstation on FLTK. No system guard: cross-platform like ScriptNovel.
+add_subdirectory (ScriptMusic)
