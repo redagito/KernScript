@@ -560,6 +560,111 @@ void collectDeclaredVars(const std::vector<ast::Stmt> &body, std::map<std::strin
     }
 }
 
+// Rejects extern calls that would run with values pending above the frame.
+// executeCalle counts every value above the frame as the call's own
+// arguments, so such a call always throws at runtime; the pending count
+// here mirrors what the lowering below produces (left-to-right args, left
+// then right operands, unary minus pushing 0 first). Hoisting the call
+// into a variable fixes it, and every accepted program lowers exactly as
+// before.
+bool checkNestedExternExpr(LowerCtx &ctx, const ast::Expr &expr, unsigned pending)
+{
+    if (const auto *call = std::get_if<ast::Expr::Call>(&expr.node))
+    {
+        // Qualified calls never resolve to externs; unqualified ones do
+        // exactly when the name is declared extern (a script func of the
+        // same name is a duplicate, rejected during parsing).
+        if (call->qualifier.empty() && ctx.externArity->find(call->name) != ctx.externArity->end())
+        {
+            if (pending != 0)
+            {
+                lowerError(ctx, call->namePos, "Extern call with values already pushed.",
+                           "assign the call to a variable first");
+                return false;
+            }
+        }
+        // Every lowered argument leaves exactly one value behind.
+        for (std::size_t i = 0; i < call->args.size(); ++i)
+        {
+            if (!checkNestedExternExpr(ctx, *call->args[i], pending + static_cast<unsigned>(i)))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (const auto *unary = std::get_if<ast::Expr::Unary>(&expr.node))
+    {
+        // Unary minus lowers as push 0, operand, sub; 'not' lowers in place.
+        const unsigned extra = unary->op == "-" ? 1 : 0;
+        return checkNestedExternExpr(ctx, *unary->operand, pending + extra);
+    }
+    if (const auto *binary = std::get_if<ast::Expr::Binary>(&expr.node))
+    {
+        // Every binary form lowers left, then right, then combines: the
+        // right side always runs with the left value pending.
+        if (!checkNestedExternExpr(ctx, *binary->left, pending))
+        {
+            return false;
+        }
+        return checkNestedExternExpr(ctx, *binary->right, pending + 1);
+    }
+    return true; // Literals and variable refs hold no calls.
+}
+
+bool checkNestedExternStmts(LowerCtx &ctx, const std::vector<ast::Stmt> &body)
+{
+    // Every statement starts with nothing above the frame: function entry
+    // is empty and each lowered statement nets zero.
+    for (const auto &stmt : body)
+    {
+        if (const auto *decl = std::get_if<ast::Stmt::VarDecl>(&stmt.node))
+        {
+            if (decl->init != nullptr && !checkNestedExternExpr(ctx, *decl->init, 0))
+            {
+                return false;
+            }
+        }
+        else if (const auto *assign = std::get_if<ast::Stmt::Assign>(&stmt.node))
+        {
+            if (!checkNestedExternExpr(ctx, *assign->value, 0))
+            {
+                return false;
+            }
+        }
+        else if (const auto *branch = std::get_if<ast::Stmt::If>(&stmt.node))
+        {
+            if (!checkNestedExternExpr(ctx, *branch->cond, 0) || !checkNestedExternStmts(ctx, branch->thenBranch) ||
+                !checkNestedExternStmts(ctx, branch->elseBranch))
+            {
+                return false;
+            }
+        }
+        else if (const auto *loop = std::get_if<ast::Stmt::While>(&stmt.node))
+        {
+            if (!checkNestedExternExpr(ctx, *loop->cond, 0) || !checkNestedExternStmts(ctx, loop->body))
+            {
+                return false;
+            }
+        }
+        else if (const auto *ret = std::get_if<ast::Stmt::Return>(&stmt.node))
+        {
+            if (ret->value != nullptr && !checkNestedExternExpr(ctx, *ret->value, 0))
+            {
+                return false;
+            }
+        }
+        else if (const auto *eval = std::get_if<ast::Stmt::ExprStmt>(&stmt.node))
+        {
+            if (!checkNestedExternExpr(ctx, *eval->expr, 0))
+            {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 // Splits "mnemonic operand..." into its two parts; operand keeps everything
 // after the first space verbatim (string literals may contain spaces).
 bool splitLine(const std::string &line, std::string &mnemonic, std::string &operand)
@@ -956,6 +1061,13 @@ bool lowerProgram(const ast::Program &program, kern::ILogger *logger, const std:
             ctx.varOrder.push_back(candidate);
         }
         std::vector<std::string> body;
+        // An extern call emitted with values pending above the frame always
+        // throws at runtime, so reject such nesting here with a clean
+        // diagnostic instead of compiling a program that cannot run.
+        if (!checkNestedExternStmts(ctx, func.body))
+        {
+            return false;
+        }
         for (const auto &stmt : func.body)
         {
             if (!lowerStmt(ctx, stmt, body))

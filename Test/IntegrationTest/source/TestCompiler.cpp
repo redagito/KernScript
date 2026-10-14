@@ -1946,3 +1946,60 @@ TEST_CASE("Compiler keeps keyword func names working inside named modules", "[in
     REQUIRE(result.asmText.find("func kwcalc@add") != std::string::npos);
     REQUIRE(runAsmText(result.asmText) == "42\n");
 }
+
+TEST_CASE("Compiler rejects extern call nested after a pending value", "[integration][compiler]")
+{
+    const std::string source =
+        "extern println(x);\nextern get_value();\nfunc main() {\n  println(0 + get_value());\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {}, "main.ks");
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(result.messages.size() == 2);
+    REQUIRE(result.messages[0] == "main.ks:4:15: error: Extern call with values already pushed.");
+    REQUIRE(result.messages[1] == "note: assign the call to a variable first");
+}
+
+TEST_CASE("Compiler rejects nullary extern call as a later call argument", "[integration][compiler]")
+{
+    const std::string source = "extern println(x);\nextern get_value();\nfunc both(a, b) {\n  println(a);\n}\n"
+                               "func main() {\n  both(\"x\", get_value());\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {}, "main.ks");
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(contains(result.messages, "Extern call with values already pushed."));
+}
+
+TEST_CASE("Compiler rejects nullary extern call under unary minus", "[integration][compiler]")
+{
+    const std::string source = "extern println(x);\nextern fast_fib(v);\nextern get_value();\nfunc main() {\n"
+                               "  println(fast_fib(-get_value()));\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {}, "main.ks");
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(contains(result.messages, "Extern call with values already pushed."));
+}
+
+TEST_CASE("Compiler rejects nullary extern call after a script call result", "[integration][compiler]")
+{
+    const std::string source = "extern println(x);\nextern get_value();\nfunc both(a, b) {\n  println(a);\n}\n"
+                               "func name(id) {\n  return \"n\";\n}\nfunc main() {\n  both(name(1), get_value());\n"
+                               "}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {}, "main.ks");
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(contains(result.messages, "Extern call with values already pushed."));
+}
+
+TEST_CASE("Compiler keeps first-position nested extern calls working", "[integration][compiler]")
+{
+    const std::string first = "extern println(x);\nextern get_value();\nfunc main() {\n  println(get_value());\n}\n";
+    REQUIRE(runWithPaths(first, {}) == "35\n");
+
+    const std::string head = "extern println(x);\nextern get_value();\nfunc both(a, b) {\n  println(a);\n}\n"
+                             "func main() {\n  both(get_value(), \"x\");\n}\n";
+    REQUIRE(runWithPaths(head, {}) == "35\n");
+
+    const std::string cond = "extern println(x);\nextern get_value();\nfunc main() {\n  if (get_value() == 35) {\n"
+                             "    println(\"y\");\n  }\n}\n";
+    REQUIRE(runWithPaths(cond, {}) == "y\n");
+}
