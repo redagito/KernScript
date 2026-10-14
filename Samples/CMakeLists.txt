@@ -26,3 +26,5 @@ add_subdirectory (ScriptShrink)
 add_subdirectory (ScriptUi)
 # Scriptable paint studio on FLTK. No system guard: cross-platform like ScriptUi.
 add_subdirectory (ScriptPaint)
+# Script-driven visual novel on FLTK. No system guard: cross-platform like ScriptPaint.
+add_subdirectory (ScriptNovel)
