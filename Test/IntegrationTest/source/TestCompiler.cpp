@@ -1873,3 +1873,76 @@ TEST_CASE("Slice4 named root main mangles but stays host-callable by mangled nam
     REQUIRE(asmText.find("func main") == std::string::npos);
     REQUIRE(runAsmText(asmText, "mymod@main") == "1\n");
 }
+
+TEST_CASE("Compiler rejects root func named like an assembly keyword", "[integration][compiler]")
+{
+    const std::string source = "func label() {\n  return 1;\n}\nfunc main() {\n  label();\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {}, "main.ks");
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(result.messages.size() == 2);
+    REQUIRE(result.messages[0] == "main.ks:1:6: error: Name 'label' collides with an assembly keyword.");
+    REQUIRE(result.messages[1] == "note: use a different name");
+}
+
+TEST_CASE("Compiler rejects root func named like an assembly instruction", "[integration][compiler]")
+{
+    const std::string source = "func call() {\n}\nfunc main() {\n  call();\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {}, "main.ks");
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(contains(result.messages, "Name 'call' collides with an assembly keyword."));
+}
+
+TEST_CASE("Compiler rejects var named like an assembly keyword", "[integration][compiler]")
+{
+    const std::string source = "extern println(x);\nfunc main() {\n  var pushv = 41;\n  println(pushv);\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {}, "main.ks");
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(contains(result.messages, "Name 'pushv' collides with an assembly keyword."));
+}
+
+TEST_CASE("Compiler rejects param named like an assembly keyword", "[integration][compiler]")
+{
+    const std::string source =
+        "extern println(x);\nfunc id(pushv) {\n  return pushv;\n}\nfunc main() {\n  println(id(1));\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {}, "main.ks");
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(contains(result.messages, "Name 'pushv' collides with an assembly keyword."));
+}
+
+TEST_CASE("Compiler rejects extern named like an assembly keyword", "[integration][compiler]")
+{
+    const std::string source = "extern label(x);\nfunc main() {\n  label(1);\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {}, "main.ks");
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(contains(result.messages, "Name 'label' collides with an assembly keyword."));
+}
+
+TEST_CASE("Compiler rejects keyword var inside a named module", "[integration][compiler]")
+{
+    TempDir dir("kernscript_keyword_var_module");
+    dir.write("kwmod.ks", "module kwmod;\nextern println(x);\nexport func go(v) {\n  var pushv = v;\n"
+                          "  println(pushv);\n}\n");
+    const std::string source = "import kwmod;\nfunc main() {\n  kwmod::go(1);\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {dir.path.string()}, "main.ks");
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(contains(result.messages, "Name 'pushv' collides with an assembly keyword."));
+}
+
+TEST_CASE("Compiler keeps keyword func names working inside named modules", "[integration][compiler]")
+{
+    TempDir dir("kernscript_keyword_func_module");
+    dir.write("kwcalc.ks", "module kwcalc;\nexport func add(a, b) {\n  return a + b;\n}\n");
+    const std::string source =
+        "import kwcalc;\nextern println(x);\nfunc main() {\n  println(kwcalc::add(20, 22));\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {dir.path.string()}, "main.ks");
+    REQUIRE(result.ok);
+    REQUIRE(result.asmText.find("func kwcalc@add") != std::string::npos);
+    REQUIRE(runAsmText(result.asmText) == "42\n");
+}

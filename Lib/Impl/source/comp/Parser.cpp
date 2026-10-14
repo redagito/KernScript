@@ -133,6 +133,35 @@ void astError(AstBuild &build, const std::string &message, const std::string &hi
     reportError(build.logger, build.sourceName, astHere(build), message, hint);
 }
 
+// Assembly keywords with no script-level meaning (see Assembler.cpp): a
+// declaration using one lowers to a bare assembly name that the assembler
+// reads back as a keyword, so compile succeeds but assemble fails. Reject
+// them at declaration sites whose names lower flat: root funcs, vars,
+// params and externs. Named-module funcs mangle with '@' (vis_math::add
+// lowers to func vis_math@add) and module names never lower flat, so both
+// stay legal and are not checked here.
+bool isAsmReservedWord(const std::string &name)
+{
+    static const char *const words[] = {
+        "param", "vara",  "label", "nop",  "break", "exit",  "movv", "movi", "movf", "movs", "pushv", "pushi", "pushu",
+        "pushf", "pushs", "pop",   "popv", "call",  "calle", "ret",  "retv", "reti", "retf", "rets",  "add",   "sub",
+        "mul",   "div",   "inc",   "dec",  "jmp",   "je",    "jne",  "jg",   "jge",  "jl",   "jle",   nullptr};
+    for (const char *const *word = words; *word != nullptr; ++word)
+    {
+        if (name == *word)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+void reportReservedName(AstBuild &build, SrcPos pos, const std::string &name)
+{
+    reportError(build.logger, build.sourceName, pos, "Name '" + name + "' collides with an assembly keyword.",
+                "use a different name");
+}
+
 // Bounded nesting: the parser walks user-controlled if/while blocks and
 // parenthesized/unary expressions with C++ recursion, so depth beyond this
 // limit fails with a clean diagnostic instead of overflowing the host stack
@@ -743,6 +772,11 @@ bool parseAstStmt(AstBuild &build, ast::Stmt &stmt)
         ast::Stmt::VarDecl node;
         node.name = astTok(build).text;
         node.namePos = astTok(build).pos;
+        if (isAsmReservedWord(node.name))
+        {
+            reportReservedName(build, node.namePos, node.name);
+            return false;
+        }
         ++build.pos;
         if (astPeek(build) == LexerToken::Assign)
         {
@@ -967,6 +1001,11 @@ bool parseAstExternDecl(AstBuild &build, ast::Extern &ext, bool haveFunc, const 
     }
     ext.name = astTok(build).text;
     const SrcPos namePos = astTok(build).pos;
+    if (isAsmReservedWord(ext.name))
+    {
+        reportReservedName(build, namePos, ext.name);
+        return false;
+    }
     ++build.pos;
     for (const auto &seen : externs)
     {
@@ -1018,7 +1057,7 @@ bool parseAstExternDecl(AstBuild &build, ast::Extern &ext, bool haveFunc, const 
 }
 
 bool parseAstFuncDecl(AstBuild &build, ast::Func &func, const std::vector<ast::Extern> &externs,
-                      const std::vector<ast::Func> &funcs, bool exported, SrcPos exportPos)
+                      const std::vector<ast::Func> &funcs, bool exported, SrcPos exportPos, bool haveModule)
 {
     // An exported function spans from the 'export' keyword.
     const SrcPos start = exported ? exportPos : astTok(build).pos;
@@ -1031,6 +1070,13 @@ bool parseAstFuncDecl(AstBuild &build, ast::Func &func, const std::vector<ast::E
     }
     func.name = astTok(build).text;
     const SrcPos namePos = astTok(build).pos;
+    // Named-module funcs mangle with '@' and stay assemblable; root funcs
+    // lower flat, so only those reject assembly keywords.
+    if (!haveModule && isAsmReservedWord(func.name))
+    {
+        reportReservedName(build, namePos, func.name);
+        return false;
+    }
     ++build.pos;
     for (const auto &seen : externs)
     {
@@ -1060,6 +1106,11 @@ bool parseAstFuncDecl(AstBuild &build, ast::Func &func, const std::vector<ast::E
         {
             const std::string param = astTok(build).text;
             const SrcPos paramPos = astTok(build).pos;
+            if (isAsmReservedWord(param))
+            {
+                reportReservedName(build, paramPos, param);
+                return false;
+            }
             for (const auto &seen : func.params)
             {
                 if (seen == param)
@@ -1176,7 +1227,7 @@ bool ast::parseProgram(const std::vector<Tok> &toks, kern::ILogger *logger, cons
                 return false;
             }
             ast::Func func;
-            if (!parseAstFuncDecl(build, func, program.externs, program.funcs, true, exportPos))
+            if (!parseAstFuncDecl(build, func, program.externs, program.funcs, true, exportPos, program.hasModule))
             {
                 return false;
             }
@@ -1195,7 +1246,7 @@ bool ast::parseProgram(const std::vector<Tok> &toks, kern::ILogger *logger, cons
         else if (keyword == "func")
         {
             ast::Func func;
-            if (!parseAstFuncDecl(build, func, program.externs, program.funcs, false, SrcPos{}))
+            if (!parseAstFuncDecl(build, func, program.externs, program.funcs, false, SrcPos{}, program.hasModule))
             {
                 return false;
             }
