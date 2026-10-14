@@ -30,3 +30,5 @@ add_subdirectory (ScriptPaint)
 add_subdirectory (ScriptNovel)
 # Algorithmic music workstation on FLTK. No system guard: cross-platform like ScriptNovel.
 add_subdirectory (ScriptMusic)
+# Scripted instruments dashboard on FLTK. No system guard: cross-platform like ScriptMusic.
+add_subdirectory (ScriptDash)
