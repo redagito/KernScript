@@ -6,6 +6,7 @@
 #include <variant>
 #include <vector>
 
+#include <kern/FunctionSignature.h>
 #include <kern/ILogger.h>
 
 #include "comp/Parser.h"
@@ -77,6 +78,9 @@ struct Expr
     Node node;
     SrcPos pos;
     SrcPos end;
+    // Maximum number of Expr nodes from this node to a leaf. The parser
+    // maintains this while attaching children to bound actual AST depth.
+    unsigned depth = 1;
 };
 
 struct Stmt
@@ -123,6 +127,8 @@ struct Extern
 {
     std::string name;
     std::vector<std::string> params;
+    kern::FunctionSignature signature;
+    std::string sourceName;
     SrcPos pos;
     SrcPos end;
 };
@@ -148,10 +154,9 @@ struct Func
     std::string name;
     std::vector<std::string> params;
     std::vector<Stmt> body;
+    kern::FunctionSignature signature;
     SrcPos pos;
     SrcPos end;
-    bool hasValuedReturn = false;
-    bool hasBareReturn = false;
     // Set by the "export" prefix; qualified calls from other modules resolve
     // in the exported set only, while unqualified calls in the defining
     // module see private functions too.
@@ -161,6 +166,8 @@ struct Func
     // the file's own header, so it rides along untouched when the compiler
     // merges imported files into one program.
     std::string owner;
+    // Display name of the file this function was parsed from.
+    std::string sourceName;
 };
 
 struct Program

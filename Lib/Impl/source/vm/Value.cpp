@@ -4,7 +4,6 @@
 
 #include <cassert>
 #include <cmath>
-#include <cstring>
 #include <limits>
 #include <sstream>
 #include <utility>
@@ -77,14 +76,40 @@ void checkUintRange(uint64_t value)
 
 } // namespace
 
-Value::Value()
+struct Value::StringStorage
 {
-    // Empty
-}
+    std::string text;
+    std::shared_ptr<StringBudget> budget;
+
+    StringStorage(const std::string &value, std::shared_ptr<StringBudget> owner) : budget(std::move(owner))
+    {
+        if (budget && value.size() > budget->limit - budget->used)
+        {
+            throw kern::RuntimeError("Maximum runtime string bytes exceeded.");
+        }
+        text = value;
+        if (budget)
+        {
+            budget->used += text.size();
+        }
+    }
+
+    ~StringStorage()
+    {
+        if (budget)
+        {
+            budget->used -= text.size();
+        }
+    }
+};
+
+size_t Value::stringStorageBytes() { return sizeof(StringStorage); }
+
+Value::Value() : m_integer(0) {}
 
 Value::Value(const Value &value) { (*this) = value; }
 
-Value::Value(Value &&value) { (*this) = std::move(value); }
+Value::Value(Value &&value) noexcept { (*this) = std::move(value); }
 
 Value::Value(int32_t value)
 {
@@ -104,21 +129,14 @@ Value::Value(float value)
     m_float = value;
 }
 
-Value::Value(const std::string &value)
+Value::Value(const std::string &value) : Value(value, nullptr) {}
+
+Value::Value(const std::string &value, std::shared_ptr<StringBudget> budget)
+    : m_integer(0), m_string(std::make_shared<StringStorage>(value, std::move(budget))), m_type(Type::String)
 {
-    m_type = Type::String;
-    m_string = new char[value.length() + 1];
-    memcpy(m_string, value.data(), value.length());
-    m_string[value.length()] = '\0';
 }
 
-Value::~Value()
-{
-    if (m_type == Type::String && m_string != nullptr)
-    {
-        delete[] m_string;
-    }
-}
+Value::~Value() = default;
 
 bool Value::convert(int32_t &value) const
 {
@@ -216,7 +234,7 @@ bool Value::convert(std::string &value) const
         value = ss.str();
         return true;
     case Type::String:
-        value = std::string(m_string);
+        value = m_string->text;
         return true;
     default:
         // Unknown or invalid conversion
@@ -312,19 +330,11 @@ std::string Value::toString() const
 
 Value &Value::operator=(const Value &rhs)
 {
-    // Same object?
     if (this == &rhs)
     {
         return *this;
     }
-
-    // Clean up internal string memory
-    if (m_type == Type::String)
-    {
-        delete[] m_string;
-        m_string = nullptr;
-    }
-
+    m_string = rhs.m_string;
     m_type = rhs.m_type;
     switch (m_type)
     {
@@ -337,61 +347,20 @@ Value &Value::operator=(const Value &rhs)
     case Type::Float:
         m_float = rhs.m_float;
         break;
-    case Type::String:
-    {
-        size_t length = strlen(rhs.m_string) + 1;
-        m_string = new char[length];
-        memcpy(m_string, rhs.m_string, length);
-    }
-    break;
     default:
-        // Invalid
         break;
     }
     return *this;
 }
 
-Value &Value::operator=(Value &&rhs)
+Value &Value::operator=(Value &&rhs) noexcept
 {
-    if (this == &rhs)
+    if (this != &rhs)
     {
-        // Same object, return
-        return *this;
+        *this = rhs;
+        rhs.m_string.reset();
+        rhs.m_type = Type::Invalid;
     }
-
-    if (m_type == Type::String)
-    {
-        delete[] m_string;
-        m_string = nullptr;
-    }
-
-    m_type = rhs.m_type;
-    switch (m_type)
-    {
-    case Type::Integer:
-        m_integer = rhs.m_integer;
-        rhs.m_integer = 0;
-        break;
-    case Type::UnsignedInteger:
-        m_unsignedInteger = rhs.m_unsignedInteger;
-        rhs.m_unsignedInteger = 0;
-        break;
-    case Type::Float:
-        m_float = rhs.m_float;
-        rhs.m_float = 0.f;
-        break;
-    case Type::String:
-    {
-        m_string = rhs.m_string;
-        rhs.m_string = nullptr;
-    }
-    break;
-    default:
-        // Invalid
-        break;
-    }
-    rhs.m_type = Type::Invalid;
-
     return *this;
 }
 
@@ -412,6 +381,36 @@ bool Value::isZero() const
         return m_float == 0.f;
     default:
         return false;
+    }
+}
+
+bool Value::truthy() const
+{
+    if (m_type == Type::Invalid)
+        throw kern::RuntimeError("Truth conversion of an uninitialized value.");
+    return !isZero();
+}
+
+Value Value::negated() const
+{
+    switch (m_type)
+    {
+    case Type::Integer:
+    {
+        const int64_t result = -static_cast<int64_t>(m_integer);
+        checkIntRange(result);
+        return Value(static_cast<int32_t>(result));
+    }
+    case Type::UnsignedInteger:
+    {
+        const int64_t result = -static_cast<int64_t>(m_unsignedInteger);
+        checkIntRange(result);
+        return Value(static_cast<int32_t>(result));
+    }
+    case Type::Float:
+        return Value(-m_float);
+    default:
+        throw kern::RuntimeError("Negation needs a numeric operand.");
     }
 }
 
@@ -718,13 +717,13 @@ bool Value::operator==(const Value &rhs) const
         {
             return false;
         }
-        // Every string value owns its buffer, so null is unreachable here, but a
-        // null guard is cheaper than proving it again after every future edit.
+        // String values share immutable storage. Moved-from values are Invalid;
+        // this null guard is defensive against a broken internal invariant.
         if (m_string == nullptr || rhs.m_string == nullptr)
         {
             return false;
         }
-        return strcmp(m_string, rhs.m_string) == 0;
+        return m_string->text == rhs.m_string->text;
     }
 
     if (m_type == rhs.m_type)

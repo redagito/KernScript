@@ -1,15 +1,14 @@
 #include "comp/Parser.h"
 
-#include <cerrno>
-#include <cmath>
+#include <algorithm>
 #include <cstdint>
-#include <cstdlib>
 #include <istream>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "common/FloatLiteral.h"
 #include "common/Lexer.h"
 
 #include "comp/Ast.h"
@@ -133,35 +132,6 @@ void astError(AstBuild &build, const std::string &message, const std::string &hi
     reportError(build.logger, build.sourceName, astHere(build), message, hint);
 }
 
-// Assembly keywords with no script-level meaning (see Assembler.cpp): a
-// declaration using one lowers to a bare assembly name that the assembler
-// reads back as a keyword, so compile succeeds but assemble fails. Reject
-// them at declaration sites whose names lower flat: root funcs, vars,
-// params and externs. Named-module funcs mangle with '@' (vis_math::add
-// lowers to func vis_math@add) and module names never lower flat, so both
-// stay legal and are not checked here.
-bool isAsmReservedWord(const std::string &name)
-{
-    static const char *const words[] = {
-        "param", "vara",  "label", "nop",  "break", "exit",  "movv", "movi", "movf", "movs", "pushv", "pushi", "pushu",
-        "pushf", "pushs", "pop",   "popv", "call",  "calle", "ret",  "retv", "reti", "retf", "rets",  "add",   "sub",
-        "mul",   "div",   "inc",   "dec",  "jmp",   "je",    "jne",  "jg",   "jge",  "jl",   "jle",   nullptr};
-    for (const char *const *word = words; *word != nullptr; ++word)
-    {
-        if (name == *word)
-        {
-            return true;
-        }
-    }
-    return false;
-}
-
-void reportReservedName(AstBuild &build, SrcPos pos, const std::string &name)
-{
-    reportError(build.logger, build.sourceName, pos, "Name '" + name + "' collides with an assembly keyword.",
-                "use a different name");
-}
-
 // Bounded nesting: the parser walks user-controlled if/while blocks and
 // parenthesized/unary expressions with C++ recursion, so depth beyond this
 // limit fails with a clean diagnostic instead of overflowing the host stack
@@ -268,10 +238,8 @@ bool makeIntNode(AstBuild &build, const Tok &tok, std::unique_ptr<ast::Expr> &ex
 
 bool makeFloatNode(AstBuild &build, const Tok &tok, std::unique_ptr<ast::Expr> &expr)
 {
-    errno = 0;
-    char *end = nullptr;
-    const float value = std::strtof(tok.text.c_str(), &end);
-    if (end == nullptr || *end != '\0' || !std::isfinite(value))
+    float value = 0.0f;
+    if (!parseFloatLiteral(tok.text, value))
     {
         reportError(build.logger, build.sourceName, tok.pos, "Float literal out of range.", "use a 32-bit float");
         return false;
@@ -295,11 +263,29 @@ bool parseAstUnary(AstBuild &build, std::unique_ptr<ast::Expr> &expr);
 bool parseAstPrimary(AstBuild &build, std::unique_ptr<ast::Expr> &expr);
 bool parseAstQualifiedCall(AstBuild &build, const Tok &qualTok, std::unique_ptr<ast::Expr> &expr);
 
-std::unique_ptr<ast::Expr> makeBinary(std::string op, std::unique_ptr<ast::Expr> left, std::unique_ptr<ast::Expr> right)
+bool setExprDepth(AstBuild &build, ast::Expr &expr, unsigned childDepth)
+{
+    expr.depth = childDepth + 1;
+    if (expr.depth > static_cast<unsigned>(kMaxNestingDepth))
+    {
+        astError(build, "Nesting too deep.", "flatten the nesting or split it into smaller functions");
+        return false;
+    }
+    return true;
+}
+
+std::unique_ptr<ast::Expr> makeBinary(AstBuild &build, std::string op, std::unique_ptr<ast::Expr> left,
+                                      std::unique_ptr<ast::Expr> right)
 {
     auto node = std::make_unique<ast::Expr>();
     node->pos = left->pos;
     node->end = right->end;
+    node->depth = std::max(left->depth, right->depth) + 1;
+    if (node->depth > static_cast<unsigned>(kMaxNestingDepth))
+    {
+        astError(build, "Nesting too deep.", "flatten the nesting or split it into smaller functions");
+        return nullptr;
+    }
     node->node = ast::Expr::Binary{std::move(op), std::move(left), std::move(right)};
     return node;
 }
@@ -364,6 +350,15 @@ bool parseAstQualifiedCall(AstBuild &build, const Tok &qualTok, std::unique_ptr<
     auto node = std::make_unique<ast::Expr>();
     node->pos = qualPos;
     node->end = (*build.toks)[build.pos - 1].pos;
+    unsigned childDepth = 0;
+    for (const auto &arg : args)
+    {
+        childDepth = std::max(childDepth, arg->depth);
+    }
+    if (!setExprDepth(build, *node, childDepth))
+    {
+        return false;
+    }
     node->node = ast::Expr::Call{name, namePos, std::move(args), qualifier, qualPos};
     expr = std::move(node);
     return true;
@@ -416,6 +411,15 @@ bool parseAstPrimary(AstBuild &build, std::unique_ptr<ast::Expr> &expr)
             auto node = std::make_unique<ast::Expr>();
             node->pos = namePos;
             node->end = (*build.toks)[build.pos - 1].pos;
+            unsigned childDepth = 0;
+            for (const auto &arg : args)
+            {
+                childDepth = std::max(childDepth, arg->depth);
+            }
+            if (!setExprDepth(build, *node, childDepth))
+            {
+                return false;
+            }
             node->node = ast::Expr::Call{name, namePos, std::move(args)};
             expr = std::move(node);
             return true;
@@ -460,6 +464,10 @@ bool parseAstUnary(AstBuild &build, std::unique_ptr<ast::Expr> &expr)
         auto node = std::make_unique<ast::Expr>();
         node->pos = opPos;
         node->end = operand->end;
+        if (!setExprDepth(build, *node, operand->depth))
+        {
+            return false;
+        }
         node->node = ast::Expr::Unary{"-", std::move(operand)};
         expr = std::move(node);
         return true;
@@ -476,6 +484,10 @@ bool parseAstUnary(AstBuild &build, std::unique_ptr<ast::Expr> &expr)
         auto node = std::make_unique<ast::Expr>();
         node->pos = opPos;
         node->end = operand->end;
+        if (!setExprDepth(build, *node, operand->depth))
+        {
+            return false;
+        }
         node->node = ast::Expr::Unary{"not", std::move(operand)};
         expr = std::move(node);
         return true;
@@ -498,7 +510,12 @@ bool parseAstMul(AstBuild &build, std::unique_ptr<ast::Expr> &expr)
         {
             return false;
         }
-        expr = makeBinary(isMul ? "*" : "/", std::move(expr), std::move(rhs));
+        auto combined = makeBinary(build, isMul ? "*" : "/", std::move(expr), std::move(rhs));
+        if (combined == nullptr)
+        {
+            return false;
+        }
+        expr = std::move(combined);
     }
     return true;
 }
@@ -518,7 +535,12 @@ bool parseAstAdd(AstBuild &build, std::unique_ptr<ast::Expr> &expr)
         {
             return false;
         }
-        expr = makeBinary(isAdd ? "+" : "-", std::move(expr), std::move(rhs));
+        auto combined = makeBinary(build, isAdd ? "+" : "-", std::move(expr), std::move(rhs));
+        if (combined == nullptr)
+        {
+            return false;
+        }
+        expr = std::move(combined);
     }
     return true;
 }
@@ -559,7 +581,12 @@ bool parseAstCmp(AstBuild &build, std::unique_ptr<ast::Expr> &expr)
     {
         return false;
     }
-    expr = makeBinary(op, std::move(expr), std::move(rhs));
+    auto combined = makeBinary(build, op, std::move(expr), std::move(rhs));
+    if (combined == nullptr)
+    {
+        return false;
+    }
+    expr = std::move(combined);
     return true;
 }
 
@@ -577,7 +604,12 @@ bool parseAstAnd(AstBuild &build, std::unique_ptr<ast::Expr> &expr)
         {
             return false;
         }
-        expr = makeBinary("and", std::move(expr), std::move(rhs));
+        auto combined = makeBinary(build, "and", std::move(expr), std::move(rhs));
+        if (combined == nullptr)
+        {
+            return false;
+        }
+        expr = std::move(combined);
     }
     return true;
 }
@@ -596,7 +628,12 @@ bool parseAstXor(AstBuild &build, std::unique_ptr<ast::Expr> &expr)
         {
             return false;
         }
-        expr = makeBinary("xor", std::move(expr), std::move(rhs));
+        auto combined = makeBinary(build, "xor", std::move(expr), std::move(rhs));
+        if (combined == nullptr)
+        {
+            return false;
+        }
+        expr = std::move(combined);
     }
     return true;
 }
@@ -615,7 +652,12 @@ bool parseAstOr(AstBuild &build, std::unique_ptr<ast::Expr> &expr)
         {
             return false;
         }
-        expr = makeBinary("or", std::move(expr), std::move(rhs));
+        auto combined = makeBinary(build, "or", std::move(expr), std::move(rhs));
+        if (combined == nullptr)
+        {
+            return false;
+        }
+        expr = std::move(combined);
     }
     return true;
 }
@@ -772,11 +814,6 @@ bool parseAstStmt(AstBuild &build, ast::Stmt &stmt)
         ast::Stmt::VarDecl node;
         node.name = astTok(build).text;
         node.namePos = astTok(build).pos;
-        if (isAsmReservedWord(node.name))
-        {
-            reportReservedName(build, node.namePos, node.name);
-            return false;
-        }
         ++build.pos;
         if (astPeek(build) == LexerToken::Assign)
         {
@@ -889,51 +926,58 @@ bool parseAstBlock(AstBuild &build, std::vector<ast::Stmt> &body)
     return true;
 }
 
-// Walks one function body collecting valued/bare returns from the Return
-// nodes, including nested if/while branches, remembering the first
-// position of each form so a mix points at the later return.
-void classifyAstBody(const std::vector<ast::Stmt> &body, bool &valued, bool &bare, SrcPos &valuedPos, SrcPos &barePos)
+bool validateReturns(const std::vector<ast::Stmt> &body, kern::ReturnKind expected, const std::string &sourceName,
+                     kern::ILogger *logger)
 {
     for (const auto &stmt : body)
     {
         if (const auto *ret = std::get_if<ast::Stmt::Return>(&stmt.node))
         {
-            if (ret->value)
+            const bool hasValue = ret->value != nullptr;
+            if (hasValue != (expected == kern::ReturnKind::Value))
             {
-                if (!valued)
-                {
-                    valuedPos = stmt.pos;
-                }
-                valued = true;
-            }
-            else
-            {
-                if (!bare)
-                {
-                    barePos = stmt.pos;
-                }
-                bare = true;
+                reportError(logger, sourceName, stmt.pos, "Return statement does not match function return annotation.",
+                            expected == kern::ReturnKind::Value ? "return a value from this function"
+                                                                : "use a bare return in this void function");
+                return false;
             }
         }
         else if (const auto *branch = std::get_if<ast::Stmt::If>(&stmt.node))
         {
-            classifyAstBody(branch->thenBranch, valued, bare, valuedPos, barePos);
-            classifyAstBody(branch->elseBranch, valued, bare, valuedPos, barePos);
+            if (!validateReturns(branch->thenBranch, expected, sourceName, logger) ||
+                !validateReturns(branch->elseBranch, expected, sourceName, logger))
+            {
+                return false;
+            }
         }
         else if (const auto *loop = std::get_if<ast::Stmt::While>(&stmt.node))
         {
-            classifyAstBody(loop->body, valued, bare, valuedPos, barePos);
+            if (!validateReturns(loop->body, expected, sourceName, logger))
+            {
+                return false;
+            }
         }
     }
+    return true;
 }
 
-bool laterPos(SrcPos a, SrcPos b)
+bool alwaysReturns(const std::vector<ast::Stmt> &body)
 {
-    if (a.line != b.line)
+    for (const auto &stmt : body)
     {
-        return a.line > b.line;
+        if (std::get_if<ast::Stmt::Return>(&stmt.node) != nullptr)
+        {
+            return true;
+        }
+        if (const auto *branch = std::get_if<ast::Stmt::If>(&stmt.node))
+        {
+            if (branch->hasElse && alwaysReturns(branch->thenBranch) && alwaysReturns(branch->elseBranch))
+            {
+                return true;
+            }
+        }
     }
-    return a.col > b.col;
+    return false;
 }
 
 // Parses 'module name ";"' with the cursor on 'module'. Placement (at most
@@ -1001,11 +1045,6 @@ bool parseAstExternDecl(AstBuild &build, ast::Extern &ext, bool haveFunc, const 
     }
     ext.name = astTok(build).text;
     const SrcPos namePos = astTok(build).pos;
-    if (isAsmReservedWord(ext.name))
-    {
-        reportReservedName(build, namePos, ext.name);
-        return false;
-    }
     ++build.pos;
     for (const auto &seen : externs)
     {
@@ -1047,22 +1086,36 @@ bool parseAstExternDecl(AstBuild &build, ast::Extern &ext, bool haveFunc, const 
     {
         return false;
     }
+    if (!astExpect(build, LexerToken::Dash, "'->'") || !astExpect(build, LexerToken::GreaterThan, "'->'"))
+    {
+        return false;
+    }
+    if (astPeek(build) != LexerToken::Identifier || (astTok(build).text != "value" && astTok(build).text != "void"))
+    {
+        astError(build, "Expected 'value' or 'void' return annotation.");
+        return false;
+    }
+    ext.signature.argumentCount = static_cast<uint32_t>(ext.params.size());
+    ext.signature.returnKind = astTok(build).text == "value" ? kern::ReturnKind::Value : kern::ReturnKind::Void;
+    ++build.pos;
     if (!astExpect(build, LexerToken::Semicolon, "';'"))
     {
         return false;
     }
     ext.pos = start;
     ext.end = (*build.toks)[build.pos - 1].pos;
+    ext.sourceName = build.sourceName;
     return true;
 }
 
 bool parseAstFuncDecl(AstBuild &build, ast::Func &func, const std::vector<ast::Extern> &externs,
-                      const std::vector<ast::Func> &funcs, bool exported, SrcPos exportPos, bool haveModule)
+                      const std::vector<ast::Func> &funcs, bool exported, SrcPos exportPos)
 {
     // An exported function spans from the 'export' keyword.
     const SrcPos start = exported ? exportPos : astTok(build).pos;
     ++build.pos; // consume 'func'
     func.exported = exported;
+    func.sourceName = build.sourceName;
     if (astPeek(build) != LexerToken::Identifier)
     {
         astError(build, "Expected a function name.");
@@ -1070,13 +1123,6 @@ bool parseAstFuncDecl(AstBuild &build, ast::Func &func, const std::vector<ast::E
     }
     func.name = astTok(build).text;
     const SrcPos namePos = astTok(build).pos;
-    // Named-module funcs mangle with '@' and stay assemblable; root funcs
-    // lower flat, so only those reject assembly keywords.
-    if (!haveModule && isAsmReservedWord(func.name))
-    {
-        reportReservedName(build, namePos, func.name);
-        return false;
-    }
     ++build.pos;
     for (const auto &seen : externs)
     {
@@ -1106,11 +1152,6 @@ bool parseAstFuncDecl(AstBuild &build, ast::Func &func, const std::vector<ast::E
         {
             const std::string param = astTok(build).text;
             const SrcPos paramPos = astTok(build).pos;
-            if (isAsmReservedWord(param))
-            {
-                reportReservedName(build, paramPos, param);
-                return false;
-            }
             for (const auto &seen : func.params)
             {
                 if (seen == param)
@@ -1139,6 +1180,18 @@ bool parseAstFuncDecl(AstBuild &build, ast::Func &func, const std::vector<ast::E
     {
         return false;
     }
+    if (!astExpect(build, LexerToken::Dash, "'->'") || !astExpect(build, LexerToken::GreaterThan, "'->'"))
+    {
+        return false;
+    }
+    if (astPeek(build) != LexerToken::Identifier || (astTok(build).text != "value" && astTok(build).text != "void"))
+    {
+        astError(build, "Expected 'value' or 'void' return annotation.");
+        return false;
+    }
+    func.signature.argumentCount = static_cast<uint32_t>(func.params.size());
+    func.signature.returnKind = astTok(build).text == "value" ? kern::ReturnKind::Value : kern::ReturnKind::Void;
+    ++build.pos;
     if (!astExpect(build, LexerToken::OpenBrace, "'{'"))
     {
         return false;
@@ -1227,7 +1280,7 @@ bool ast::parseProgram(const std::vector<Tok> &toks, kern::ILogger *logger, cons
                 return false;
             }
             ast::Func func;
-            if (!parseAstFuncDecl(build, func, program.externs, program.funcs, true, exportPos, program.hasModule))
+            if (!parseAstFuncDecl(build, func, program.externs, program.funcs, true, exportPos))
             {
                 return false;
             }
@@ -1246,7 +1299,7 @@ bool ast::parseProgram(const std::vector<Tok> &toks, kern::ILogger *logger, cons
         else if (keyword == "func")
         {
             ast::Func func;
-            if (!parseAstFuncDecl(build, func, program.externs, program.funcs, false, SrcPos{}, program.hasModule))
+            if (!parseAstFuncDecl(build, func, program.externs, program.funcs, false, SrcPos{}))
             {
                 return false;
             }
@@ -1266,14 +1319,14 @@ bool ast::parseProgram(const std::vector<Tok> &toks, kern::ILogger *logger, cons
     }
     for (auto &func : program.funcs)
     {
-        SrcPos valuedPos{};
-        SrcPos barePos{};
-        classifyAstBody(func.body, func.hasValuedReturn, func.hasBareReturn, valuedPos, barePos);
-        if (func.hasValuedReturn && func.hasBareReturn)
+        if (!validateReturns(func.body, func.signature.returnKind, func.sourceName, logger))
         {
-            const SrcPos at = laterPos(valuedPos, barePos) ? valuedPos : barePos;
-            reportError(logger, sourceName, at, "Mixed valued and void returns.",
-                        "use one return form in each function");
+            return false;
+        }
+        if (func.signature.returnKind == kern::ReturnKind::Value && !alwaysReturns(func.body))
+        {
+            reportError(logger, func.sourceName, func.end, "Value function can reach end without returning.",
+                        "return a value on every control-flow path");
             return false;
         }
         // Tag the owning module now, while the file's own header is at hand.

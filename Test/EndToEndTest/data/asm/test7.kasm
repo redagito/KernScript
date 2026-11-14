@@ -1,7 +1,8 @@
-extern print 1
-extern println 1
+extern print 1 -> void
+extern println 1 -> void
 
 func main
+-> void
 {
 	var x
 	movs x, "hello"

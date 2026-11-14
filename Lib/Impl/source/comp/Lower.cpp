@@ -1,112 +1,46 @@
 #include "comp/Lower.h"
 
-#include <algorithm>
-#include <cerrno>
-#include <cmath>
 #include <cstdlib>
 #include <map>
-#include <memory>
-#include <ostream>
+#include <set>
 #include <string>
 #include <vector>
 
-#include "comp/Ast.h"
-#include "comp/Parser.h"
+#include "common/Program.h"
+#include "common/FloatLiteral.h"
 
 namespace
 {
-
-// Index of every merged function by mangled and by (module, name) key.
-// Unqualified calls resolve in the caller's own module only, so the flat
-// name is looked up under the caller's owner; qualified calls resolve in the
-// named module's exported set only. Anonymous roots own "" and keep today's
-// flat names; named modules lower under "mod@func".
 struct ModuleIndex
 {
     std::map<std::string, const ast::Func *> byMangled;
     std::map<std::string, std::map<std::string, const ast::Func *>> byModule;
 };
 
-// Mutable per-function lowering state. It mirrors the old token-walking
-// state one for one (symbol tables, emitted body lines, label counter,
-// logger) so the tree walk emits identical assembly.
 struct LowerCtx
 {
-    const std::map<std::string, unsigned> *externArity = nullptr;
+    const ast::Program *program = nullptr;
     const ModuleIndex *modules = nullptr;
-    std::map<std::string, int> *externUse = nullptr; // 1 = value, 2 = statement
-    std::string owner;                               // owning module of the function being lowered, "" for roots
-    std::vector<std::string> callerImports;          // direct imports of owner
-    std::map<std::string, unsigned> vars;
-    std::vector<std::string> paramOrder;
-    std::vector<std::string> varOrder;
-    std::string retTemp;
-    bool funcValued = false;
-    bool funcHasBare = false;
-    unsigned labelCounter = 0;
-    kern::ILogger *logger = nullptr;
+    std::map<std::string, kern::FunctionSignature> externs;
+    std::set<std::string> vars;
+    std::vector<std::string> imports;
+    ir::Function *function = nullptr;
+    ir::Code *code = nullptr;
+    std::string owner;
     std::string sourceName;
+    kern::ILogger *logger = nullptr;
+    unsigned labelCounter = 0;
 };
 
-std::string arityHint(unsigned expected) { return "declared " + std::to_string(expected) + " parameters here"; }
+SourceLocation location(const LowerCtx &ctx, SrcPos pos) { return {ctx.sourceName, pos.line, pos.col}; }
 
 void lowerError(LowerCtx &ctx, SrcPos pos, const std::string &message, const std::string &hint = "")
 {
     reportError(ctx.logger, ctx.sourceName, pos, message, hint);
 }
 
-bool markExternUse(LowerCtx &ctx, SrcPos pos, const std::string &name, bool valueUse)
-{
-    const int want = valueUse ? 1 : 2;
-    auto it = ctx.externUse->find(name);
-    if (it == ctx.externUse->end())
-    {
-        (*ctx.externUse)[name] = want;
-        return true;
-    }
-    if (it->second != want)
-    {
-        lowerError(ctx, pos, "Inconsistent extern use.", "use it always as a value or always as a statement");
-        return false;
-    }
-    return true;
-}
+std::string mangle(const std::string &owner, const std::string &name) { return ast::mangleName(owner, name); }
 
-// Emits one integer push for an unsigned magnitude (no sign). Rejects
-// magnitudes above 4294967295. Uses pushi up to 2147483647, pushu above.
-bool emitPushUint(LowerCtx &ctx, SrcPos pos, const std::string &digits, std::vector<std::string> &out)
-{
-    unsigned long long value = 0;
-    for (char c : digits)
-    {
-        if (c < '0' || c > '9')
-        {
-            lowerError(ctx, pos, "Invalid integer literal.");
-            return false;
-        }
-        value = value * 10 + static_cast<unsigned long long>(c - '0');
-        if (value > 4294967295ULL)
-        {
-            lowerError(ctx, pos, "Integer literal out of range.", "use 0 to 4294967295");
-            return false;
-        }
-    }
-    if (value <= 2147483647ULL)
-    {
-        out.push_back("pushi " + digits);
-    }
-    else
-    {
-        out.push_back("pushu " + digits);
-    }
-    return true;
-}
-
-bool lowerExpr(LowerCtx &ctx, const ast::Expr &expr, std::vector<std::string> &out, bool &isString);
-
-// Direct imports of one module for call resolution. Merged programs carry a
-// row per module; single-file programs lowered directly only have the root
-// import list, which is the caller's list when no row was recorded.
 std::vector<std::string> importsOf(const ast::Program &program, const std::string &owner)
 {
     const auto row = program.moduleImports.find(owner);
@@ -114,17 +48,17 @@ std::vector<std::string> importsOf(const ast::Program &program, const std::strin
     {
         return row->second;
     }
-    std::vector<std::string> fallback;
+    std::vector<std::string> imports;
     for (const auto &item : program.imports)
     {
-        fallback.push_back(item.name);
+        imports.push_back(item.name);
     }
-    return fallback;
+    return imports;
 }
 
-bool isDirectImport(const std::vector<std::string> &imports, const std::string &name)
+bool directImport(const LowerCtx &ctx, const std::string &name)
 {
-    for (const std::string &item : imports)
+    for (const auto &item : ctx.imports)
     {
         if (item == name)
         {
@@ -134,18 +68,12 @@ bool isDirectImport(const std::vector<std::string> &imports, const std::string &
     return false;
 }
 
-// Resolves one script call to its target function and mangled name.
-// Unqualified calls look in the caller's own module only (private functions
-// included). Qualified calls need the qualifier to be the caller's own module
-// or one of its direct imports and resolve in that module's exported set
-// only. Anything else reports the module-scoped diagnostic and returns false.
 bool resolveScriptCall(LowerCtx &ctx, SrcPos qualifierPos, const std::string &qualifier, SrcPos namePos,
-                       const std::string &name, const ast::Func *&target, std::string &mangled)
+                       const std::string &name, const ast::Func *&target)
 {
     if (qualifier.empty())
     {
-        mangled = ast::mangleName(ctx.owner, name);
-        const auto found = ctx.modules->byMangled.find(mangled);
+        const auto found = ctx.modules->byMangled.find(mangle(ctx.owner, name));
         if (found == ctx.modules->byMangled.end())
         {
             lowerError(ctx, namePos, "Call to undeclared function.", "declare it with extern or func");
@@ -154,7 +82,7 @@ bool resolveScriptCall(LowerCtx &ctx, SrcPos qualifierPos, const std::string &qu
         target = found->second;
         return true;
     }
-    if (qualifier == ctx.owner || isDirectImport(ctx.callerImports, qualifier))
+    if (qualifier == ctx.owner || directImport(ctx, qualifier))
     {
         const auto module = ctx.modules->byModule.find(qualifier);
         const ast::Func *candidate = nullptr;
@@ -168,16 +96,16 @@ bool resolveScriptCall(LowerCtx &ctx, SrcPos qualifierPos, const std::string &qu
         }
         if (candidate == nullptr)
         {
-            // A bare extern name under a qualifier is a qualified extern, not
-            // an unknown function: externs have no module to resolve in.
-            if (ctx.externArity->find(name) != ctx.externArity->end())
+            if (ctx.externs.find(name) != ctx.externs.end())
             {
                 lowerError(ctx, namePos, "Extern '" + name + "' has no module.",
                            "call externs unqualified, without '::'");
-                return false;
             }
-            lowerError(ctx, namePos, "Unknown function '" + name + "' in module '" + qualifier + "'.",
-                       "check the function name");
+            else
+            {
+                lowerError(ctx, namePos, "Unknown function '" + name + "' in module '" + qualifier + "'.",
+                           "check the function name");
+            }
             return false;
         }
         if (!candidate->exported)
@@ -187,12 +115,9 @@ bool resolveScriptCall(LowerCtx &ctx, SrcPos qualifierPos, const std::string &qu
             return false;
         }
         target = candidate;
-        mangled = ast::mangleName(qualifier, name);
         return true;
     }
-    // A qualifier naming an extern is a qualified extern: externs have no
-    // module, so they can only be called unqualified.
-    if (ctx.externArity->find(qualifier) != ctx.externArity->end())
+    if (ctx.externs.find(qualifier) != ctx.externs.end())
     {
         lowerError(ctx, qualifierPos, "Extern '" + qualifier + "' has no module.",
                    "call externs unqualified, without '::'");
@@ -202,208 +127,105 @@ bool resolveScriptCall(LowerCtx &ctx, SrcPos qualifierPos, const std::string &qu
     return false;
 }
 
-// Lowers a call used as a value. Extern calls mark value-use; script calls
-// require a valued callee and leave the return value on the stack.
-bool lowerValueCall(LowerCtx &ctx, SrcPos qualifierPos, const std::string &qualifier, SrcPos namePos,
-                    const std::string &name, const std::vector<std::unique_ptr<ast::Expr>> &args,
-                    std::vector<std::string> &out)
+bool lowerExpr(LowerCtx &ctx, const ast::Expr &expr, bool &isString);
+bool lowerCall(LowerCtx &ctx, const ast::Expr::Call &call, SrcPos pos, bool asStatement)
 {
-    std::vector<std::string> lowered;
-    for (const auto &arg : args)
+    for (const auto &arg : call.args)
     {
-        bool argIsString = false;
-        if (!lowerExpr(ctx, *arg, lowered, argIsString))
+        bool ignoredString = false;
+        if (!lowerExpr(ctx, *arg, ignoredString))
         {
             return false;
         }
     }
-    const unsigned count = static_cast<unsigned>(args.size());
-    // Externs stay global and unqualified: a qualified call never resolves to
-    // one (resolveScriptCall reports it instead).
-    if (qualifier.empty())
+    const auto ext = call.qualifier.empty() ? ctx.externs.find(call.name) : ctx.externs.end();
+    if (ext != ctx.externs.end())
     {
-        const auto ext = ctx.externArity->find(name);
-        if (ext != ctx.externArity->end())
+        if (ext->second.argumentCount != call.args.size())
         {
-            if (count != ext->second)
-            {
-                lowerError(ctx, namePos, "Wrong argument count.", arityHint(ext->second));
-                return false;
-            }
-            if (!markExternUse(ctx, namePos, name, true))
-            {
-                return false;
-            }
-            out.insert(out.end(), lowered.begin(), lowered.end());
-            out.push_back("calle " + name);
-            return true;
-        }
-    }
-    const ast::Func *target = nullptr;
-    std::string mangled;
-    if (!resolveScriptCall(ctx, qualifierPos, qualifier, namePos, name, target, mangled))
-    {
-        return false;
-    }
-    const unsigned expected = static_cast<unsigned>(target->params.size());
-    if (count != expected)
-    {
-        lowerError(ctx, namePos, "Wrong argument count.", arityHint(expected));
-        return false;
-    }
-    if (!target->hasValuedReturn)
-    {
-        lowerError(ctx, namePos, "Void call used as a value.", "use it as a statement instead");
-        return false;
-    }
-    out.insert(out.end(), lowered.begin(), lowered.end());
-    out.push_back("call " + mangled);
-    return true;
-}
-
-// Lowers a call used as a statement. Valued script calls discard the return
-// value with pop; extern calls mark statement-use and emit a bare calle.
-bool lowerCallStmt(LowerCtx &ctx, SrcPos qualifierPos, const std::string &qualifier, SrcPos namePos,
-                   const std::string &name, const std::vector<std::unique_ptr<ast::Expr>> &args,
-                   std::vector<std::string> &out)
-{
-    std::vector<std::string> lowered;
-    for (const auto &arg : args)
-    {
-        bool argIsString = false;
-        if (!lowerExpr(ctx, *arg, lowered, argIsString))
-        {
+            lowerError(ctx, call.namePos, "Wrong argument count.",
+                       "declared " + std::to_string(ext->second.argumentCount) + " parameters here");
             return false;
         }
-    }
-    const unsigned count = static_cast<unsigned>(args.size());
-    if (qualifier.empty())
-    {
-        const auto ext = ctx.externArity->find(name);
-        if (ext != ctx.externArity->end())
+        ctx.code->emit(Opcode::Calle, {ir::ExternRef{call.name}}, location(ctx, pos));
+        if (asStatement && ext->second.returnKind == kern::ReturnKind::Value)
         {
-            if (count != ext->second)
-            {
-                lowerError(ctx, namePos, "Wrong argument count.", arityHint(ext->second));
-                return false;
-            }
-            if (!markExternUse(ctx, namePos, name, false))
-            {
-                return false;
-            }
-            out.insert(out.end(), lowered.begin(), lowered.end());
-            out.push_back("calle " + name);
-            return true;
+            ctx.code->emit(Opcode::Pop, {}, location(ctx, pos));
         }
+        if (!asStatement && ext->second.returnKind == kern::ReturnKind::Void)
+        {
+            lowerError(ctx, call.namePos, "Void call used as a value.", "use it as a statement instead");
+            return false;
+        }
+        return true;
     }
     const ast::Func *target = nullptr;
-    std::string mangled;
-    if (!resolveScriptCall(ctx, qualifierPos, qualifier, namePos, name, target, mangled))
+    if (!resolveScriptCall(ctx, call.qualifierPos, call.qualifier, call.namePos, call.name, target))
     {
         return false;
     }
-    const unsigned expected = static_cast<unsigned>(target->params.size());
-    if (count != expected)
+    if (target->signature.argumentCount != call.args.size())
     {
-        lowerError(ctx, namePos, "Wrong argument count.", arityHint(expected));
+        lowerError(ctx, call.namePos, "Wrong argument count.",
+                   "declared " + std::to_string(target->signature.argumentCount) + " parameters here");
         return false;
     }
-    out.insert(out.end(), lowered.begin(), lowered.end());
-    out.push_back("call " + mangled);
-    if (target->hasValuedReturn)
+    if (!asStatement && target->signature.returnKind == kern::ReturnKind::Void)
     {
-        out.push_back("pop");
+        lowerError(ctx, call.namePos, "Void call used as a value.", "use it as a statement instead");
+        return false;
+    }
+    ctx.code->emit(Opcode::Call, {ir::FunctionRef{mangle(target->owner, target->name)}}, location(ctx, pos));
+    if (asStatement && target->signature.returnKind == kern::ReturnKind::Value)
+    {
+        ctx.code->emit(Opcode::Pop, {}, location(ctx, pos));
     }
     return true;
 }
 
-// Lowers one optional comparison to a 1/0 value. Plain arithmetic passes
-// through; with a comparison operator the left/right pushes are followed by
-// the true-jump over pushi 0 / pushi 1 so the stack holds exactly one
-// numeric value for an enclosing logic operator or condition test.
-bool lowerCompare(LowerCtx &ctx, const std::string &op, const ast::Expr &left, const ast::Expr &right,
-                  std::vector<std::string> &out)
-{
-    std::vector<std::string> leftOut;
-    bool leftIsString = false;
-    if (!lowerExpr(ctx, left, leftOut, leftIsString))
-    {
-        return false;
-    }
-    std::vector<std::string> rightOut;
-    bool rightIsString = false;
-    if (!lowerExpr(ctx, right, rightOut, rightIsString))
-    {
-        return false;
-    }
-    std::string trueJump;
-    if (op == "==")
-    {
-        trueJump = "je";
-    }
-    else if (op == "!=")
-    {
-        trueJump = "jne";
-    }
-    else if (op == "<")
-    {
-        trueJump = "jl";
-    }
-    else if (op == "<=")
-    {
-        trueJump = "jle";
-    }
-    else if (op == ">")
-    {
-        trueJump = "jg";
-    }
-    else
-    {
-        trueJump = "jge";
-    }
-    out.insert(out.end(), leftOut.begin(), leftOut.end());
-    out.insert(out.end(), rightOut.begin(), rightOut.end());
-    const unsigned id = ctx.labelCounter++;
-    const std::string trueLabel = "cmp_true_" + std::to_string(id);
-    const std::string endLabel = "cmp_end_" + std::to_string(id);
-    out.push_back(trueJump + " " + trueLabel);
-    out.push_back("pushi 0");
-    out.push_back("jmp " + endLabel);
-    out.push_back("label " + trueLabel);
-    out.push_back("pushi 1");
-    out.push_back("label " + endLabel);
-    return true;
-}
-
-bool lowerExpr(LowerCtx &ctx, const ast::Expr &expr, std::vector<std::string> &out, bool &isString)
+bool lowerExpr(LowerCtx &ctx, const ast::Expr &expr, bool &isString)
 {
     if (const auto *lit = std::get_if<ast::Expr::IntLit>(&expr.node))
     {
+        char *end = nullptr;
+        const long long value = std::strtoll(lit->text.c_str(), &end, 10);
+        if (end == nullptr || *end != '\0' || value < 0 || value > INT32_MAX)
+        {
+            lowerError(ctx, expr.pos, "Invalid integer literal.");
+            return false;
+        }
+        ctx.code->emit(Opcode::Pushi, {static_cast<int32_t>(value)}, location(ctx, expr.pos));
         isString = false;
-        return emitPushUint(ctx, expr.pos, lit->text, out);
+        return true;
     }
     if (const auto *lit = std::get_if<ast::Expr::UIntLit>(&expr.node))
     {
+        char *end = nullptr;
+        const unsigned long long value = std::strtoull(lit->text.c_str(), &end, 10);
+        if (end == nullptr || *end != '\0' || value > UINT32_MAX)
+        {
+            lowerError(ctx, expr.pos, "Integer literal out of range.", "use 0 to 4294967295");
+            return false;
+        }
+        ctx.code->emit(Opcode::Pushu, {static_cast<uint32_t>(value)}, location(ctx, expr.pos));
         isString = false;
-        return emitPushUint(ctx, expr.pos, lit->text, out);
+        return true;
     }
     if (const auto *lit = std::get_if<ast::Expr::FloatLit>(&expr.node))
     {
-        isString = false;
-        errno = 0;
-        char *end = nullptr;
-        const float value = std::strtof(lit->text.c_str(), &end);
-        if (end == nullptr || *end != '\0' || !std::isfinite(value))
+        float value = 0;
+        if (!parseFloatLiteral(lit->text, value))
         {
             lowerError(ctx, expr.pos, "Float literal out of range.", "use a 32-bit float");
             return false;
         }
-        out.push_back("pushf " + lit->text);
+        ctx.code->emit(Opcode::Pushf, {value}, location(ctx, expr.pos));
+        isString = false;
         return true;
     }
     if (const auto *lit = std::get_if<ast::Expr::StrLit>(&expr.node))
     {
-        out.push_back("pushs \"" + lit->text + "\"");
+        ctx.code->emit(Opcode::Pushs, {ir::String{lit->text}}, location(ctx, expr.pos));
         isString = true;
         return true;
     }
@@ -414,45 +236,40 @@ bool lowerExpr(LowerCtx &ctx, const ast::Expr &expr, std::vector<std::string> &o
             lowerError(ctx, expr.pos, "Use of undeclared variable.", "declare it with var or as a parameter");
             return false;
         }
-        out.push_back("pushv " + ref->name);
+        ctx.code->emit(Opcode::Pushv, {ir::Local{ref->name}}, location(ctx, expr.pos));
         isString = false;
         return true;
     }
     if (const auto *call = std::get_if<ast::Expr::Call>(&expr.node))
     {
         isString = false;
-        return lowerValueCall(ctx, call->qualifierPos, call->qualifier, call->namePos, call->name, call->args, out);
+        return lowerCall(ctx, *call, expr.pos, false);
     }
     if (const auto *unary = std::get_if<ast::Expr::Unary>(&expr.node))
     {
         if (unary->op == "-")
         {
-            std::vector<std::string> rhs;
-            bool rhsIsString = false;
-            if (!lowerExpr(ctx, *unary->operand, rhs, rhsIsString))
+            bool rhsString = false;
+            if (!lowerExpr(ctx, *unary->operand, rhsString))
             {
                 return false;
             }
-            if (rhsIsString)
+            if (rhsString)
             {
                 lowerError(ctx, expr.pos, "Arithmetic on strings.", "arithmetic needs numbers");
                 return false;
             }
-            // Unary minus as 0 - x: push 0, push x, sub = 0 - x.
-            out.push_back("pushi 0");
-            out.insert(out.end(), rhs.begin(), rhs.end());
-            out.push_back("sub");
-            isString = false;
-            return true;
+            ctx.code->emit(Opcode::Neg, {}, location(ctx, expr.pos));
         }
-        std::vector<std::string> rhs;
-        bool rhsIsString = false;
-        if (!lowerExpr(ctx, *unary->operand, rhs, rhsIsString))
+        else
         {
-            return false;
+            bool rhsString = false;
+            if (!lowerExpr(ctx, *unary->operand, rhsString))
+            {
+                return false;
+            }
+            ctx.code->emit(Opcode::Not, {}, location(ctx, expr.pos));
         }
-        out.insert(out.end(), rhs.begin(), rhs.end());
-        out.push_back("not");
         isString = false;
         return true;
     }
@@ -462,677 +279,228 @@ bool lowerExpr(LowerCtx &ctx, const ast::Expr &expr, std::vector<std::string> &o
         lowerError(ctx, expr.pos, "Expected an expression.");
         return false;
     }
-    const std::string &op = binary->op;
-    if (op == "==" || op == "!=" || op == "<" || op == "<=" || op == ">" || op == ">=")
-    {
-        isString = false;
-        return lowerCompare(ctx, op, *binary->left, *binary->right, out);
-    }
-    std::vector<std::string> leftOut;
-    bool leftIsString = false;
-    if (!lowerExpr(ctx, *binary->left, leftOut, leftIsString))
+    bool leftString = false;
+    if (!lowerExpr(ctx, *binary->left, leftString))
     {
         return false;
     }
-    std::vector<std::string> rightOut;
-    bool rightIsString = false;
-    if (!lowerExpr(ctx, *binary->right, rightOut, rightIsString))
+    bool rightString = false;
+    if (!lowerExpr(ctx, *binary->right, rightString))
     {
         return false;
     }
-    if (op == "+" || op == "-" || op == "*" || op == "/")
+    Opcode opcode = Opcode::Nop;
+    if (binary->op == "+")
+        opcode = Opcode::Add;
+    else if (binary->op == "-")
+        opcode = Opcode::Sub;
+    else if (binary->op == "*")
+        opcode = Opcode::Mul;
+    else if (binary->op == "/")
+        opcode = Opcode::Div;
+    else if (binary->op == "and")
+        opcode = Opcode::And;
+    else if (binary->op == "or")
+        opcode = Opcode::Or;
+    else if (binary->op == "xor")
+        opcode = Opcode::Xor;
+    else if (binary->op == "==")
+        opcode = Opcode::Je;
+    else if (binary->op == "!=")
+        opcode = Opcode::Jne;
+    else if (binary->op == "<")
+        opcode = Opcode::Jl;
+    else if (binary->op == "<=")
+        opcode = Opcode::Jle;
+    else if (binary->op == ">")
+        opcode = Opcode::Jg;
+    else if (binary->op == ">=")
+        opcode = Opcode::Jge;
+    if (binary->op == "+" || binary->op == "-" || binary->op == "*" || binary->op == "/")
     {
-        if (leftIsString || rightIsString)
+        if (leftString || rightString)
         {
             lowerError(ctx, expr.pos, "Arithmetic on strings.", "arithmetic needs numbers");
             return false;
         }
-        // Stack discipline: left already pushed, push right, then combine as
-        // left OP right (sub/div are not commutative).
-        out.insert(out.end(), leftOut.begin(), leftOut.end());
-        out.insert(out.end(), rightOut.begin(), rightOut.end());
-        if (op == "+")
-        {
-            out.push_back("add");
-        }
-        else if (op == "-")
-        {
-            out.push_back("sub");
-        }
-        else if (op == "*")
-        {
-            out.push_back("mul");
-        }
-        else
-        {
-            out.push_back("div");
-        }
-        isString = false;
-        return true;
     }
-    out.insert(out.end(), leftOut.begin(), leftOut.end());
-    out.insert(out.end(), rightOut.begin(), rightOut.end());
-    out.push_back(op);
+    if (opcode == Opcode::Je || opcode == Opcode::Jne || opcode == Opcode::Jl || opcode == Opcode::Jle ||
+        opcode == Opcode::Jg || opcode == Opcode::Jge)
+    {
+        const unsigned id = ctx.labelCounter++;
+        const std::string trueLabel = "cmp_true_" + std::to_string(id);
+        const std::string endLabel = "cmp_end_" + std::to_string(id);
+        ctx.code->emit(opcode, {ir::LabelRef{trueLabel}}, location(ctx, expr.pos));
+        ctx.code->emit(Opcode::Pushi, {int32_t{0}}, location(ctx, expr.pos));
+        ctx.code->emit(Opcode::Jmp, {ir::LabelRef{endLabel}}, location(ctx, expr.pos));
+        ctx.code->label(trueLabel);
+        ctx.code->emit(Opcode::Pushi, {int32_t{1}}, location(ctx, expr.pos));
+        ctx.code->label(endLabel);
+    }
+    else
+    {
+        ctx.code->emit(opcode, {}, location(ctx, expr.pos));
+    }
     isString = false;
     return true;
 }
 
-// Lowers a full value condition for if/while. The expression always leaves
-// exactly one numeric value (comparisons lower to 1/0 above); pushing 0 and
-// je-ing to the else/end label jumps when the value is false, so the
-// then-block runs on fallthrough.
-bool lowerCondition(LowerCtx &ctx, const ast::Expr &cond, std::vector<std::string> &out, std::string &falseJump)
-{
-    bool valueIsString = false;
-    if (!lowerExpr(ctx, cond, out, valueIsString))
-    {
-        return false;
-    }
-    out.push_back("pushi 0");
-    falseJump = "je";
-    return true;
-}
-
-bool lowerStmt(LowerCtx &ctx, const ast::Stmt &stmt, std::vector<std::string> &out);
-
-// Collects every name a function body declares (including nested if/while
-// branches) so the hidden return spill slot can avoid them. The slot is
-// picked before the body lowers, when only parameters are known; without the
-// lookahead a body declaration could collide with the picked name and fail
-// with a spurious duplicate error.
-void collectDeclaredVars(const std::vector<ast::Stmt> &body, std::map<std::string, bool> &declared)
+bool lowerStmt(LowerCtx &ctx, const ast::Stmt &stmt);
+bool lowerBlock(LowerCtx &ctx, const std::vector<ast::Stmt> &body)
 {
     for (const auto &stmt : body)
     {
-        if (const auto *decl = std::get_if<ast::Stmt::VarDecl>(&stmt.node))
+        if (!lowerStmt(ctx, stmt))
         {
-            declared[decl->name] = true;
-        }
-        else if (const auto *branch = std::get_if<ast::Stmt::If>(&stmt.node))
-        {
-            collectDeclaredVars(branch->thenBranch, declared);
-            collectDeclaredVars(branch->elseBranch, declared);
-        }
-        else if (const auto *loop = std::get_if<ast::Stmt::While>(&stmt.node))
-        {
-            collectDeclaredVars(loop->body, declared);
+            return false;
         }
     }
+    return true;
 }
 
-// Rejects extern calls that would run with values pending above the frame.
-// executeCalle counts every value above the frame as the call's own
-// arguments, so such a call always throws at runtime; the pending count
-// here mirrors what the lowering below produces (left-to-right args, left
-// then right operands, unary minus pushing 0 first). Hoisting the call
-// into a variable fixes it, and every accepted program lowers exactly as
-// before.
-bool checkNestedExternExpr(LowerCtx &ctx, const ast::Expr &expr, unsigned pending)
+bool lowerStmt(LowerCtx &ctx, const ast::Stmt &stmt)
 {
-    if (const auto *call = std::get_if<ast::Expr::Call>(&expr.node))
+    if (const auto *decl = std::get_if<ast::Stmt::VarDecl>(&stmt.node))
     {
-        // Qualified calls never resolve to externs; unqualified ones do
-        // exactly when the name is declared extern (a script func of the
-        // same name is a duplicate, rejected during parsing).
-        if (call->qualifier.empty() && ctx.externArity->find(call->name) != ctx.externArity->end())
+        if (!ctx.vars.insert(decl->name).second)
         {
-            if (pending != 0)
-            {
-                lowerError(ctx, call->namePos, "Extern call with values already pushed.",
-                           "assign the call to a variable first");
-                return false;
-            }
+            lowerError(ctx, decl->namePos, "Variable already declared.", "use a different name");
+            return false;
         }
-        // Every lowered argument leaves exactly one value behind.
-        for (std::size_t i = 0; i < call->args.size(); ++i)
+        ctx.function->locals.push_back({decl->name, 1});
+        if (decl->init != nullptr)
         {
-            if (!checkNestedExternExpr(ctx, *call->args[i], pending + static_cast<unsigned>(i)))
-            {
+            bool ignored = false;
+            if (!lowerExpr(ctx, *decl->init, ignored))
                 return false;
-            }
+            ctx.code->emit(Opcode::Popv, {ir::Local{decl->name}}, location(ctx, stmt.pos));
         }
         return true;
     }
-    if (const auto *unary = std::get_if<ast::Expr::Unary>(&expr.node))
+    if (const auto *assign = std::get_if<ast::Stmt::Assign>(&stmt.node))
     {
-        // Unary minus lowers as push 0, operand, sub; 'not' lowers in place.
-        const unsigned extra = unary->op == "-" ? 1 : 0;
-        return checkNestedExternExpr(ctx, *unary->operand, pending + extra);
-    }
-    if (const auto *binary = std::get_if<ast::Expr::Binary>(&expr.node))
-    {
-        // Every binary form lowers left, then right, then combines: the
-        // right side always runs with the left value pending.
-        if (!checkNestedExternExpr(ctx, *binary->left, pending))
+        if (ctx.vars.find(assign->name) == ctx.vars.end())
         {
+            lowerError(ctx, assign->namePos, "Assignment to undeclared variable.", "declare it first with var");
             return false;
         }
-        return checkNestedExternExpr(ctx, *binary->right, pending + 1);
-    }
-    return true; // Literals and variable refs hold no calls.
-}
-
-bool checkNestedExternStmts(LowerCtx &ctx, const std::vector<ast::Stmt> &body)
-{
-    // Every statement starts with nothing above the frame: function entry
-    // is empty and each lowered statement nets zero.
-    for (const auto &stmt : body)
-    {
-        if (const auto *decl = std::get_if<ast::Stmt::VarDecl>(&stmt.node))
-        {
-            if (decl->init != nullptr && !checkNestedExternExpr(ctx, *decl->init, 0))
-            {
-                return false;
-            }
-        }
-        else if (const auto *assign = std::get_if<ast::Stmt::Assign>(&stmt.node))
-        {
-            if (!checkNestedExternExpr(ctx, *assign->value, 0))
-            {
-                return false;
-            }
-        }
-        else if (const auto *branch = std::get_if<ast::Stmt::If>(&stmt.node))
-        {
-            if (!checkNestedExternExpr(ctx, *branch->cond, 0) || !checkNestedExternStmts(ctx, branch->thenBranch) ||
-                !checkNestedExternStmts(ctx, branch->elseBranch))
-            {
-                return false;
-            }
-        }
-        else if (const auto *loop = std::get_if<ast::Stmt::While>(&stmt.node))
-        {
-            if (!checkNestedExternExpr(ctx, *loop->cond, 0) || !checkNestedExternStmts(ctx, loop->body))
-            {
-                return false;
-            }
-        }
-        else if (const auto *ret = std::get_if<ast::Stmt::Return>(&stmt.node))
-        {
-            if (ret->value != nullptr && !checkNestedExternExpr(ctx, *ret->value, 0))
-            {
-                return false;
-            }
-        }
-        else if (const auto *eval = std::get_if<ast::Stmt::ExprStmt>(&stmt.node))
-        {
-            if (!checkNestedExternExpr(ctx, *eval->expr, 0))
-            {
-                return false;
-            }
-        }
-    }
-    return true;
-}
-
-// Splits "mnemonic operand..." into its two parts; operand keeps everything
-// after the first space verbatim (string literals may contain spaces).
-bool splitLine(const std::string &line, std::string &mnemonic, std::string &operand)
-{
-    const size_t space = line.find(' ');
-    if (space == std::string::npos)
-    {
-        mnemonic = line;
-        operand.clear();
+        bool ignored = false;
+        if (!lowerExpr(ctx, *assign->value, ignored))
+            return false;
+        ctx.code->emit(Opcode::Popv, {ir::Local{assign->name}}, location(ctx, stmt.pos));
         return true;
     }
-    mnemonic = line.substr(0, space);
-    operand = line.substr(space + 1);
-    return true;
-}
-
-// Folds adjacent push/pop pairs in a finished function body. Each rule is
-// stack-neutral (push+pop nets zero, mov touches nothing) and value-identical,
-// so valid programs behave exactly as before:
-//   pushv x | pushi n | pushf f | pushs s  +  popv v  ->  movv|movi|movf|movs v, ...
-//   pushu n + popv v -> movi v, n only when n fits int32, else kept
-//   push... + popv t + retv t  ->  reti|retf|rets|retv (return spill bypass)
-//   pushi|pushu|pushf|pushs + pop  ->  dropped (value computed and discarded)
-// A pushv reads a slot that may hold Invalid, and pushing it throws, so
-// pushv + pop is kept: only constant pushes (always valid) fold away. The
-// movv/retv folds stay sound because those opcodes refuse Invalid sources
-// the same way the unfolded push does.
-// Labels are lines too, so control flow always breaks a pair. Pops below the
-// frame or of uninitialized values still throw in the unfolded paths; folded
-// movs carry the same range checks through the assembler.
-void peephole(std::vector<std::string> &body)
-{
-    std::vector<std::string> folded;
-    folded.reserve(body.size());
-    size_t i = 0;
-    while (i < body.size())
+    if (const auto *branch = std::get_if<ast::Stmt::If>(&stmt.node))
     {
-        std::string pushOp;
-        std::string pushArg;
-        std::string popVar;
-        std::string retVar;
-        std::string retDummy;
-        const bool isPush =
-            splitLine(body[i], pushOp, pushArg) &&
-            (pushOp == "pushv" || pushOp == "pushi" || pushOp == "pushu" || pushOp == "pushf" || pushOp == "pushs");
-        const bool hasNext = i + 1 < body.size();
-        std::string nextOp;
-        std::string nextArg;
-        if (hasNext)
-        {
-            splitLine(body[i + 1], nextOp, nextArg);
-        }
-        const bool isPopv = hasNext && nextOp == "popv" && !nextArg.empty() && nextArg.find(' ') == std::string::npos;
-        if (isPush && isPopv)
-        {
-            popVar = nextArg;
-        }
-        const bool hasThird = i + 2 < body.size();
-        if (hasThird)
-        {
-            splitLine(body[i + 2], retVar, retDummy);
-        }
-        const bool isRetvSame =
-            hasThird && retVar == "retv" && retDummy == popVar && !popVar.empty() && isPush && isPopv;
-        if (isRetvSame)
-        {
-            // Return spill bypass: the pushed value is the return value.
-            if (pushOp == "pushv")
-            {
-                folded.push_back("retv " + pushArg);
-            }
-            else if (pushOp == "pushi")
-            {
-                folded.push_back("reti " + pushArg);
-            }
-            else if (pushOp == "pushf")
-            {
-                folded.push_back("retf " + pushArg);
-            }
-            else if (pushOp == "pushs")
-            {
-                folded.push_back("rets " + pushArg);
-            }
-            else if (pushOp == "pushu")
-            {
-                const unsigned long long value = std::stoull(pushArg);
-                if (value <= 2147483647ULL)
-                {
-                    folded.push_back("reti " + pushArg);
-                }
-                else
-                {
-                    folded.push_back(body[i]);
-                    folded.push_back(body[i + 1]);
-                    folded.push_back(body[i + 2]);
-                }
-            }
-            i += 3;
-            continue;
-        }
-        if (isPush && isPopv)
-        {
-            if (pushOp == "pushv")
-            {
-                folded.push_back("movv " + popVar + ", " + pushArg);
-            }
-            else if (pushOp == "pushi")
-            {
-                folded.push_back("movi " + popVar + ", " + pushArg);
-            }
-            else if (pushOp == "pushf")
-            {
-                folded.push_back("movf " + popVar + ", " + pushArg);
-            }
-            else if (pushOp == "pushs")
-            {
-                folded.push_back("movs " + popVar + ", " + pushArg);
-            }
-            else if (pushOp == "pushu")
-            {
-                const unsigned long long value = std::stoull(pushArg);
-                if (value <= 2147483647ULL)
-                {
-                    folded.push_back("movi " + popVar + ", " + pushArg);
-                }
-                else
-                {
-                    folded.push_back(body[i]);
-                    folded.push_back(body[i + 1]);
-                }
-            }
-            i += 2;
-            continue;
-        }
-        if (isPush && hasNext && nextOp == "pop" && nextArg.empty())
-        {
-            // Computed and discarded: drop both lines. A variable push reads a
-            // slot that may hold Invalid, and pushing it throws, so only
-            // constant pushes (which always hold a valid value) fold away.
-            if (pushOp == "pushv")
-            {
-                folded.push_back(body[i]);
-                ++i;
-                continue;
-            }
-            i += 2;
-            continue;
-        }
-        folded.push_back(body[i]);
-        ++i;
-    }
-    body = folded;
-}
-bool lowerIf(LowerCtx &ctx, const ast::Stmt::If &node, std::vector<std::string> &out)
-{
-    std::vector<std::string> cond;
-    std::string falseJump;
-    if (!lowerCondition(ctx, *node.cond, cond, falseJump))
-    {
-        return false;
-    }
-    std::vector<std::string> thenBody;
-    for (const auto &stmt : node.thenBranch)
-    {
-        if (!lowerStmt(ctx, stmt, thenBody))
-        {
+        bool ignored = false;
+        if (!lowerExpr(ctx, *branch->cond, ignored))
             return false;
-        }
-    }
-    std::vector<std::string> elseBody;
-    if (node.hasElse)
-    {
-        for (const auto &stmt : node.elseBranch)
+        ctx.code->emit(Opcode::Not, {}, location(ctx, stmt.pos));
+        ctx.code->emit(Opcode::Pushi, {int32_t{0}}, location(ctx, stmt.pos));
+        const unsigned id = ctx.labelCounter++;
+        const std::string elseLabel = "if_else_" + std::to_string(id);
+        const std::string endLabel = "if_end_" + std::to_string(id);
+        ctx.code->emit(Opcode::Jne, {ir::LabelRef{branch->hasElse ? elseLabel : endLabel}}, location(ctx, stmt.pos));
+        if (!lowerBlock(ctx, branch->thenBranch))
+            return false;
+        if (branch->hasElse)
         {
-            if (!lowerStmt(ctx, stmt, elseBody))
-            {
+            ctx.code->emit(Opcode::Jmp, {ir::LabelRef{endLabel}}, location(ctx, stmt.pos));
+            ctx.code->label(elseLabel);
+            if (!lowerBlock(ctx, branch->elseBranch))
                 return false;
-            }
         }
-    }
-    // Unique labels per if so nested and sequential ifs cannot collide.
-    const unsigned id = ctx.labelCounter++;
-    const std::string elseLabel = "if_else_" + std::to_string(id);
-    const std::string endLabel = "if_end_" + std::to_string(id);
-    out.insert(out.end(), cond.begin(), cond.end());
-    out.push_back(falseJump + " " + (node.hasElse ? elseLabel : endLabel));
-    out.insert(out.end(), thenBody.begin(), thenBody.end());
-    if (node.hasElse)
-    {
-        out.push_back("jmp " + endLabel);
-        out.push_back("label " + elseLabel);
-        out.insert(out.end(), elseBody.begin(), elseBody.end());
-        out.push_back("label " + endLabel);
-    }
-    else
-    {
-        out.push_back("label " + endLabel);
-    }
-    return true;
-}
-
-bool lowerWhile(LowerCtx &ctx, const ast::Stmt::While &node, std::vector<std::string> &out)
-{
-    std::vector<std::string> cond;
-    std::string falseJump;
-    if (!lowerCondition(ctx, *node.cond, cond, falseJump))
-    {
-        return false;
-    }
-    std::vector<std::string> loopBody;
-    for (const auto &stmt : node.body)
-    {
-        if (!lowerStmt(ctx, stmt, loopBody))
-        {
-            return false;
-        }
-    }
-    // Unique labels per loop so sequential and nested whiles cannot collide.
-    const unsigned id = ctx.labelCounter++;
-    const std::string startLabel = "while_start_" + std::to_string(id);
-    const std::string endLabel = "while_end_" + std::to_string(id);
-    out.push_back("label " + startLabel);
-    out.insert(out.end(), cond.begin(), cond.end());
-    out.push_back(falseJump + " " + endLabel);
-    out.insert(out.end(), loopBody.begin(), loopBody.end());
-    out.push_back("jmp " + startLabel);
-    out.push_back("label " + endLabel);
-    return true;
-}
-
-// Lowers 'return [Expr]'. A valued return evaluates the expression above
-// the frame, spills it to the hidden return slot and returns it with retv;
-// a bare return emits ret. Mixing both forms in one function is rejected.
-bool lowerReturn(LowerCtx &ctx, SrcPos pos, const ast::Stmt::Return &node, std::vector<std::string> &out)
-{
-    if (node.value == nullptr)
-    {
-        if (ctx.funcValued)
-        {
-            lowerError(ctx, pos, "Mixed valued and void returns.", "use one return form in each function");
-            return false;
-        }
-        out.push_back("ret");
+        ctx.code->label(endLabel);
         return true;
     }
-    if (ctx.funcHasBare || !ctx.funcValued)
+    if (const auto *loop = std::get_if<ast::Stmt::While>(&stmt.node))
     {
-        lowerError(ctx, pos, "Mixed valued and void returns.", "use one return form in each function");
-        return false;
-    }
-    std::vector<std::string> value;
-    bool valueIsString = false;
-    if (!lowerExpr(ctx, *node.value, value, valueIsString))
-    {
-        return false;
-    }
-    out.insert(out.end(), value.begin(), value.end());
-    out.push_back("popv " + ctx.retTemp);
-    out.push_back("retv " + ctx.retTemp);
-    return true;
-}
-
-bool lowerStmt(LowerCtx &ctx, const ast::Stmt &stmt, std::vector<std::string> &out)
-{
-    if (const auto *node = std::get_if<ast::Stmt::If>(&stmt.node))
-    {
-        return lowerIf(ctx, *node, out);
-    }
-    if (const auto *node = std::get_if<ast::Stmt::While>(&stmt.node))
-    {
-        return lowerWhile(ctx, *node, out);
-    }
-    if (const auto *node = std::get_if<ast::Stmt::Return>(&stmt.node))
-    {
-        return lowerReturn(ctx, stmt.pos, *node, out);
-    }
-    if (const auto *node = std::get_if<ast::Stmt::VarDecl>(&stmt.node))
-    {
-        if (ctx.vars.find(node->name) != ctx.vars.end())
-        {
-            lowerError(ctx, node->namePos, "Duplicate variable name.", "use a different name");
+        const unsigned id = ctx.labelCounter++;
+        const std::string start = "while_start_" + std::to_string(id);
+        const std::string end = "while_end_" + std::to_string(id);
+        ctx.code->label(start);
+        bool ignored = false;
+        if (!lowerExpr(ctx, *loop->cond, ignored))
             return false;
-        }
-        ctx.vars[node->name] = static_cast<unsigned>(ctx.paramOrder.size() + ctx.varOrder.size());
-        ctx.varOrder.push_back(node->name);
-        if (node->init != nullptr)
+        ctx.code->emit(Opcode::Not, {}, location(ctx, stmt.pos));
+        ctx.code->emit(Opcode::Pushi, {int32_t{0}}, location(ctx, stmt.pos));
+        ctx.code->emit(Opcode::Jne, {ir::LabelRef{end}}, location(ctx, stmt.pos));
+        if (!lowerBlock(ctx, loop->body))
+            return false;
+        ctx.code->emit(Opcode::Jmp, {ir::LabelRef{start}}, location(ctx, stmt.pos));
+        ctx.code->label(end);
+        return true;
+    }
+    if (const auto *ret = std::get_if<ast::Stmt::Return>(&stmt.node))
+    {
+        if (ret->value != nullptr)
         {
-            std::vector<std::string> init;
-            bool initIsString = false;
-            if (!lowerExpr(ctx, *node->init, init, initIsString))
-            {
+            bool ignored = false;
+            if (!lowerExpr(ctx, *ret->value, ignored))
                 return false;
-            }
-            out.insert(out.end(), init.begin(), init.end());
-            out.push_back("popv " + node->name);
         }
+        ctx.code->emit(Opcode::Ret, {}, location(ctx, stmt.pos));
         return true;
     }
-    if (const auto *node = std::get_if<ast::Stmt::Assign>(&stmt.node))
+    if (const auto *eval = std::get_if<ast::Stmt::ExprStmt>(&stmt.node))
     {
-        if (ctx.vars.find(node->name) == ctx.vars.end())
+        if (const auto *call = std::get_if<ast::Expr::Call>(&eval->expr->node))
         {
-            lowerError(ctx, node->namePos, "Assignment to undeclared variable.",
-                       "declare it with var or as a parameter");
-            return false;
+            return lowerCall(ctx, *call, eval->expr->pos, true);
         }
-        std::vector<std::string> rhs;
-        bool rhsIsString = false;
-        if (!lowerExpr(ctx, *node->value, rhs, rhsIsString))
-        {
+        bool ignored = false;
+        if (!lowerExpr(ctx, *eval->expr, ignored))
             return false;
-        }
-        out.insert(out.end(), rhs.begin(), rhs.end());
-        out.push_back("popv " + node->name);
+        ctx.code->emit(Opcode::Pop, {}, location(ctx, stmt.pos));
         return true;
     }
-    const auto *node = std::get_if<ast::Stmt::ExprStmt>(&stmt.node);
-    if (node == nullptr)
-    {
-        lowerError(ctx, stmt.pos, "Expected a statement.");
-        return false;
-    }
-    // A call used as a statement keeps extern statement-use; anything else
-    // is a general expression statement whose value is discarded.
-    if (const auto *call = std::get_if<ast::Expr::Call>(&node->expr->node))
-    {
-        return lowerCallStmt(ctx, call->qualifierPos, call->qualifier, call->namePos, call->name, call->args, out);
-    }
-    std::vector<std::string> value;
-    bool valueIsString = false;
-    if (!lowerExpr(ctx, *node->expr, value, valueIsString))
-    {
-        return false;
-    }
-    out.insert(out.end(), value.begin(), value.end());
-    out.push_back("pop");
     return true;
 }
-
 } // namespace
 
 bool lowerProgram(const ast::Program &program, kern::ILogger *logger, const std::string &sourceName,
-                  std::vector<Lowered> &lowered)
+                  ir::Program &lowered)
 {
-    lowered.clear();
-    std::map<std::string, unsigned> externArity;
+    lowered = ir::Program{};
+    lowered.moduleName = program.hasModule ? program.module.name : std::string();
+    std::map<std::string, kern::FunctionSignature> externs;
     for (const auto &ext : program.externs)
     {
-        externArity[ext.name] = static_cast<unsigned>(ext.params.size());
+        externs[ext.name] = ext.signature;
+        lowered.externs.push_back({ext.name, ext.signature, {ext.sourceName, ext.pos.line, ext.pos.col}});
     }
     ModuleIndex modules;
     for (const auto &func : program.funcs)
     {
-        const std::string mangled = ast::mangleName(func.owner, func.name);
-        modules.byMangled[mangled] = &func;
+        modules.byMangled[mangle(func.owner, func.name)] = &func;
         modules.byModule[func.owner][func.name] = &func;
     }
-    std::map<std::string, int> externUse;
     for (const auto &func : program.funcs)
     {
         LowerCtx ctx;
-        ctx.externArity = &externArity;
+        ctx.program = &program;
         ctx.modules = &modules;
-        ctx.externUse = &externUse;
+        ctx.externs = externs;
+        ctx.imports = importsOf(program, func.owner);
         ctx.owner = func.owner;
-        ctx.callerImports = importsOf(program, func.owner);
+        ctx.sourceName = func.sourceName.empty() ? sourceName : func.sourceName;
         ctx.logger = logger;
-        ctx.sourceName = sourceName;
-        ctx.funcValued = func.hasValuedReturn;
-        ctx.funcHasBare = func.hasBareReturn;
+        ir::Function loweredFunc;
+        loweredFunc.name = mangle(func.owner, func.name);
+        loweredFunc.signature = func.signature;
+        loweredFunc.params = func.params;
+        loweredFunc.location = {ctx.sourceName, func.pos.line, func.pos.col};
+        ctx.function = &loweredFunc;
+        ctx.code = &loweredFunc.code;
         for (const auto &param : func.params)
-        {
-            ctx.vars[param] = static_cast<unsigned>(ctx.paramOrder.size());
-            ctx.paramOrder.push_back(param);
-        }
-        if (ctx.funcValued)
-        {
-            // Hidden spill slot for 'return expr;' lowering. The name must lex
-            // as an identifier (leading letter) and must not collide with a
-            // parameter (it would shadow an argument slot) or with any variable
-            // the body declares later (the declaration would fail as a
-            // duplicate). The body scan runs first because only parameters are
-            // known at this point.
-            std::map<std::string, bool> declared;
-            collectDeclaredVars(func.body, declared);
-            std::string candidate = "retmp";
-            unsigned suffix = 0;
-            while (ctx.vars.find(candidate) != ctx.vars.end() || declared.find(candidate) != declared.end())
-            {
-                candidate = "retmp" + std::to_string(suffix++);
-            }
-            ctx.retTemp = candidate;
-            ctx.vars[candidate] = static_cast<unsigned>(ctx.paramOrder.size() + ctx.varOrder.size());
-            ctx.varOrder.push_back(candidate);
-        }
-        std::vector<std::string> body;
-        // An extern call emitted with values pending above the frame always
-        // throws at runtime, so reject such nesting here with a clean
-        // diagnostic instead of compiling a program that cannot run.
-        if (!checkNestedExternStmts(ctx, func.body))
-        {
+            ctx.vars.insert(param);
+        if (!lowerBlock(ctx, func.body))
             return false;
-        }
-        for (const auto &stmt : func.body)
+        if (func.signature.returnKind == kern::ReturnKind::Void)
         {
-            if (!lowerStmt(ctx, stmt, body))
-            {
-                return false;
-            }
+            loweredFunc.code.emit(Opcode::Ret, {}, {ctx.sourceName, func.end.line, func.end.col});
         }
-        // Adjacent push/pop pairs are always redundant (stack-neutral,
-        // value-identical); fold them after the whole body is visible so
-        // pairs across statement boundaries collapse too.
-        peephole(body);
-        if (ctx.funcValued)
-        {
-            // A bypassed return spill leaves the hidden slot dead: the only
-            // lines that can reference it are its own popv/retv pair, matched
-            // whole so user names merely containing it never count.
-            const std::string popLine = "popv " + ctx.retTemp;
-            const std::string retLine = "retv " + ctx.retTemp;
-            bool spillUsed = false;
-            for (const std::string &line : body)
-            {
-                if (line == popLine || line == retLine)
-                {
-                    spillUsed = true;
-                    break;
-                }
-            }
-            if (!spillUsed)
-            {
-                ctx.vars.erase(ctx.retTemp);
-                ctx.varOrder.erase(std::remove(ctx.varOrder.begin(), ctx.varOrder.end(), ctx.retTemp),
-                                   ctx.varOrder.end());
-            }
-        }
-        Lowered out;
-        out.name = ast::mangleName(func.owner, func.name);
-        out.params = ctx.paramOrder;
-        out.vars = ctx.varOrder;
-        out.body = body;
-        lowered.push_back(out);
+        lowered.functions.push_back(std::move(loweredFunc));
     }
     return true;
-}
-
-void emitProgram(const ast::Program &program, const std::vector<Lowered> &lowered, std::ostream &asmCode)
-{
-    for (const auto &ext : program.externs)
-    {
-        asmCode << "extern " << ext.name << " " << ext.params.size() << "\n";
-    }
-    for (const auto &fn : lowered)
-    {
-        asmCode << "func " << fn.name << "\n{\n";
-        for (const auto &param : fn.params)
-        {
-            asmCode << "param " << param << "\n";
-        }
-        for (const auto &name : fn.vars)
-        {
-            asmCode << "var " << name << "\n";
-        }
-        for (const auto &line : fn.body)
-        {
-            asmCode << line << "\n";
-        }
-        asmCode << "ret\n}\n";
-    }
 }

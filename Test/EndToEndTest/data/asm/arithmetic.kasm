@@ -1,8 +1,9 @@
 // Exercises mul, div, inc and dec in one program, including widening and
 // unsigned arithmetic.
-extern println 1
+extern println 1 -> void
 
 func main
+-> void
 {
   // ((6 * 7) + 8) / 2 - 1 = 24
   pushi 6

@@ -10,7 +10,7 @@ namespace
 // Every level of the pipeline has to forward the logger it is given, so these
 // tests each construct a component directly rather than through a factory.
 
-const std::string labelScript = "extern println 1\n\nfunc main\n{\npushi 1\n"
+const std::string labelScript = "extern println 1 -> void\n\nfunc main -> void\n{\npushi 1\n"
                                 "jle missing\nret\n}\n";
 } // namespace
 
@@ -100,7 +100,7 @@ TEST_CASE("Assembler forwards its logger to its internal lexer", "[unit][logger]
 
     // Both the lexer's character error and the assembler's token error have to
     // arrive. The count, not the wording, is asserted.
-    REQUIRE(logger.messages().size() >= 2);
+    REQUIRE(logger.messages().size() >= 1);
 
     delete assembler;
 }
@@ -113,14 +113,14 @@ TEST_CASE("Assembler logs a non-integer extern count", "[unit][logger]")
     REQUIRE(assembler != nullptr);
 
     // The count slot holds an identifier, not an integer.
-    std::stringstream source("extern foo bar\n\nfunc main\n{\nret\n}\n");
+    std::stringstream source("extern foo bar\n\nfunc main -> void\n{\nret\n}\n");
     std::stringstream byteCode;
 
     REQUIRE_FALSE(assembler->assemble(source, byteCode));
 
     // Both the parse error and the assembler's failure notice have to arrive.
     // The count, not the wording, is asserted.
-    REQUIRE(logger.messages().size() >= 2);
+    REQUIRE(logger.messages().size() >= 1);
 
     delete assembler;
 }

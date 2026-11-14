@@ -1,8 +1,9 @@
 // Collatz sequence from 7. Evenness is tested by roundtripping through
 // integer division: (n / 2) * 2 equals n only for even n.
-extern println 1
+extern println 1 -> void
 
 func main
+-> void
 {
   var n
   var t

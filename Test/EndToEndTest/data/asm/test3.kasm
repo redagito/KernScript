@@ -1,9 +1,10 @@
-extern println 1
+extern println 1 -> void
 
 // Tests script function calling and extern function calling
 
 // Takes single parameter and forwards it to print
 func print
+-> void
 {
 	param a // Parameter declare implicitely sets calling convention
 	pushv a // Push on stack for extern function call
@@ -13,6 +14,7 @@ func print
 
 // Takes no parameter
 func b
+-> void
 {
 	// Calls script function 'print'
 	pushi 100
@@ -25,6 +27,7 @@ func b
 
 // Main starting point
 func main
+-> void
 {
 	// Call extern function with parameter
 	pushi 1

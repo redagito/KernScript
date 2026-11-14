@@ -1,0 +1,10 @@
+2026-11-14T08:15:02Z info: [gateway] listening on 0.0.0.0:8080
+2026-11-14T08:15:03Z debug: [gateway] loaded configuration from service.toml
+2026-11-14T08:15:04Z info: [auth] provider ready
+2026-11-14T08:15:07Z warn: [auth] rejected token for user=guest
+2026-11-14T08:15:09Z error: [storage] connection timed out after 5000ms
+2026-11-14T08:15:11Z debug: [storage] retry 1/3 in 250ms
+2026-11-14T08:15:12Z info: [storage] retry connected
+2026-11-14T08:15:17Z error: [worker] job=4821 failed: missing account
+2026-11-14T08:15:20Z debug: [worker] polling queue
+2026-11-14T08:15:23Z info: [gateway] shutdown requested

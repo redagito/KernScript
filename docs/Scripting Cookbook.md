@@ -1,165 +1,101 @@
 # KernScript Scripting Cookbook
 
-Minimal patterns. Each ran end-to-end through
-the real compiler with outputs asserted; broken
-variants quote the actual diagnostic.
+Each extern and script function declares its return kind. A valued result can
+be assigned, passed to another call, or discarded as a statement.
 
 ## Pull-model I/O
 
-Scripts pull input through valued externs and
-push results through void ones.
-
 ```ks
-extern read();
-extern emit(x);
-func main() {
+extern read() -> value;
+extern emit(x) -> void;
+func main() -> void {
   var v = read();
   emit(v + 1);
 }
 ```
 
-`read()` returns 41; emits "42".
+## Discard a valued call
 
-## Valued versus void calls
-
-Bind every valued extern call. A bare valued
-extern call is not a discard: mixing the two
-forms fails the compile.
+The first `read()` result is intentionally discarded; the second is passed
+to `emit`.
 
 ```ks
-extern get_value();
-extern emit(x);
-func main() {
-  var v = get_value();
-  emit(v);
-  var w = get_value();
-  emit("done");
+extern read() -> value;
+extern emit(x) -> void;
+func main() -> void {
+  read();
+  emit(read());
 }
 ```
 
-Emits "35", "done". Writing `get_value();` as
-a statement too gives:
-
-```text
-t2.ks:6:3: error: Inconsistent extern use.
-note: use it always as a value or always as
-a statement
-```
-
-## Return chaining
-
-Nest valued calls; each return flows into the
-next call.
+## Nested calls
 
 ```ks
-extern read();
-extern double_it(x);
-extern emit(x);
-func main() {
+extern read() -> value;
+extern double_it(x) -> value;
+extern emit(x) -> void;
+func main() -> void {
   emit(double_it(read()));
 }
 ```
 
-Emits "82" (41 doubled).
+Calls preserve earlier expression values, so `1 + read()` and
+`combine(1, read())` work without temporary variables.
 
-Discipline: leftovers count toward the next
-call, so hoist 0-argument externs out of larger
-expressions. `while (y < hi())` threw "The
-extern function 'hi' expects 0 arguments, but
-1 were pushed." Binding `hi()` to a variable
-first runs (see banding below).
-
-## Host-held state across calls
-
-The host owns long-lived state; scripts name
-small steps. Each `callFunction` starts from
-clean stacks but host bindings persist.
+## Host state across calls
 
 ```ks
-extern bump();
-extern count();
-extern emit(x);
-func step() {
+extern bump() -> void;
+extern count() -> value;
+extern emit(x) -> void;
+func step() -> void {
   bump();
 }
-func report() {
+func report() -> void {
   emit(count());
 }
 ```
 
-Call `step`, `step`, `report`: emits "2".
+The host can call `step` repeatedly and then call `report`. Each call starts
+with clean VM stacks while host bindings preserve their state.
 
-## Banding long runs
+## Return paths
 
-One call runs to completion, so chunk big loops
-and let the host pump between bands. Scripts
-pull bounds through externs because
-`callFunction` takes no arguments.
+Every reachable path in a value function must return a value:
 
 ```ks
-extern lo();
-extern hi();
-extern emit(x);
-func run_band() {
-  var top = hi();
-  var y = lo();
-  while (y < top) {
-    emit(y);
-    y = y + 1;
+func abs(x) -> value {
+  if (x < 0) {
+    return 0 - x;
+  } else {
+    return x;
   }
 }
 ```
 
-Host sets lo/hi per band (0-3, 3-6, 6-9,
-9-10) and calls `run_band` four times. Output
-equals one 0-10 run (10 rows).
+Void functions use `return;` or reach the end of the body. A void call cannot
+be used as a value.
 
-## Extern-use consistency
+## Modules
 
-One extern, one form across the program.
-
-```ks
-extern emit(x);
-func a() {
-  emit(1);
-}
-func b() {
-  emit(2);
-}
-func main() {
-  a();
-  b();
-}
-```
-
-Emits "1", "2".
-
-## Module layout: lib plus hot-reload
-
-lib.ks:
+`lib.ks`:
 
 ```ks
 module lib;
-export func twice(x) {
+export func twice(x) -> value {
   return x + x;
 }
 ```
 
-Root:
+Root script:
 
 ```ks
 import lib;
-extern emit(x);
-func main() {
+extern emit(x) -> void;
+func main() -> void {
   emit(lib::twice(21));
 }
 ```
 
-Compile the root with search paths holding the
-lib directory; emits "42". Edit lib (add 1),
-recompile, `load` again on the same VM: emits
-"43" with no re-register, since `load` keeps
-host bindings.
-
-Verified: ran `.scratch/docs_verify/driver.exe
-snippets` (ALL-OK, 32 checks).
+Pass the library directory as a compile search path. Edit the module, compile
+again, and load the bytecode into the same VM; host bindings remain registered.

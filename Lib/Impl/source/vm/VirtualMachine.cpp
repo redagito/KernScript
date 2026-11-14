@@ -1,1729 +1,532 @@
-#include <cstdint>
-#include <cstring>
-#include <new>
-#include <stdexcept>
-
 #include "vm/VirtualMachine.h"
-
 #include "kern/RuntimeError.h"
-
-#include "common/Deserialize.h"
-#include "common/Instructions.h"
-#include "common/ScriptHeader.h"
-#include "common/Version.h"
 #include "logging/Logger.h"
-
 #include <algorithm>
-#include <array>
+#include <bit>
 #include <chrono>
 #include <iomanip>
+#include <limits>
 #include <ostream>
-#include <vector>
+#include <span>
 
 namespace
 {
-
-/**
- * \brief Logs a runtime error and throws it.
- *
- * Every error path in execute() goes through here, so diagnostics keep flowing
- * to the logger while the failure itself is a typed exception that tests and
- * hosts assert on instead of matching message text.
- */
-template <typename... Args>
-[[noreturn]] void throwRuntimeError(kern::ILogger *logger, fmt::format_string<Args...> format, Args &&...args)
+class ExternCall final : public kern::IExternCall
 {
-    std::string message = fmt::format(format, std::forward<Args>(args)...);
-    logger->error("{}", message);
+    std::span<const Value> m_arguments;
+    kern::ReturnKind m_kind;
+    std::shared_ptr<Value::StringBudget> m_budget;
+    Value m_result;
+    bool m_returned = false;
+    template <class T> bool read(unsigned int index, T &out) const
+    {
+        if (index >= m_arguments.size())
+            throw kern::RuntimeError("Host argument index out of range.");
+        return m_arguments[index].convert(out);
+    }
+    void requireResult() const
+    {
+        if (m_kind != kern::ReturnKind::Value || m_returned)
+            throw kern::RuntimeError("Host result does not match its signature.");
+    }
+    void result(Value value)
+    {
+        if (m_kind != kern::ReturnKind::Value || m_returned)
+            throw kern::RuntimeError("Host result does not match its signature.");
+        m_result = std::move(value);
+        m_returned = true;
+    }
+
+public:
+    ExternCall(std::span<const Value> arguments, kern::ReturnKind kind, std::shared_ptr<Value::StringBudget> budget)
+        : m_arguments(arguments), m_kind(kind), m_budget(std::move(budget))
+    {
+    }
+    unsigned int getArgumentCount() const override { return static_cast<unsigned int>(m_arguments.size()); }
+    bool getArgument(unsigned int i, int &v) const override { return read(i, v); }
+    bool getArgument(unsigned int i, unsigned int &v) const override { return read(i, v); }
+    bool getArgument(unsigned int i, float &v) const override { return read(i, v); }
+    bool getArgument(unsigned int i, double &v) const override { return read(i, v); }
+    bool getArgument(unsigned int i, bool &v) const override { return read(i, v); }
+    bool getArgument(unsigned int i, std::string &v) const override { return read(i, v); }
+    void setReturnValue(int v) override { result(Value(v)); }
+    void setReturnValue(unsigned int v) override { result(Value(static_cast<uint32_t>(v))); }
+    void setReturnValue(float v) override { result(Value(v)); }
+    void setReturnValue(double v) override { result(Value(static_cast<float>(v))); }
+    void setReturnValue(bool v) override { result(Value(static_cast<int32_t>(v))); }
+    void setReturnValue(const std::string &v) override
+    {
+        requireResult();
+        result(Value(v, m_budget));
+    }
+    Value finish()
+    {
+        if ((m_kind == kern::ReturnKind::Value) != m_returned)
+            throw kern::RuntimeError("Host function did not produce its declared result.");
+        return std::move(m_result);
+    }
+};
+} // namespace
+VirtualMachine::VirtualMachine(kern::ILogger *logger) : VirtualMachine(logger, kern::VMConfig{}) {}
+VirtualMachine::VirtualMachine(kern::ILogger *logger, kern::VMConfig config)
+    : m_logger(logger ? logger : nullLogger()), m_config(config),
+      m_stringBudget(std::make_shared<Value::StringBudget>(Value::StringBudget{config.maxRuntimeStringBytes}))
+{
+    if (config.maxStackBytes > std::vector<Value>().max_size() * sizeof(Value))
+        fail("Maximum runtime stack size exceeds the limit.");
+}
+[[noreturn]] void VirtualMachine::fail(const std::string &message) const
+{
+    m_logger->error("{}", message);
     throw kern::RuntimeError(message);
 }
-
-/**
- * \brief Checks an index read from bytecode against a container size.
- *
- * Indices arrive as signed 32 bit values. Reinterpreting a negative one as
- * unsigned would wrap, so the addition runs in 64 bit where nothing wraps.
- */
-bool indexInRange(uint32_t base, int32_t rawIndex, size_t size)
+void VirtualMachine::idle(const char *what) const
 {
-    const uint64_t index = static_cast<uint64_t>(base) + static_cast<uint64_t>(static_cast<uint32_t>(rawIndex));
-    return index < static_cast<uint64_t>(size);
-}
-
-/**
- * \brief Checks an index read from bytecode against the current frame.
- *
- * Like indexInRange, but bound to the frame end (base + frameSize) instead of
- * the stack size, so a corrupt variable index cannot reach pushed temps above
- * the frame. The stack size still bounds too: arithmetic opcodes can eat into
- * the frame, leaving the end above the stack.
- */
-bool frameIndexInRange(uint32_t base, int32_t rawIndex, uint32_t frameSize, size_t stackSize)
-{
-    const uint64_t index = static_cast<uint64_t>(base) + static_cast<uint64_t>(static_cast<uint32_t>(rawIndex));
-    const uint64_t frameEnd = static_cast<uint64_t>(base) + static_cast<uint64_t>(frameSize);
-    return index < frameEnd && index < static_cast<uint64_t>(stackSize);
-}
-
-/**
- * \brief Refuses a host call made outside an extern dispatch.
- *
- * popParameter and setReturnValue are the extern function interface: they
- * only make sense while a script calle runs, like the other mutators that
- * check m_running.
- */
-void requireDispatch(kern::ILogger *logger, bool running, const char *what)
-{
-    if (!running)
-    {
-        throwRuntimeError(logger, "{} outside an extern call.", what);
-    }
-}
-
-/**
- * \brief Checks a popParameter call before it touches the stack.
- *
- * Besides the dispatch and empty checks, popping must stop at the frame
- * floor: the frame holds base + frameSize slots, so a stack at or below that
- * end has no argument left to take.
- */
-void checkPopAllowed(kern::ILogger *logger, bool running, const std::vector<Value> &stack, uint32_t base,
-                     uint32_t frameSize)
-{
-    requireDispatch(logger, running, "popParameter");
-    if (stack.empty())
-    {
-        throwRuntimeError(logger, "popParameter needs a value on the runtime stack.");
-    }
-    if (static_cast<uint64_t>(stack.size()) <= static_cast<uint64_t>(base) + static_cast<uint64_t>(frameSize))
-    {
-        throwRuntimeError(logger, "popParameter would go below the frame.");
-    }
-}
-
-/**
- * \brief Holds the callFunction reentrancy guard for the duration of a call.
- *
- * Resetting in the destructor covers both normal return and unwinding through
- * a script error, so one throw cannot wedge later calls.
- */
-class CallGuard
-{
-public:
-    explicit CallGuard(bool &flag) : m_flag(flag) { m_flag = true; }
-    ~CallGuard() { m_flag = false; }
-
-    CallGuard(const CallGuard &) = delete;
-    CallGuard &operator=(const CallGuard &) = delete;
-
-private:
-    bool &m_flag;
-};
-
-} // namespace
-
-VirtualMachine::FunctionFrame::FunctionFrame() {}
-
-VirtualMachine::FunctionFrame::FunctionFrame(uint32_t funcIndex, uint32_t instrIndex, uint32_t stackBaseIndex)
-{
-    functionIndex = funcIndex;
-    instructionIndex = instrIndex;
-    runtimeStackBaseIndex = stackBaseIndex;
-}
-
-struct VirtualMachine::ProfileData
-{
-    struct Entry
-    {
-        uint64_t count = 0;
-        uint64_t cycles = 0;
-    };
-
-    // One bucket per opcode, indexed by the raw opcode value. Hardcoded so the
-    // storage is a plain array; the asserts pin it to the Opcode enum and the
-    // mnemonic table, so adding an opcode without updating this fails loudly.
-    static constexpr size_t kOpcodeCount = 38;
-    static_assert(static_cast<size_t>(Opcode::Jle) + 1 == kOpcodeCount, "ProfileData size must match the Opcode enum.");
-    static_assert(sizeof(instructions) / sizeof(instructions[0]) == kOpcodeCount, "Opcode mnemonic table out of sync.");
-
-    std::array<Entry, kOpcodeCount> entries{};
-    Entry fetchDecode{};
-    uint64_t loopIterations = 0;
-    uint64_t callEntries = 0;
-};
-
-VirtualMachine::BodyProbe::BodyProbe(VirtualMachine &owner, size_t rawOpcode, bool knownOpcode,
-                                     std::chrono::steady_clock::time_point bodyStart)
-    : m_owner(owner), m_rawOpcode(rawOpcode), m_knownOpcode(knownOpcode), m_bodyStart(bodyStart)
-{
-}
-
-VirtualMachine::BodyProbe::~BodyProbe()
-{
-    ProfileData *data = m_owner.m_profile.get();
-    if (data == nullptr)
-    {
-        return;
-    }
-    const auto t_end = std::chrono::steady_clock::now();
-    const uint64_t bodyCycles =
-        static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(t_end - m_bodyStart).count());
-    if (m_knownOpcode)
-    {
-        ProfileData::Entry &entry = data->entries[m_rawOpcode];
-        entry.count += 1;
-        entry.cycles += bodyCycles;
-    }
-    else
-    {
-        // Corrupt bytecode decoded to an unknown id: no bucket exists, so the
-        // body time joins the fetch/decode bucket instead of vanishing.
-        data->fetchDecode.cycles += bodyCycles;
-    }
-}
-
-VirtualMachine::VirtualMachine(kern::ILogger *logger) : VirtualMachine(logger, kern::VMConfig{}) {}
-
-// Defaulted here (not in the header) so the ProfileData deleter and the
-// moved-from state see the complete type; user translation units only hold
-// the pointer.
-VirtualMachine::~VirtualMachine() = default;
-VirtualMachine::VirtualMachine(VirtualMachine &&other) noexcept = default;
-VirtualMachine &VirtualMachine::operator=(VirtualMachine &&other) noexcept = default;
-
-VirtualMachine::VirtualMachine(kern::ILogger *logger, kern::VMConfig config)
-    : m_logger(logger != nullptr ? logger : nullLogger()), m_maxStackSize(config.maxStackBytes / sizeof(Value)),
-      m_maxCallDepth(config.maxCallDepth), m_maxStringBytes(config.maxStringBytes),
-      m_maxTableEntries(config.maxTableEntries), m_maxExecutionSteps(config.maxExecutionSteps)
-{
-    // Preallocate the whole budget, so steady state never reallocates. An
-    // absurd budget fails here as a typed error instead of bad_alloc.
-    try
-    {
-        m_runtimeStack.reserve(m_maxStackSize);
-    }
-    catch (const std::bad_alloc &)
-    {
-        throwRuntimeError(m_logger, "Maximum runtime stack size exceeds the limit.");
-    }
-    catch (const std::length_error &)
-    {
-        throwRuntimeError(m_logger, "Maximum runtime stack size exceeds the limit.");
-    }
-}
-
-bool VirtualMachine::load(std::istream &byteCode)
-{
-    // Tables back the running call: reloading them mid-execution would
-    // reallocate the vectors execute() holds references into.
     if (m_running)
-    {
-        throwRuntimeError(m_logger, "load is not reentrant.");
-    }
-    // Atomicity: discard any previously loaded script first, and wipe the
-    // tables again on any failure below, so a failed load leaves empty tables
-    // behind instead of a mix of old and partial new data. A failure either
-    // returns false or throws kern::RuntimeError; both leave no script loaded.
+        fail(std::string(what) + " is not reentrant.");
+}
+void VirtualMachine::clearScripts()
+{
+    idle("clearScripts");
+    m_frames.clear();
+    m_locals.clear();
+    m_operands.clear();
+    std::vector<Value>().swap(m_constants);
+    m_program.reset();
+}
+bool VirtualMachine::load(std::istream &input)
+{
+    idle("load");
     clearScripts();
     try
     {
-        if (!loadTables(byteCode))
+        Program decoded;
+        std::string error;
+        if (!deserializeProgram(input, decoded, m_config, error))
         {
-            clearScripts();
+            if (!error.empty())
+                m_logger->error("{}", error);
             return false;
         }
+        // The cached immutable Values share all runtime copies. Count the pool
+        // cache and its contents as well as the decoded program before allocating.
+        size_t remaining = m_config.maxProgramBytes;
+        auto charge = [&](size_t count, size_t width = 1)
+        {
+            if (width && count > remaining / width)
+                fail("Maximum loaded program bytes exceeded.");
+            remaining -= count * width;
+        };
+        charge(decoded.moduleName.size());
+        charge(decoded.strings.size(), sizeof(std::string) + sizeof(Value) + Value::stringStorageBytes());
+        charge(decoded.externs.size(), sizeof(ProgramExtern));
+        charge(decoded.functions.size(), sizeof(ProgramFunction));
+        for (const auto &s : decoded.strings)
+        {
+            charge(s.size(), 2);
+        }
+        for (const auto &e : decoded.externs)
+            charge(e.name.size());
+        for (const auto &f : decoded.functions)
+        {
+            charge(f.name.size());
+            charge(f.instructions.size(), sizeof(Instruction));
+        }
+        auto verified = verifyProgram(std::move(decoded), error);
+        if (!verified)
+        {
+            m_logger->error("{}", error);
+            return false;
+        }
+        std::vector<Value> constants;
+        constants.reserve(verified->data().strings.size());
+        for (const auto &s : verified->data().strings)
+            constants.emplace_back(s);
+        m_constants = std::move(constants);
+        m_program = std::move(verified);
+        return true;
+    }
+    catch (const std::bad_alloc &)
+    {
+        clearScripts();
+        fail("Program allocation failed.");
+    }
+    catch (const std::length_error &)
+    {
+        clearScripts();
+        fail("Program allocation exceeds the limit.");
     }
     catch (...)
     {
         clearScripts();
         throw;
     }
-    return true;
 }
-
-bool VirtualMachine::loadTables(std::istream &byteCode)
+void VirtualMachine::addFunction(const std::string &name, kern::IExternFunction *fn)
 {
-    // The header leads the bytecode. Anything else is not runnable here.
-    ScriptHeader header;
-    if (!deserialize(header, byteCode, m_maxStringBytes))
-    {
-        return false;
-    }
-    const uint8_t expectedMagic[4] = {'K', 'E', 'R', 'N'};
-    if (memcmp(header.identifier, expectedMagic, sizeof(expectedMagic)) != 0)
-    {
-        return false;
-    }
-    // Major versions must match exactly; newer minor versions stay loadable.
-    if (header.majorVersion != majorVersion)
-    {
-        return false;
-    }
-    // Load string constants
-    if (!deserializeStrings(byteCode))
-    {
-        return false;
-    }
-    // Load extern functions
-    if (!deserializeExternFunctions(byteCode))
-    {
-        return false;
-    }
-    // Load script functions
-    if (!deserializeFunctions(byteCode))
-    {
-        return false;
-    }
-    return true;
+    idle("addFunction");
+    if (name.empty() || !fn)
+        fail("Extern name and binding must not be empty.");
+    const auto sig = fn->getSignature();
+    if (sig.returnKind != kern::ReturnKind::Void && sig.returnKind != kern::ReturnKind::Value)
+        fail("Invalid host signature.");
+    m_bindings[name].reset(fn);
 }
-
-void VirtualMachine::clearScripts()
+void VirtualMachine::removeFunction(const std::string &name)
 {
-    // Clearing mid-execution would free the vectors execute() holds references
-    // into, so refuse instead of corrupting the running call.
-    if (m_running)
+    idle("removeFunction");
+    m_bindings.erase(name);
+}
+void VirtualMachine::checkStack(size_t locals, size_t operands) const
+{
+    const size_t max = m_config.maxStackBytes / sizeof(Value);
+    if (locals > max || operands > max - locals)
+        fail("Maximum runtime stack size exceeded.");
+}
+void VirtualMachine::push(Value value)
+{
+    if (value.getType() == Value::Type::Invalid)
+        fail("Push of an uninitialized value.");
+    checkStack(m_locals.size(), m_operands.size() + 1);
+    m_operands.push_back(std::move(value));
+}
+Value VirtualMachine::pop()
+{
+    if (m_frames.empty() || m_operands.size() <= m_frames.back().operandBase)
+        fail("Operand stack underflow at frame boundary.");
+    Value result = std::move(m_operands.back());
+    m_operands.pop_back();
+    return result;
+}
+Value &VirtualMachine::local(int32_t raw)
+{
+    const auto &frame = m_frames.back();
+    const auto &f = m_program->data().functions[frame.function];
+    if (raw < 0 || static_cast<uint32_t>(raw) >= f.frameSize)
+        fail("Local index outside its frame.");
+    return m_locals.at(frame.localsBase + static_cast<uint32_t>(raw));
+}
+void VirtualMachine::enter(uint32_t target)
+{
+    const auto &f = m_program->data().functions.at(target);
+    const size_t count = f.signature.argumentCount;
+    const size_t floor = m_frames.empty() ? 0 : m_frames.back().operandBase;
+    if (m_operands.size() < floor || count > m_operands.size() - floor)
+        fail("Call arguments cross the caller's operand boundary.");
+    if (!m_frames.empty() && m_frames.size() - 1 >= m_config.maxCallDepth)
+        fail("Maximum call depth exceeded.");
+    const size_t base = m_locals.size(), argumentBase = m_operands.size() - count;
+    if (f.frameSize > std::numeric_limits<size_t>::max() - base)
+        fail("Function frame exceeds the limit.");
+    checkStack(base + f.frameSize, argumentBase);
+    m_locals.resize(base + f.frameSize);
+    for (size_t i = 0; i < count; ++i)
+        m_locals[base + i] = std::move(m_operands[argumentBase + i]);
+    m_operands.resize(argumentBase);
+    m_frames.push_back({target, 0, base, argumentBase});
+}
+bool VirtualMachine::callFunction(const std::string &name)
+{
+    idle("callFunction");
+    if (!m_program)
+        return false;
+    const auto &p = m_program->data();
+    auto it = std::find_if(p.functions.begin(), p.functions.end(), [&](const auto &f) { return f.name == name; });
+    if (it == p.functions.end())
+        return false;
+    if (it->signature != kern::FunctionSignature{0, kern::ReturnKind::Void})
+        fail("Entry function must have zero arguments and return void.");
+    m_frames.clear();
+    m_locals.clear();
+    m_operands.clear();
+    m_running = true;
+    struct Guard
     {
-        throwRuntimeError(m_logger, "clearScripts is not reentrant.");
+        VirtualMachine &vm;
+        ~Guard()
+        {
+            vm.m_frames.clear();
+            vm.m_locals.clear();
+            vm.m_operands.clear();
+            vm.m_running = false;
+        }
+    } guard{*this};
+    try
+    {
+        if (m_profile)
+            ++m_profile->calls;
+        enter(static_cast<uint32_t>(it - p.functions.begin()));
+        uint64_t steps = 0;
+        while (true)
+        {
+            if (steps >= m_config.maxExecutionSteps)
+                fail("Maximum execution steps exceeded.");
+            ++steps;
+            if (!step())
+                break;
+        }
+        return true;
     }
-    m_currentFunctionIndex = 0;
-    m_currentInstructionIndex = 0;
-    m_currentRuntimeStackBaseIndex = 0;
-    // The vector below is cleared, so any cached pointer into it would dangle.
-    m_currentFunction = nullptr;
-    // Clear script data
-    m_strings.clear();
-    m_externFunctions.clear();
-    m_functions.clear();
-    // Drop any values and frames a previous call left behind.
-    m_runtimeStack.clear();
-    while (!m_callStack.empty())
+    catch (const std::bad_alloc &)
     {
-        m_callStack.pop();
+        fail("Runtime allocation failed.");
+    }
+    catch (const std::length_error &)
+    {
+        fail("Runtime allocation exceeds the limit.");
     }
 }
-
-void VirtualMachine::resetProfile() { m_profile = std::make_unique<ProfileData>(); }
-
-void VirtualMachine::dumpProfile(std::ostream &output)
+bool VirtualMachine::step()
 {
-    // Without a recording this prints the empty table (zero iterations and
-    // calls, no rows), so callers never need to special-case it.
-    static const ProfileData kEmpty{};
-    const ProfileData &data = m_profile != nullptr ? *m_profile : kEmpty;
-    uint64_t totalCycles = data.fetchDecode.cycles;
-    for (const ProfileData::Entry &entry : data.entries)
+    const auto fetchStart = m_profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+    auto &frame = m_frames.back();
+    const auto &p = m_program->data();
+    const auto &function = p.functions[frame.function];
+    if (frame.ip >= function.instructions.size())
+        fail("Execution fell through a verified function.");
+    const auto in = function.instructions[frame.ip++];
+    const auto raw = static_cast<size_t>(in.id);
+    const auto started = m_profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+    struct Probe
     {
-        totalCycles += entry.cycles;
+        Profile *profile;
+        size_t raw;
+        std::chrono::steady_clock::time_point start;
+        ~Probe()
+        {
+            if (profile)
+                profile->ns[raw] += static_cast<uint64_t>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start)
+                        .count());
+        }
+    } probe{m_profile.get(), raw, started};
+    if (m_profile)
+    {
+        ++m_profile->steps;
+        ++m_profile->count[raw];
+        m_profile->fetchNs +=
+            static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(started - fetchStart).count());
     }
-    output << "profile: " << data.loopIterations << " iterations, " << data.callEntries << " calls, " << totalCycles
-           << " ns total\n";
-    output << "mnemonic count cycles_ns share_pct\n";
-    struct ProfileRow
+    auto numeric = [&](const Value &v)
     {
-        std::string mnemonic;
-        uint64_t count = 0;
-        uint64_t cycles = 0;
-        size_t tiebreak = 0;
+        if (!v.isNumeric())
+            fail("Instruction needs numeric operands.");
     };
-    std::vector<ProfileRow> rows;
-    for (size_t raw = 0; raw < ProfileData::kOpcodeCount; ++raw)
-    {
-        if (data.entries[raw].count > 0)
-        {
-            rows.push_back({instructions[raw].mnemonic, data.entries[raw].count, data.entries[raw].cycles, raw});
-        }
-    }
-    if (data.fetchDecode.count > 0)
-    {
-        rows.push_back({"fetch", data.fetchDecode.count, data.fetchDecode.cycles, ProfileData::kOpcodeCount});
-    }
-    // Hottest first; the tiebreak keeps the order stable across runs.
-    std::sort(rows.begin(), rows.end(),
-              [](const ProfileRow &left, const ProfileRow &right)
-              {
-                  if (left.cycles != right.cycles)
-                  {
-                      return left.cycles > right.cycles;
-                  }
-                  return left.tiebreak < right.tiebreak;
-              });
-    output << std::fixed << std::setprecision(1);
-    for (const ProfileRow &row : rows)
-    {
-        const double share =
-            totalCycles == 0 ? 0.0 : 100.0 * static_cast<double>(row.cycles) / static_cast<double>(totalCycles);
-        output << row.mnemonic << ' ' << row.count << ' ' << row.cycles << ' ' << share << "%\n";
-    }
-}
-
-bool VirtualMachine::callFunction(const std::string &functionName)
-{
-    // Calls must not nest: an extern function calling back in here would reset
-    // the stacks of the still-running call.
-    if (m_running)
-    {
-        throwRuntimeError(m_logger, "callFunction is not reentrant.");
-    }
-    // Retrieve function index if exists
-    if (!getFunctionIndexByName(functionName, m_currentFunctionIndex))
-    {
-        return false;
-    }
-    m_currentFunction = &m_functions.at(m_currentFunctionIndex);
-    const CallGuard guard(m_running);
-    // Committed calls only: unknown names return above and are not entries.
-    if (m_profile != nullptr)
-    {
-        ++m_profile->callEntries;
-    }
-    // Start from a clean slate: a previous call may have thrown out of nested
-    // frames, leaving stale values, frames and a base index behind. Clearing
-    // first also keeps locals from leaking values a previous call left in the
-    // reused slots; the resize below then value-initializes the whole frame.
-    m_runtimeStack.clear();
-    while (!m_callStack.empty())
-    {
-        m_callStack.pop();
-    }
-    m_currentRuntimeStackBaseIndex = 0;
-    m_currentInstructionIndex = 0;
-    const uint32_t stackSize = m_currentFunction->stackSize;
-    if (stackSize > m_maxStackSize)
-    {
-        throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
-    }
-    // The budget check passes when the configured budget itself is absurd, so
-    // a failing allocation must still surface as a typed error instead of
-    // bad_alloc, matching the deserialize pattern.
-    try
-    {
-        m_runtimeStack.resize(stackSize);
-    }
-    catch (const std::bad_alloc &)
-    {
-        throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
-    }
-    catch (const std::length_error &)
-    {
-        throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
-    }
-
-    // Execute function
-    bool running = true;
-    // Every execute() runs exactly one instruction, so counting loop rounds
-    // counts executed instructions. A backward jump to itself would otherwise
-    // spin the host forever; exceeding the budget stops the script instead.
-    // The counter is local, so every callFunction starts from zero.
-    uint64_t executedSteps = 0;
-    const uint64_t stepLimit = m_maxExecutionSteps;
-    while (running)
-    {
-        // Single step execution until finished
-        running = execute();
-        if (++executedSteps > stepLimit)
-        {
-            throwRuntimeError(m_logger, "Maximum execution steps exceeded.");
-        }
-    }
-    return true;
-}
-
-void VirtualMachine::addFunction(const std::string &functionName, kern::IExternFunction *function)
-{
-    // Mutating the map mid-execution could rehash it while Calle holds an
-    // iterator across the extern call.
-    if (m_running)
-    {
-        // Ownership stays with the caller on failure, so the caller deletes the
-        // pointer instead of the VM deleting it and causing a double-free.
-        throwRuntimeError(m_logger, "addFunction is not reentrant.");
-    }
-    if (functionName.empty())
-    {
-        throwRuntimeError(m_logger, "Extern function name must not be empty.");
-    }
-    // A null would sit in the map until Calle dereferences it past the
-    // missing-registration guard, so refuse it here. Null transfers no
-    // ownership, so the caller has nothing to delete.
-    if (function == nullptr)
-    {
-        throwRuntimeError(m_logger, "Extern function must not be null.");
-    }
-    m_externFunctionsMap[functionName].reset(function);
-}
-
-void VirtualMachine::removeFunction(const ::std::string &functionName)
-{
-    // Erasing mid-execution would destroy the extern object whose call method
-    // is still on the stack.
-    if (m_running)
-    {
-        throwRuntimeError(m_logger, "removeFunction is not reentrant.");
-    }
-    m_externFunctionsMap.erase(functionName);
-}
-
-bool VirtualMachine::popParameter(int &value)
-{
-    checkPopAllowed(m_logger, m_running, m_runtimeStack, m_currentRuntimeStackBaseIndex,
-                    m_functions.at(m_currentFunctionIndex).stackSize);
-    bool ret = m_runtimeStack.back().convert(value);
-    m_runtimeStack.pop_back();
-    return ret;
-}
-
-bool VirtualMachine::popParameter(float &value)
-{
-    checkPopAllowed(m_logger, m_running, m_runtimeStack, m_currentRuntimeStackBaseIndex,
-                    m_functions.at(m_currentFunctionIndex).stackSize);
-    bool ret = m_runtimeStack.back().convert(value);
-    m_runtimeStack.pop_back();
-    return ret;
-}
-
-bool VirtualMachine::popParameter(::std::string &value)
-{
-    checkPopAllowed(m_logger, m_running, m_runtimeStack, m_currentRuntimeStackBaseIndex,
-                    m_functions.at(m_currentFunctionIndex).stackSize);
-    bool ret = m_runtimeStack.back().convert(value);
-    m_runtimeStack.pop_back();
-    return ret;
-}
-
-bool VirtualMachine::popParameter(double &value)
-{
-    checkPopAllowed(m_logger, m_running, m_runtimeStack, m_currentRuntimeStackBaseIndex,
-                    m_functions.at(m_currentFunctionIndex).stackSize);
-    bool ret = m_runtimeStack.back().convert(value);
-    m_runtimeStack.pop_back();
-    return ret;
-}
-
-bool VirtualMachine::popParameter(unsigned int &value)
-{
-    checkPopAllowed(m_logger, m_running, m_runtimeStack, m_currentRuntimeStackBaseIndex,
-                    m_functions.at(m_currentFunctionIndex).stackSize);
-    uint32_t raw = 0;
-    bool ret = m_runtimeStack.back().convert(raw);
-    value = static_cast<unsigned int>(raw);
-    m_runtimeStack.pop_back();
-    return ret;
-}
-
-bool VirtualMachine::popParameter(bool &value)
-{
-    checkPopAllowed(m_logger, m_running, m_runtimeStack, m_currentRuntimeStackBaseIndex,
-                    m_functions.at(m_currentFunctionIndex).stackSize);
-    bool ret = m_runtimeStack.back().convert(value);
-    m_runtimeStack.pop_back();
-    return ret;
-}
-
-void VirtualMachine::setReturnValue()
-{
-    requireDispatch(m_logger, m_running, "setReturnValue");
-    return;
-}
-
-void VirtualMachine::setReturnValue(int value)
-{
-    requireDispatch(m_logger, m_running, "setReturnValue");
-    pushValue(Value(value));
-}
-
-void VirtualMachine::setReturnValue(float value)
-{
-    requireDispatch(m_logger, m_running, "setReturnValue");
-    pushValue(Value(value));
-}
-
-void VirtualMachine::setReturnValue(const std::string &value)
-{
-    requireDispatch(m_logger, m_running, "setReturnValue");
-    pushValue(Value(value));
-}
-
-void VirtualMachine::setReturnValue(double value)
-{
-    requireDispatch(m_logger, m_running, "setReturnValue");
-    // The runtime model stores floats, so doubles narrow here.
-    pushValue(Value(static_cast<float>(value)));
-}
-
-void VirtualMachine::setReturnValue(unsigned int value)
-{
-    requireDispatch(m_logger, m_running, "setReturnValue");
-    pushValue(Value(static_cast<uint32_t>(value)));
-}
-
-void VirtualMachine::setReturnValue(bool value)
-{
-    requireDispatch(m_logger, m_running, "setReturnValue");
-    // Stored as 1 or 0, matching what the logical operators produce.
-    pushValue(Value(static_cast<int32_t>(value)));
-}
-
-bool VirtualMachine::deserializeStrings(std::istream &stream)
-{
-    // Get string table size and reserve space
-    uint32_t size = 0;
-    if (!deserialize(stream, size))
-    {
-        return false;
-    }
-    // A corrupt count must not reach resize(), where it would throw bad_alloc
-    // instead of a typed error.
-    if (size > m_maxTableEntries)
-    {
-        throwRuntimeError(m_logger, "String table size {} exceeds the limit.", size);
-    }
-    // The limit check passes when the configured limit itself is absurd, so a
-    // failing allocation must still surface as a typed error.
-    try
-    {
-        m_strings.resize(size);
-    }
-    catch (const std::bad_alloc &)
-    {
-        throwRuntimeError(m_logger, "String table size {} exceeds the limit.", size);
-    }
-    catch (const std::length_error &)
-    {
-        throwRuntimeError(m_logger, "String table size {} exceeds the limit.", size);
-    }
-
-    // Read strings into string table
-    for (auto &str : m_strings)
-    {
-        if (!deserialize(stream, str, m_maxStringBytes))
-        {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool VirtualMachine::deserializeExternFunctions(std::istream &stream)
-{
-    // Read size. A truncated count must fail before the value reaches the
-    // limit check and resize, like deserializeStrings via checked deserialize.
-    uint32_t size = 0;
-    if (!deserialize(stream, size))
-    {
-        return false;
-    }
-    if (size > m_maxTableEntries)
-    {
-        throwRuntimeError(m_logger, "Extern function count {} exceeds the limit.", size);
-    }
-    try
-    {
-        m_externFunctions.resize(size);
-    }
-    catch (const std::bad_alloc &)
-    {
-        throwRuntimeError(m_logger, "Extern function count {} exceeds the limit.", size);
-    }
-    catch (const std::length_error &)
-    {
-        throwRuntimeError(m_logger, "Extern function count {} exceeds the limit.", size);
-    }
-    for (auto &externFunction : m_externFunctions)
-    {
-        if (!deserialize(stream, externFunction, m_maxStringBytes))
-        {
-            return false;
-        }
-    }
-    return stream.good();
-}
-
-bool VirtualMachine::deserializeFunctions(std::istream &stream)
-{
-    // Read size. A truncated count must fail before the value reaches the
-    // limit check and resize.
-    uint32_t size = 0;
-    if (!deserialize(stream, size))
-    {
-        return false;
-    }
-    if (size > m_maxTableEntries)
-    {
-        throwRuntimeError(m_logger, "Function count {} exceeds the limit.", size);
-    }
-    // Reserve space
-    try
-    {
-        m_functions.resize(size);
-    }
-    catch (const std::bad_alloc &)
-    {
-        throwRuntimeError(m_logger, "Function count {} exceeds the limit.", size);
-    }
-    catch (const std::length_error &)
-    {
-        throwRuntimeError(m_logger, "Function count {} exceeds the limit.", size);
-    }
-
-    // Read function data
-    for (auto &function : m_functions)
-    {
-        // Read function name. A truncated length must fail before the value
-        // reaches the limit check and reserve.
-        uint32_t length = 0;
-        if (!deserialize(stream, length))
-        {
-            return false;
-        }
-        if (length > m_maxStringBytes)
-        {
-            throwRuntimeError(m_logger, "Function name length {} exceeds the limit.", length);
-        }
-        // The limit check passes when the configured limit itself is absurd, so
-        // a failing allocation must still surface as a typed error instead of
-        // bad_alloc, matching the table-resize pattern. The name builds in a
-        // local first, like generic strings, so a truncated stream returns false
-        // without touching the target.
-        std::string temp;
-        try
-        {
-            temp.reserve(length);
-        }
-        catch (const std::bad_alloc &)
-        {
-            throwRuntimeError(m_logger, "Function name length {} exceeds the limit.", length);
-        }
-        catch (const std::length_error &)
-        {
-            throwRuntimeError(m_logger, "Function name length {} exceeds the limit.", length);
-        }
-        for (uint32_t i = 0; i < length; ++i)
-        {
-            char c = 0;
-            stream.read(&c, 1);
-            // A truncated name must fail cleanly instead of pushing an
-            // indeterminate character and continuing.
-            if (!stream.good())
-            {
-                return false;
-            }
-            temp.push_back(c);
-        }
-        function.name = std::move(temp);
-
-        // Read stack size. Each count must prove the stream still holds it
-        // before the value is used; truncation returns false instead of
-        // carrying a partial value forward.
-        if (!deserialize(stream, function.stackSize))
-        {
-            return false;
-        }
-        // Read parameter size
-        if (!deserialize(stream, function.parameterSize))
-        {
-            return false;
-        }
-
-        // Read instructions
-        // Instructions size
-        if (!deserialize(stream, size))
-        {
-            return false;
-        }
-        if (size > m_maxTableEntries)
-        {
-            throwRuntimeError(m_logger, "Instruction count {} exceeds the limit.", size);
-        }
-        try
-        {
-            function.instructions.resize(size);
-        }
-        catch (const std::bad_alloc &)
-        {
-            throwRuntimeError(m_logger, "Instruction count {} exceeds the limit.", size);
-        }
-        catch (const std::length_error &)
-        {
-            throwRuntimeError(m_logger, "Instruction count {} exceeds the limit.", size);
-        }
-        // Instructions
-        for (auto &instruction : function.instructions)
-        {
-            if (!deserialize(instruction, stream))
-            {
-                return false;
-            }
-        }
-        // Cache size for fast lookup
-        function.instructionSize = size;
-    }
-    return stream.good();
-}
-
-bool VirtualMachine::getFunctionIndexByName(const std::string &functionName, uint32_t &index)
-{
-    // Preserve semantics: the out-param is only assigned on success, so a
-    // failed lookup leaves the caller's index (and a clean state) alone instead
-    // of clobbering it with one-past-the-end.
-    uint32_t found = 0;
-    for (const auto &function : m_functions)
-    {
-        if (function.name == functionName)
-        {
-            index = found;
-            return true;
-        }
-        ++found;
-    }
-    return false;
-}
-
-bool VirtualMachine::executeCall(const Instruction &instruction)
-{
-    // Arg 0 is function index of the called function
-    const int32_t functionIndex = instruction.args[0];
-    if (functionIndex < 0 || static_cast<uint64_t>(functionIndex) >= m_functions.size())
-    {
-        throwRuntimeError(m_logger, "Call function index out of range.");
-    }
-    const Function &newCurrentFunction = m_functions.at(static_cast<size_t>(functionIndex));
-    const uint32_t runtimeStackSize = static_cast<uint32_t>(m_runtimeStack.size());
-    if (newCurrentFunction.parameterSize > runtimeStackSize)
-    {
-        throwRuntimeError(m_logger, "Call needs {} parameters on the runtime stack.", newCurrentFunction.parameterSize);
-    }
-    if (m_callStack.size() >= m_maxCallDepth)
-    {
-        throwRuntimeError(m_logger, "Maximum call depth exceeded.");
-    }
-    // All arithmetic below runs in 64 bit: 32 bit stack sizes from corrupt
-    // input wrap around and would otherwise resize the stack small.
-    const uint64_t newSize = static_cast<uint64_t>(runtimeStackSize) +
-                             static_cast<uint64_t>(newCurrentFunction.stackSize) -
-                             static_cast<uint64_t>(newCurrentFunction.parameterSize);
-    if (newSize > m_maxStackSize)
-    {
-        throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
-    }
-    // Push current function index, next instruction index and base stack index
-    // for
-    // return call.
-    m_callStack.push(
-        FunctionFrame(m_currentFunctionIndex, m_currentInstructionIndex + 1, m_currentRuntimeStackBaseIndex));
-    m_currentFunctionIndex = static_cast<uint32_t>(functionIndex);
-    m_currentFunction = &m_functions.at(m_currentFunctionIndex);
-    // Reset instruction index
-    m_currentInstructionIndex = 0;
-    // Set new runtime stack base index for the called function, modified by
-    // the function parameter size
-    m_currentRuntimeStackBaseIndex = runtimeStackSize - newCurrentFunction.parameterSize;
-    // Resize runtime stack with local stack size of called function. The
-    // budget check passes when the configured budget itself is absurd, so a
-    // failing allocation must still surface as a typed error instead of
-    // bad_alloc, matching the deserialize pattern.
-    try
-    {
-        m_runtimeStack.resize(static_cast<size_t>(newSize));
-    }
-    catch (const std::bad_alloc &)
-    {
-        throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
-    }
-    catch (const std::length_error &)
-    {
-        throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
-    }
-    return true;
-}
-
-bool VirtualMachine::executeCalle(const Instruction &instruction)
-{
-    // Call external, arg 0 is extern function index
-    const int32_t externIndex = instruction.args[0];
-    if (externIndex < 0 || static_cast<uint64_t>(externIndex) >= m_externFunctions.size())
-    {
-        throwRuntimeError(m_logger, "Calle extern function index out of range.");
-    }
-    const ExternFunction &externFunction = m_externFunctions.at(static_cast<size_t>(externIndex));
-
-    // Arguments are the values pushed above the current frame, whose slots
-    // run from the base index for stackSize entries. Anything else on the
-    // stack belongs to locals or parameters, not to this call.
-    //
-    // Pop discipline: return values a previous extern call left on the stack
-    // count toward the next call, so scripts must consume or pop values they
-    // do not need before pushing the next call's arguments. Counting only
-    // script pushes since the last calle cannot distinguish such a stale
-    // return from a legitimate return flowing directly into the next call
-    // (calle get_value followed by calle println), which the stack-contents
-    // count accepts; keeping the strict count is what makes both the
-    // too-few/too-many refusals and the return-chaining pattern work.
-    const uint64_t frameEnd =
-        static_cast<uint64_t>(m_currentRuntimeStackBaseIndex) + static_cast<uint64_t>(m_currentFunction->stackSize);
-    const uint64_t stackSizeNow = static_cast<uint64_t>(m_runtimeStack.size());
-    if (stackSizeNow < frameEnd)
-    {
-        throwRuntimeError(m_logger, "The runtime stack is below the frame.");
-    }
-    const uint64_t pushed = stackSizeNow - frameEnd;
-    if (pushed != externFunction.argCount)
-    {
-        throwRuntimeError(m_logger,
-                          "The extern function '{}' expects {} arguments, but "
-                          "{} were pushed.",
-                          externFunction.name, externFunction.argCount, pushed);
-    }
-
-    // Check if function exists
-    auto entry = m_externFunctionsMap.find(externFunction.name);
-    if (entry == m_externFunctionsMap.end())
-    {
-        // Function does not exist
-        throwRuntimeError(m_logger, "The extern function '{}' does not exist.", externFunction.name);
-    }
-    // Call if found, a failing call stops the script instead of continuing
-    // with missing values on the stack.
-    if (!entry->second->call(*this))
-    {
-        throwRuntimeError(m_logger, "The extern function '{}' reported failure.", externFunction.name);
-    }
-    ++m_currentInstructionIndex;
-    return true;
-}
-
-bool VirtualMachine::executeRet()
-{
-    // Return from script function
-    if (m_callStack.empty())
-    {
-        // Empty stack indicates either error state or end of script
-        return false;
-    }
-    // Resize runtime stack to remove local function variables.
-    m_runtimeStack.resize(m_currentRuntimeStackBaseIndex);
-
-    // Retrieve function index of previous function
-    m_currentFunctionIndex = m_callStack.top().functionIndex;
-    m_currentFunction = &m_functions.at(m_currentFunctionIndex);
-    // Restore active function index
-    m_currentInstructionIndex = m_callStack.top().instructionIndex;
-    // Restore runtime stack base index for the active function
-    m_currentRuntimeStackBaseIndex = m_callStack.top().runtimeStackBaseIndex;
-    m_callStack.pop();
-    return true;
-}
-
-bool VirtualMachine::executeRetv(const Instruction &instruction)
-{
-    // Returns variable from script function
-    if (m_callStack.empty())
-    {
-        // No caller exists to receive the value
-        throwRuntimeError(m_logger, "Retv without a caller.");
-    }
-    // Arg 0 is local variable index
-    // The caller's stack ends at the runtime stack base index, so slot base
-    // holds the first argument. It is the slot the caller reads the return
-    // value from once the frame is dropped, so the return value goes there.
-    uint32_t varIndex = 0;
-    memcpy(&varIndex, &instruction.args[0], sizeof(varIndex));
-    if (varIndex == 0 && m_currentRuntimeStackBaseIndex >= m_runtimeStack.size())
-    {
-        // The frame is empty, so the return slot does not exist. Growing the
-        // stack below would plant an Invalid value as the return value.
-        throwRuntimeError(m_logger, "Retv variable index out of range.");
-    }
-    if (varIndex != 0)
-    {
-        if (!frameIndexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0], m_currentFunction->stackSize,
-                               m_runtimeStack.size()))
-        {
-            throwRuntimeError(m_logger, "Retv variable index out of range.");
-        }
-        // Returning would spread Invalid to the caller, so refuse it here
-        // like pushValue and popValue do instead of erroring late.
-        if (m_runtimeStack.at(m_currentRuntimeStackBaseIndex + varIndex).getType() == Value::Type::Invalid)
-        {
-            throwRuntimeError(m_logger, "Retv of an uninitialized value.");
-        }
-        m_runtimeStack[m_currentRuntimeStackBaseIndex] = m_runtimeStack.at(m_currentRuntimeStackBaseIndex + varIndex);
-    }
-    else if (m_runtimeStack.at(m_currentRuntimeStackBaseIndex).getType() == Value::Type::Invalid)
-    {
-        // Slot zero returns in place, so the same check applies to the slot
-        // itself instead of a copy source.
-        throwRuntimeError(m_logger, "Retv of an uninitialized value.");
-    }
-
-    // Resize runtime stack to remove local function variables but the one
-    // holding the return value. No budget check: the empty frame returns
-    // above, so base + 1 is at most the current size and this only shrinks.
-    m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
-
-    // Retrieve function index of previous function
-    m_currentFunctionIndex = m_callStack.top().functionIndex;
-    m_currentFunction = &m_functions.at(m_currentFunctionIndex);
-    // Restore active function index
-    m_currentInstructionIndex = m_callStack.top().instructionIndex;
-    // Restore runtime stack base index for the active function
-    m_currentRuntimeStackBaseIndex = m_callStack.top().runtimeStackBaseIndex;
-    m_callStack.pop();
-    return true;
-}
-
-bool VirtualMachine::executeReti(const Instruction &instruction)
-{
-    // Returns variable from script function
-    if (m_callStack.empty())
-    {
-        // No caller exists to receive the value
-        throwRuntimeError(m_logger, "Reti without a caller.");
-    }
-    // Arg 0 is integer constant
-    // The caller's stack ends at the runtime stack base index, so slot base
-    // is the slot the caller reads the return value from. A function without
-    // parameters or locals leaves the frame empty, so the slot is grown
-    // first rather than assumed to exist.
-    if (static_cast<uint64_t>(m_currentRuntimeStackBaseIndex) + 1 > m_maxStackSize)
-    {
-        throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
-    }
-    m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
-    int32_t intValue = 0;
-    memcpy(&intValue, &instruction.args[0], sizeof(intValue));
-    m_runtimeStack[m_currentRuntimeStackBaseIndex] = intValue;
-
-    // Retrieve function index of previous function
-    m_currentFunctionIndex = m_callStack.top().functionIndex;
-    m_currentFunction = &m_functions.at(m_currentFunctionIndex);
-    // Restore active function index
-    m_currentInstructionIndex = m_callStack.top().instructionIndex;
-    // Restore runtime stack base index for the active function
-    m_currentRuntimeStackBaseIndex = m_callStack.top().runtimeStackBaseIndex;
-    m_callStack.pop();
-    return true;
-}
-
-bool VirtualMachine::executeRetf(const Instruction &instruction)
-{
-    // Returns float from script function
-    if (m_callStack.empty())
-    {
-        // No caller exists to receive the value
-        throwRuntimeError(m_logger, "Retf without a caller.");
-    }
-    // Arg 0 is float constant
-    // The caller's stack ends at the runtime stack base index, so slot base
-    // is the slot the caller reads the return value from. A function without
-    // parameters or locals leaves the frame empty, so the slot is grown
-    // first rather than assumed to exist.
-    if (static_cast<uint64_t>(m_currentRuntimeStackBaseIndex) + 1 > m_maxStackSize)
-    {
-        throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
-    }
-    m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
-    float floatValue = 0.f;
-    memcpy(&floatValue, &instruction.args[0], sizeof(floatValue));
-    m_runtimeStack[m_currentRuntimeStackBaseIndex] = floatValue;
-
-    // Retrieve function index of previous function
-    m_currentFunctionIndex = m_callStack.top().functionIndex;
-    m_currentFunction = &m_functions.at(m_currentFunctionIndex);
-    // Restore active function index
-    m_currentInstructionIndex = m_callStack.top().instructionIndex;
-    // Restore runtime stack base index for the active function
-    m_currentRuntimeStackBaseIndex = m_callStack.top().runtimeStackBaseIndex;
-    m_callStack.pop();
-    return true;
-}
-
-bool VirtualMachine::executeRets(const Instruction &instruction)
-{
-    // Returns string from script function
-    if (m_callStack.empty())
-    {
-        // No caller exists to receive the value
-        throwRuntimeError(m_logger, "Rets without a caller.");
-    }
-    // Arg 0 is index of string
-    // The caller's stack ends at the runtime stack base index, so slot base
-    // is the slot the caller reads the return value from. A function without
-    // parameters or locals leaves the frame empty, so the slot is grown
-    // first rather than assumed to exist. The string index is validated
-    // before growing, so corrupt input cannot leave a grown frame behind.
-    if (!indexInRange(0, instruction.args[0], m_strings.size()))
-    {
-        throwRuntimeError(m_logger, "Rets string index out of range.");
-    }
-    if (static_cast<uint64_t>(m_currentRuntimeStackBaseIndex) + 1 > m_maxStackSize)
-    {
-        throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
-    }
-    m_runtimeStack.resize(m_currentRuntimeStackBaseIndex + 1);
-    uint32_t stringIndex = 0;
-    memcpy(&stringIndex, &instruction.args[0], sizeof(stringIndex));
-    m_runtimeStack[m_currentRuntimeStackBaseIndex] = m_strings.at(stringIndex);
-
-    // Retrieve function index of previous function
-    m_currentFunctionIndex = m_callStack.top().functionIndex;
-    m_currentFunction = &m_functions.at(m_currentFunctionIndex);
-    // Restore active function index
-    m_currentInstructionIndex = m_callStack.top().instructionIndex;
-    // Restore runtime stack base index for the active function
-    m_currentRuntimeStackBaseIndex = m_callStack.top().runtimeStackBaseIndex;
-    m_callStack.pop();
-    return true;
-}
-
-bool VirtualMachine::execute()
-{
-    // Profiling is runtime-gated: without an active recording these are a few
-    // predictable null checks and no clock reads. With recording, timings are
-    // RELATIVE, never absolute: each iteration takes clock readings, which
-    // perturb the loop cost. Enabled runs measure proportions (fetch vs body,
-    // opcode vs opcode), never production speed.
-    const auto t_fetch =
-        m_profile != nullptr ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    // Cache current function
-    const Function &currentFunction = *m_currentFunction;
-
-    // An instruction index past the last instruction implicitly returns instead
-    // of throwing. This is deliberate: a trailing label resolves to exactly
-    // this position, so a function ending in a label would otherwise need a
-    // redundant ret, and an empty function would have no valid entry state.
-    // Default current instruction to implicit return
-    Instruction instruction;
-    instruction.id = Opcode::Ret;
-
-    // Check for out of bounds instruction index
-    if (currentFunction.instructionSize > m_currentInstructionIndex)
-    {
-        // Retrieve current instruction
-        instruction = currentFunction.instructions.at(m_currentInstructionIndex);
-    }
-
-    const auto t_body =
-        m_profile != nullptr ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    // One probe per iteration, not per case: stamping validation-vs-payload
-    // inside all ~40 switch cases would touch every case and perturb the very
-    // timings it measures, so each opcode gets a single body bucket while the
-    // fetch plus decode share lands in the fetch/decode bucket. The RAII probe
-    // attributes on every exit path, returns and throws alike.
-    const size_t rawOpcode = static_cast<size_t>(instruction.id);
-    const bool knownOpcode = rawOpcode < ProfileData::kOpcodeCount;
-    if (m_profile != nullptr)
-    {
-        m_profile->fetchDecode.count += 1;
-        m_profile->fetchDecode.cycles +=
-            static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(t_body - t_fetch).count());
-        ++m_profile->loopIterations;
-    }
-    const BodyProbe probe(*this, rawOpcode, knownOpcode, t_body);
-
-    switch (instruction.id)
+    switch (in.id)
     {
     case Opcode::Nop:
-        ++m_currentInstructionIndex;
-        break;
-
     case Opcode::Break:
-        // Breakpoint, for debugging. There is no debugger attached, so this
-        // intentionally does nothing and execution continues.
-        ++m_currentInstructionIndex;
         break;
-
     case Opcode::Exit:
-        // Return false to signal end of script
         return false;
-        break;
-
     case Opcode::Movv:
-    {
-        // Move variable to variable
-        // Arg 0 is variable index of destination
-        // Arg 1 is variable index of source
-        if (!frameIndexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0], currentFunction.stackSize,
-                               m_runtimeStack.size()) ||
-            !frameIndexInRange(m_currentRuntimeStackBaseIndex, instruction.args[1], currentFunction.stackSize,
-                               m_runtimeStack.size()))
-        {
-            throwRuntimeError(m_logger, "Movv variable index out of range.");
-        }
-        // Args hold raw bits, so copy them out instead of punning the pointer.
-        uint32_t destIndex = 0;
-        uint32_t srcIndex = 0;
-        memcpy(&destIndex, &instruction.args[0], sizeof(destIndex));
-        memcpy(&srcIndex, &instruction.args[1], sizeof(srcIndex));
-        // Copying would spread Invalid through assignment, so refuse it here
-        // like pushValue and popValue do instead of erroring late.
-        if (m_runtimeStack.at(m_currentRuntimeStackBaseIndex + srcIndex).getType() == Value::Type::Invalid)
-        {
-            throwRuntimeError(m_logger, "Movv of an uninitialized value.");
-        }
-        m_runtimeStack[m_currentRuntimeStackBaseIndex + destIndex] =
-            m_runtimeStack.at(m_currentRuntimeStackBaseIndex + srcIndex);
-        ++m_currentInstructionIndex;
+        if (local(in.args[1]).getType() == Value::Type::Invalid)
+            fail("Read of an uninitialized local.");
+        local(in.args[0]) = local(in.args[1]);
         break;
-    }
-
     case Opcode::Movi:
-    {
-        // Move integer to variable
-        // Arg 0 is variable index of destination
-        // Arg 1 is source integer value
-        if (!frameIndexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0], currentFunction.stackSize,
-                               m_runtimeStack.size()))
-        {
-            throwRuntimeError(m_logger, "Movi variable index out of range.");
-        }
-        uint32_t destIndex = 0;
-        memcpy(&destIndex, &instruction.args[0], sizeof(destIndex));
-        m_runtimeStack[m_currentRuntimeStackBaseIndex + destIndex] = instruction.args[1];
-        ++m_currentInstructionIndex;
+        local(in.args[0]) = Value(in.args[1]);
         break;
-    }
-
     case Opcode::Movf:
-    {
-        // Move float to variable
-        // Arg 0 is variable index of destination
-        // Arg 1 is source float value
-        if (!frameIndexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0], currentFunction.stackSize,
-                               m_runtimeStack.size()))
-        {
-            throwRuntimeError(m_logger, "Movf variable index out of range.");
-        }
-        uint32_t destIndex = 0;
-        float value = 0.f;
-        memcpy(&destIndex, &instruction.args[0], sizeof(destIndex));
-        memcpy(&value, &instruction.args[1], sizeof(value));
-        m_runtimeStack[m_currentRuntimeStackBaseIndex + destIndex] = value;
-        ++m_currentInstructionIndex;
+        local(in.args[0]) = Value(std::bit_cast<float>(in.args[1]));
         break;
-    }
-
     case Opcode::Movs:
-    {
-        // Move string to variable
-        // Arg 0 is variable index of destination
-        // Arg 1 is source index of string
-        if (!frameIndexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0], currentFunction.stackSize,
-                               m_runtimeStack.size()))
-        {
-            throwRuntimeError(m_logger, "Movs variable index out of range.");
-        }
-        if (!indexInRange(0, instruction.args[1], m_strings.size()))
-        {
-            throwRuntimeError(m_logger, "Movs string index out of range.");
-        }
-        uint32_t destIndex = 0;
-        uint32_t stringIndex = 0;
-        memcpy(&destIndex, &instruction.args[0], sizeof(destIndex));
-        memcpy(&stringIndex, &instruction.args[1], sizeof(stringIndex));
-        m_runtimeStack[m_currentRuntimeStackBaseIndex + destIndex] = m_strings.at(stringIndex);
-        ++m_currentInstructionIndex;
+        local(in.args[0]) = m_constants.at(in.args[1]);
         break;
-    }
-
-    case Opcode::Pushi:
-        // Push signed 32 bit integer value to
-        // Arg 0 is integer value
-        pushValue(Value(instruction.args[0]));
-        ++m_currentInstructionIndex;
-        break;
-
-    case Opcode::Pushu:
-    {
-        // Arg 0 is an unsigned integer value
-        uint32_t value = 0;
-        memcpy(&value, &instruction.args[0], sizeof(value));
-        pushValue(Value(value));
-        ++m_currentInstructionIndex;
-    }
-    break;
-
-    case Opcode::Pushs:
-    {
-        // Arg 0 is string index
-        uint32_t stringIndex = 0;
-        memcpy(&stringIndex, &instruction.args[0], sizeof(stringIndex));
-        if (!indexInRange(0, instruction.args[0], m_strings.size()))
-        {
-            throwRuntimeError(m_logger, "Pushs string index out of range.");
-        }
-        pushValue(m_strings.at(stringIndex));
-        ++m_currentInstructionIndex;
-    }
-    break;
-
-    case Opcode::Pushf:
-    {
-        // Arg 0 is float value
-        float value = 0.f;
-        memcpy(&value, &instruction.args[0], sizeof(value));
-        pushValue(Value(value));
-        ++m_currentInstructionIndex;
-    }
-    break;
-
     case Opcode::Pushv:
-    {
-        // Arg 0 is variable index
-        uint32_t varIndex = 0;
-        memcpy(&varIndex, &instruction.args[0], sizeof(varIndex));
-        if (!frameIndexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0], currentFunction.stackSize,
-                               m_runtimeStack.size()))
-        {
-            throwRuntimeError(m_logger, "Pushv variable index out of range.");
-        }
-        pushValue(m_runtimeStack.at(m_currentRuntimeStackBaseIndex + varIndex));
-        ++m_currentInstructionIndex;
-    }
-    break;
-
-    case Opcode::Pop:
-        // Remove top element from runtime stack
-        if (m_runtimeStack.empty())
-        {
-            throwRuntimeError(m_logger, "Pop needs a value on the runtime stack.");
-        }
-        if (static_cast<uint64_t>(m_runtimeStack.size()) <=
-            static_cast<uint64_t>(m_currentRuntimeStackBaseIndex) + static_cast<uint64_t>(currentFunction.stackSize))
-        {
-            throwRuntimeError(m_logger, "Pop would go below the frame.");
-        }
-        m_runtimeStack.pop_back();
-        ++m_currentInstructionIndex;
+        push(local(in.args[0]));
         break;
-
+    case Opcode::Pushi:
+        push(Value(in.args[0]));
+        break;
+    case Opcode::Pushu:
+        push(Value(std::bit_cast<uint32_t>(in.args[0])));
+        break;
+    case Opcode::Pushf:
+        push(Value(std::bit_cast<float>(in.args[0])));
+        break;
+    case Opcode::Pushs:
+        push(m_constants.at(in.args[0]));
+        break;
+    case Opcode::Pop:
+        pop();
+        break;
     case Opcode::Popv:
     {
-        // Remove top of the stack and store it in variable
-        // Arg 0 is variable index
-        if (m_runtimeStack.empty())
-        {
-            throwRuntimeError(m_logger, "Popv needs a value on the runtime stack.");
-        }
-        if (static_cast<uint64_t>(m_runtimeStack.size()) <=
-            static_cast<uint64_t>(m_currentRuntimeStackBaseIndex) + static_cast<uint64_t>(currentFunction.stackSize))
-        {
-            throwRuntimeError(m_logger, "Popv would go below the frame.");
-        }
-        if (!frameIndexInRange(m_currentRuntimeStackBaseIndex, instruction.args[0], currentFunction.stackSize,
-                               m_runtimeStack.size()))
-        {
-            throwRuntimeError(m_logger, "Popv variable index out of range.");
-        }
-        // Copying would spread Invalid through assignment, so refuse it here
-        // like pushValue and popValue do instead of erroring late.
-        if (m_runtimeStack.back().getType() == Value::Type::Invalid)
-        {
-            throwRuntimeError(m_logger, "Popv of an uninitialized value.");
-        }
-        uint32_t destIndex = 0;
-        memcpy(&destIndex, &instruction.args[0], sizeof(destIndex));
-        m_runtimeStack[m_currentRuntimeStackBaseIndex + destIndex] = m_runtimeStack.back();
-        m_runtimeStack.pop_back();
-        ++m_currentInstructionIndex;
+        auto value = pop();
+        local(in.args[0]) = std::move(value);
+        break;
     }
-    break;
-
     case Opcode::Call:
-        return executeCall(instruction);
-
+        enter(static_cast<uint32_t>(in.args[0]));
+        break;
     case Opcode::Calle:
-        return executeCalle(instruction);
+    {
+        const auto &ext = p.externs.at(in.args[0]);
+        auto binding = m_bindings.find(ext.name);
+        if (binding == m_bindings.end())
+            fail("The extern function '" + ext.name + "' does not exist.");
+        if (binding->second->getSignature() != ext.signature)
+            fail("Host signature mismatch for '" + ext.name + "'.");
+        const size_t count = ext.signature.argumentCount;
+        if (m_operands.size() < frame.operandBase || count > m_operands.size() - frame.operandBase)
+            fail("Host arguments cross the operand boundary.");
+        const auto first = m_operands.size() - count;
+        ExternCall call(std::span<const Value>(m_operands).subspan(first, count), ext.signature.returnKind,
+                        m_stringBudget);
+        if (!binding->second->call(call))
+            fail("The extern function '" + ext.name + "' reported failure.");
+        auto result = call.finish();
+        m_operands.resize(first);
+        if (ext.signature.returnKind == kern::ReturnKind::Value)
+            push(std::move(result));
+        break;
+    }
     case Opcode::Ret:
-        return executeRet();
-
-    case Opcode::Retv:
-        return executeRetv(instruction);
-
-    case Opcode::Reti:
-        return executeReti(instruction);
-
-    case Opcode::Retf:
-        return executeRetf(instruction);
-
-    case Opcode::Rets:
-        return executeRets(instruction);
-
+    {
+        const bool valued = function.signature.returnKind == kern::ReturnKind::Value;
+        if (m_operands.size() - frame.operandBase != static_cast<size_t>(valued))
+            fail("Return stack does not match signature.");
+        Value result;
+        if (valued)
+            result = pop();
+        const size_t base = frame.localsBase, floor = frame.operandBase;
+        m_locals.resize(base);
+        m_operands.resize(floor);
+        m_frames.pop_back();
+        if (m_frames.empty())
+            return false;
+        if (valued)
+            push(std::move(result));
+        break;
+    }
     case Opcode::Add:
-    {
-        Value x;
-        // 2 Values needed
-        if (!popValue(x) || m_runtimeStack.empty())
-        {
-            throwRuntimeError(m_logger, "Add needs two values on the runtime stack.");
-        }
-        if (!m_runtimeStack.back().isNumeric() || !x.isNumeric())
-        {
-            throwRuntimeError(m_logger, "Add needs numeric operands.");
-        }
-        m_runtimeStack.back() += x;
-        ++m_currentInstructionIndex;
-    }
-    break;
-
     case Opcode::Sub:
-    {
-        Value x;
-        // 2 Values needed
-        if (!popValue(x) || m_runtimeStack.empty())
-        {
-            throwRuntimeError(m_logger, "Sub needs two values on the runtime stack.");
-        }
-        if (!m_runtimeStack.back().isNumeric() || !x.isNumeric())
-        {
-            throwRuntimeError(m_logger, "Sub needs numeric operands.");
-        }
-        m_runtimeStack.back() -= x;
-        ++m_currentInstructionIndex;
-    }
-    break;
-
     case Opcode::Mul:
-    {
-        Value x;
-        // 2 values needed
-        if (!popValue(x) || m_runtimeStack.empty())
-        {
-            throwRuntimeError(m_logger, "Mul needs two values on the runtime stack.");
-        }
-        if (!m_runtimeStack.back().isNumeric() || !x.isNumeric())
-        {
-            throwRuntimeError(m_logger, "Mul needs numeric operands.");
-        }
-        m_runtimeStack.back() *= x;
-        ++m_currentInstructionIndex;
-    }
-    break;
-
     case Opcode::Div:
     {
-        Value x;
-        // 2 values needed
-        if (!popValue(x) || m_runtimeStack.empty())
+        auto y = pop(), x = pop();
+        numeric(x);
+        numeric(y);
+        switch (in.id)
         {
-            throwRuntimeError(m_logger, "Div needs two values on the runtime stack.");
+        case Opcode::Add:
+            x += y;
+            break;
+        case Opcode::Sub:
+            x -= y;
+            break;
+        case Opcode::Mul:
+            x *= y;
+            break;
+        case Opcode::Div:
+            if (y.isZero())
+                fail("Division by zero.");
+            x /= y;
+            break;
+        default:
+            break;
         }
-        if (!m_runtimeStack.back().isNumeric() || !x.isNumeric())
-        {
-            throwRuntimeError(m_logger, "Div needs numeric operands.");
-        }
-        // Value leaves the operand unchanged on a zero divisor instead of
-        // dividing, so the check belongs to the caller.
-        if (x.isZero())
-        {
-            throwRuntimeError(m_logger, "Division by zero.");
-        }
-        m_runtimeStack.back() /= x;
-        ++m_currentInstructionIndex;
+        push(std::move(x));
+        break;
     }
-    break;
-
     case Opcode::Inc:
-    {
-        // Increments the top of the runtime stack in place.
-        if (m_runtimeStack.empty())
-        {
-            throwRuntimeError(m_logger, "Inc needs a value on the runtime stack.");
-        }
-        Value &top = m_runtimeStack.back();
-        if (!top.isNumeric())
-        {
-            throwRuntimeError(m_logger, "Inc needs a numeric value.");
-        }
-        top += Value(static_cast<int32_t>(1));
-        ++m_currentInstructionIndex;
-    }
-    break;
-
     case Opcode::Dec:
     {
-        // Decrements the top of the runtime stack in place.
-        if (m_runtimeStack.empty())
-        {
-            throwRuntimeError(m_logger, "Dec needs a value on the runtime stack.");
-        }
-        Value &top = m_runtimeStack.back();
-        if (!top.isNumeric())
-        {
-            throwRuntimeError(m_logger, "Dec needs a numeric value.");
-        }
-        top -= Value(static_cast<int32_t>(1));
-        ++m_currentInstructionIndex;
+        auto x = pop();
+        numeric(x);
+        if (in.id == Opcode::Inc)
+            x += Value(1);
+        else
+            x -= Value(1);
+        push(std::move(x));
+        break;
     }
-    break;
-
-    case Opcode::And:
-    {
-        Value x;
-        Value y;
-        if (!popValue(x) || !popValue(y))
-        {
-            throwRuntimeError(m_logger, "And needs two values on the runtime stack.");
-        }
-        if (!x.isNumeric() || !y.isNumeric())
-        {
-            throwRuntimeError(m_logger, "And needs numeric values.");
-        }
-        // Zero is the only false value, any other value is true.
-        pushValue(Value(static_cast<int32_t>(!x.isZero() && !y.isZero())));
-        ++m_currentInstructionIndex;
-    }
-    break;
-
-    case Opcode::Or:
-    {
-        Value x;
-        Value y;
-        if (!popValue(x) || !popValue(y))
-        {
-            throwRuntimeError(m_logger, "Or needs two values on the runtime stack.");
-        }
-        if (!x.isNumeric() || !y.isNumeric())
-        {
-            throwRuntimeError(m_logger, "Or needs numeric values.");
-        }
-        pushValue(Value(static_cast<int32_t>(!x.isZero() || !y.isZero())));
-        ++m_currentInstructionIndex;
-    }
-    break;
-
+    case Opcode::Neg:
+        push(pop().negated());
+        break;
     case Opcode::Not:
-    {
-        if (m_runtimeStack.empty())
-        {
-            throwRuntimeError(m_logger, "Not needs a value on the runtime stack.");
-        }
-        if (!m_runtimeStack.back().isNumeric())
-        {
-            throwRuntimeError(m_logger, "Not needs a numeric value.");
-        }
-        const bool truth = !m_runtimeStack.back().isZero();
-        m_runtimeStack.back() = Value(static_cast<int32_t>(!truth));
-        ++m_currentInstructionIndex;
-    }
-    break;
+        push(Value(static_cast<int32_t>(!pop().truthy())));
+        break;
+    case Opcode::And:
+    case Opcode::Or:
     case Opcode::Xor:
     {
-        Value x;
-        Value y;
-        if (!popValue(x) || !popValue(y))
-        {
-            throwRuntimeError(m_logger, "Xor needs two values on the runtime stack.");
-        }
-        if (!x.isNumeric() || !y.isNumeric())
-        {
-            throwRuntimeError(m_logger, "Xor needs numeric values.");
-        }
-        // True only when exactly one side is true.
-        const bool truth = (!x.isZero()) != (!y.isZero());
-        pushValue(Value(static_cast<int32_t>(truth)));
-        ++m_currentInstructionIndex;
+        const bool y = pop().truthy(), x = pop().truthy();
+        const bool result = in.id == Opcode::And ? x && y : in.id == Opcode::Or ? x || y : x != y;
+        push(Value(static_cast<int32_t>(result)));
+        break;
     }
-    break;
-
     case Opcode::Jmp:
-    {
-        // Arg 0 is target instruction index for jump. The end of the function
-        // itself is a legal target: the fetch treats it as an implicit return,
-        // which is how trailing labels resolve.
-        uint32_t jumpIndex = 0;
-        memcpy(&jumpIndex, &instruction.args[0], sizeof(jumpIndex));
-        if (jumpIndex > currentFunction.instructionSize)
-        {
-            throwRuntimeError(m_logger, "Jmp target out of range.");
-        }
-        m_currentInstructionIndex = jumpIndex;
-    }
-    break;
+        frame.ip = static_cast<uint32_t>(in.args[0]);
+        break;
     case Opcode::Je:
-    {
-        // The target is validated before the operands pop, so a refused jump
-        // leaves the stack intact.
-        uint32_t jumpIndex = 0;
-        memcpy(&jumpIndex, &instruction.args[0], sizeof(jumpIndex));
-        if (jumpIndex > currentFunction.instructionSize)
-        {
-            throwRuntimeError(m_logger, "Je target out of range.");
-        }
-        // Compare top 2 values from stack, x == y
-        Value y;
-        Value x;
-        if (!popValue(y) || !popValue(x))
-        {
-            throwRuntimeError(m_logger, "Je needs two values on the runtime stack.");
-        }
-        if (x == y)
-        {
-            m_currentInstructionIndex = jumpIndex;
-        }
-        else
-        {
-            ++m_currentInstructionIndex;
-        }
-    }
-    break;
     case Opcode::Jne:
-    {
-        uint32_t jumpIndex = 0;
-        memcpy(&jumpIndex, &instruction.args[0], sizeof(jumpIndex));
-        if (jumpIndex > currentFunction.instructionSize)
-        {
-            throwRuntimeError(m_logger, "Jne target out of range.");
-        }
-        // Compare top 2 values from stack, x != y
-        Value y;
-        Value x;
-        if (!popValue(y) || !popValue(x))
-        {
-            throwRuntimeError(m_logger, "Jne needs two values on the runtime stack.");
-        }
-        if (x != y)
-        {
-            m_currentInstructionIndex = jumpIndex;
-        }
-        else
-        {
-            ++m_currentInstructionIndex;
-        }
-    }
-    break;
+    case Opcode::Jg:
+    case Opcode::Jge:
+    case Opcode::Jl:
     case Opcode::Jle:
     {
-        uint32_t jumpIndex = 0;
-        memcpy(&jumpIndex, &instruction.args[0], sizeof(jumpIndex));
-        if (jumpIndex > currentFunction.instructionSize)
+        auto y = pop(), x = pop();
+        bool take = false;
+        switch (in.id)
         {
-            throwRuntimeError(m_logger, "Jle target out of range.");
+        case Opcode::Je:
+            take = x == y;
+            break;
+        case Opcode::Jne:
+            take = x != y;
+            break;
+        case Opcode::Jg:
+            take = x > y;
+            break;
+        case Opcode::Jge:
+            take = x >= y;
+            break;
+        case Opcode::Jl:
+            take = x < y;
+            break;
+        default:
+            take = x <= y;
+            break;
         }
-        // Compare top 2 values from stack, x <= y
-        Value y;
-        Value x;
-        if (!popValue(y) || !popValue(x))
-        {
-            throwRuntimeError(m_logger, "Jle needs two values on the runtime stack.");
-        }
-        if (x <= y)
-        {
-            m_currentInstructionIndex = jumpIndex;
-        }
-        else
-        {
-            ++m_currentInstructionIndex;
-        }
+        if (take)
+            frame.ip = static_cast<uint32_t>(in.args[0]);
+        break;
     }
-    break;
-    case Opcode::Jg:
-    {
-        uint32_t jumpIndex = 0;
-        memcpy(&jumpIndex, &instruction.args[0], sizeof(jumpIndex));
-        if (jumpIndex > currentFunction.instructionSize)
-        {
-            throwRuntimeError(m_logger, "Jg target out of range.");
-        }
-        // Compare top 2 values from stack, x > y
-        Value y;
-        Value x;
-        if (!popValue(y) || !popValue(x))
-        {
-            throwRuntimeError(m_logger, "Jg needs two values on the runtime stack.");
-        }
-        if (x > y)
-        {
-            m_currentInstructionIndex = jumpIndex;
-        }
-        else
-        {
-            ++m_currentInstructionIndex;
-        }
-    }
-    break;
-    case Opcode::Jge:
-    {
-        uint32_t jumpIndex = 0;
-        memcpy(&jumpIndex, &instruction.args[0], sizeof(jumpIndex));
-        if (jumpIndex > currentFunction.instructionSize)
-        {
-            throwRuntimeError(m_logger, "Jge target out of range.");
-        }
-        // Compare top 2 values from stack, x >= y
-        Value y;
-        Value x;
-        if (!popValue(y) || !popValue(x))
-        {
-            throwRuntimeError(m_logger, "Jge needs two values on the runtime stack.");
-        }
-        if (x >= y)
-        {
-            m_currentInstructionIndex = jumpIndex;
-        }
-        else
-        {
-            ++m_currentInstructionIndex;
-        }
-    }
-    break;
-    case Opcode::Jl:
-    {
-        uint32_t jumpIndex = 0;
-        memcpy(&jumpIndex, &instruction.args[0], sizeof(jumpIndex));
-        if (jumpIndex > currentFunction.instructionSize)
-        {
-            throwRuntimeError(m_logger, "Jl target out of range.");
-        }
-        // Compare top 2 values from stack, x < y
-        Value y;
-        Value x;
-        if (!popValue(y) || !popValue(x))
-        {
-            throwRuntimeError(m_logger, "Jl needs two values on the runtime stack.");
-        }
-        if (x < y)
-        {
-            m_currentInstructionIndex = jumpIndex;
-        }
-        else
-        {
-            ++m_currentInstructionIndex;
-        }
-    }
-    break;
-
     default:
-        // Unreachable through assembled code, reachable through corrupt bytecode
-        throwRuntimeError(m_logger, "Unknown instruction id {}.", static_cast<int>(instruction.id));
+        fail("Noncanonical opcode reached execution.");
     }
-
     return true;
 }
-
-void VirtualMachine::pushValue(const Value &val)
+void VirtualMachine::resetProfile()
 {
-    if (val.getType() == Value::Type::Invalid)
-    {
-        throwRuntimeError(m_logger, "Push of an uninitialized value.");
-    }
-    if (m_runtimeStack.size() >= m_maxStackSize)
-    {
-        throwRuntimeError(m_logger, "Maximum runtime stack size exceeded.");
-    }
-    m_runtimeStack.push_back(val);
+    idle("resetProfile");
+    m_profile = std::make_unique<Profile>();
 }
-
-bool VirtualMachine::popValue(Value &val)
+void VirtualMachine::dumpProfile(std::ostream &out)
 {
-    if (m_runtimeStack.empty())
+    static const Profile empty;
+    const auto &p = m_profile ? *m_profile : empty;
+    uint64_t total = p.fetchNs;
+    for (auto n : p.ns)
+        total += n;
+    out << "profile: " << p.steps << " iterations, " << p.calls << " calls, " << total
+        << " ns total\nmnemonic count cycles_ns share_pct\n";
+    struct Row
     {
-        return false;
-    }
-    if (m_runtimeStack.back().getType() == Value::Type::Invalid)
-    {
-        throwRuntimeError(m_logger, "Pop of an uninitialized value.");
-    }
-    val = std::move(m_runtimeStack.back());
-    m_runtimeStack.pop_back();
-    return true;
+        std::string name;
+        uint64_t count;
+        uint64_t ns;
+    };
+    std::vector<Row> rows;
+    for (size_t i = 0; i < p.count.size(); ++i)
+        if (p.count[i])
+            rows.push_back({instructions[i].mnemonic, p.count[i], p.ns[i]});
+    if (p.steps)
+        rows.push_back({"fetch", p.steps, p.fetchNs});
+    std::stable_sort(rows.begin(), rows.end(), [](const auto &a, const auto &b) { return a.ns > b.ns; });
+    for (const auto &row : rows)
+        out << row.name << ' ' << row.count << ' ' << row.ns << ' ' << std::fixed << std::setprecision(1)
+            << (total ? 100.0 * static_cast<double>(row.ns) / static_cast<double>(total) : 0) << "%\n";
 }

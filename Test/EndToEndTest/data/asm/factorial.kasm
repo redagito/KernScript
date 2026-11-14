@@ -1,8 +1,9 @@
 // Iterative factorial: fact(5) = 120. Exercises mul in a loop with
 // variables, a backward jump and an early exit condition.
-extern println 1
+extern println 1 -> void
 
 func main
+-> void
 {
   var n
   var acc

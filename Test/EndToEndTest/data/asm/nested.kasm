@@ -1,8 +1,9 @@
 // Nested calls: main calls double, which calls add2. Return values flow
 // through two frames back to the caller.
-extern println 1
+extern println 1 -> void
 
 func add2
+-> value
 {
   param a
   param b
@@ -15,6 +16,7 @@ func add2
 }
 
 func double
+-> value
 {
   param v
   var r
@@ -26,6 +28,7 @@ func double
 }
 
 func main
+-> void
 {
   pushi 3
   pushi 4

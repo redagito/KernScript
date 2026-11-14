@@ -12,7 +12,7 @@ namespace
 // Calls of one empty main per timing run. Shared with main for the checksum.
 constexpr long long kCalls = 100000;
 
-const std::string kSource = "func main() {}";
+const std::string kSource = "func main() -> void {}";
 
 } // namespace
 

@@ -1,0 +1,45 @@
+# A room renovation estimate with alternatives and a contingency allowance.
+# Run from beside CalcPad: CalcPad --run scripts/renovation.txt
+# Amounts are estimates in one chosen currency, before tax unless stated.
+:import math_helpers
+
+# Measure the room, subtract doors/windows, and allow for cutting waste.
+let room_length = 5.2
+let room_width = 3.8
+let room_height = 2.6
+let openings_area = 5.1
+let floor_area = room_length * room_width
+let wall_area = 2.0 * (room_length + room_width) * room_height - openings_area
+let floor_order_area = floor_area + math_helpers::percent(floor_area, 12.0)
+
+# Paint: two coats, coverage in square metres per litre.
+let paint_litres = wall_area * 2.0 / 10.0
+let paint_cost = paint_litres * 14.5
+let trim_cost = 2.0 * (room_length + room_width) * 6.2
+let preparation_hours = 7.5
+let decorating_hours = wall_area * 0.18
+let labour_rate = 32.0
+let labour_cost = (preparation_hours + decorating_hours) * labour_rate
+let disposal_cost = 85.0
+let common_cost = paint_cost + trim_cost + labour_cost + disposal_cost
+
+# Compare three flooring quotes on identical quantities and labour.
+let economy_floor_cost = floor_order_area * 18.5
+let standard_floor_cost = floor_order_area * 29.0
+let premium_floor_cost = floor_order_area * 44.0
+let economy_subtotal = common_cost + economy_floor_cost
+let standard_subtotal = common_cost + standard_floor_cost
+let premium_subtotal = common_cost + premium_floor_cost
+
+# Include the same tax and contingency assumptions for each option.
+let tax_percent = 20.0
+let contingency_percent = 15.0
+let economy_taxed = economy_subtotal + math_helpers::percent(economy_subtotal, tax_percent)
+let standard_taxed = standard_subtotal + math_helpers::percent(standard_subtotal, tax_percent)
+let premium_taxed = premium_subtotal + math_helpers::percent(premium_subtotal, tax_percent)
+let economy_total = economy_taxed + math_helpers::percent(economy_taxed, contingency_percent)
+let standard_total = standard_taxed + math_helpers::percent(standard_taxed, contingency_percent)
+let premium_total = premium_taxed + math_helpers::percent(premium_taxed, contingency_percent)
+let premium_upgrade = premium_total - standard_total
+let budget = 2500.0
+let standard_budget_remaining = budget - standard_total

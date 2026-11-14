@@ -1,79 +1,64 @@
-# KernScript Assembly Language
+# KernScript Assembly Language (1.0)
 
-`module` (optional, once), `extern` declarations, `func` blocks.
-
-Two-operand instructions separate operands with a comma.
-Forward references are allowed; redefining anything is an error.
+The assembler parses typed text assembly into the shared program model and
+verifies signatures, control flow, and stack use before accepting it. Names are
+quoted in emitted assembly so they cannot be confused with instruction words.
 
 ## Declarations
 
-`module <name>` - names the script, at most once.
+```asm
+module "math"
+extern "read" 0 -> value
+func "math@twice" -> value {
+  param "x"
+  pushv "x"
+  pushi 2
+  mul
+  ret
+}
+```
 
-`extern <name> <argCount>` - declares a host function taking 0-255 arguments.
+`module` is optional. `extern` declares a name, argument count, and return
+kind (`value` or `void`). `func` declares a name and return kind. Functions
+may contain `param`, `var`, and `vara` declarations; each parameter or local
+name is unique within its function. Labels must be unique within a function.
 
-`func <name> { ... }` - script function.
-
-`param <name>` - parameter slot, filled from pushed arguments in order.
-
-`var <name>` - one local slot.
-
-`vara <name> <size>` - array of size >= 1 slots.
-
-`label <name>` - marks the next instruction as a jump target.
-
-Literals:
-
-signed ints -2147483648..2147483647, 
-
-unsigned ints 0..4294967295 (`pushu` only), 
-
-32-bit floats, 
-
-`"double-quoted strings"`.
-
-Backslashes in strings are kept verbatim (`"\n"` is two characters, not a newline); a string must close on its line.
+Names are quoted strings. Constants use signed integers, unsigned integers,
+32-bit floats, or quoted strings. String contents preserve backslashes
+verbatim.
 
 ## Instructions
 
-`nop` - no-op. `break` - no-op, no debugger attached. `exit` - end the script.
+`nop`, `break`, and `exit` have no operands. `exit` ends execution.
 
-`movv <dst>, <src>` - copy variable to variable.
+`movv <dst>, <src>` copies a variable. `movi`, `movf`, and `movs` set a
+variable from a signed integer, float, or string constant.
 
-`movi <dst>, <int>` - set variable to signed constant.
+`pushv`, `pushi`, `pushu`, `pushf`, and `pushs` push a variable or constant.
+`pop` discards the top value; `popv` stores it in a variable.
 
-`movf <dst>, <float>` - set variable to float constant.
+`call <function>` consumes the target's declared arguments and pushes one
+value only for a value function. `calle <extern>` follows the declared extern
+signature in the same way. `ret` returns the top value from a value function;
+void functions use `ret` with an empty stack. Every return must match the
+function signature.
 
-`movs <dst>, "<str>"` - set variable to string constant.
+`add`, `sub`, `mul`, and `div` pop two numbers and push the result. `inc` and
+`dec` change the top value by one. `neg` negates the top numeric value; for
+floats it preserves signed zero. `and`, `or`, and `xor` return integer truth
+values; `not` negates the top value. `jmp` jumps unconditionally.
+`je`, `jne`, `jg`, `jge`, `jl`, and `jle` pop two values and jump when the
+comparison succeeds. Strings compare by value for equality; ordered string
+comparisons do not succeed.
 
-`pushv <var>` - push variable value.
+## Verification and bytecode
 
-`pushi <int>` / `pushu <uint>` / `pushf <float>` / `pushs "<str>"` - push constant.
+Assembly and loaded bytecode are checked before execution. Verification
+rejects unknown symbols, invalid operand types, inconsistent stack heights or
+heights at control-flow joins, call signature mismatches, bad return stacks,
+unreachable malformed instructions, and functions that fall through. Loading
+bad bytecode fails and clears the previously loaded program.
 
-`pop` - discard top of stack; never below the frame.
-
-`popv <var>` - store top of stack in variable and discard it.
-
-`call <func>` - call script function; takes its parameters from the top of the stack and leaves the return value there.
-
-`calle <name>` - call extern function; needs exactly its declared argument count pushed. Results the host leaves behind stay on the stack and count toward the next call.
-
-`ret` - return without value; ends the script in `main`.
-
-`retv <var>` - return variable value.
-
-`reti <int>` / `retf <float>` / `rets "<str>"` - return constant.
-
-`add` / `sub` / `mul` / `div` - pop two numbers, push the result. Division by zero fails the run.
-
-`inc` / `dec` - add/subtract 1 on the top of stack, in place.
-
-`and` / `or` / `xor` - pop two numbers, push 1 or 0. `not` - negate top of stack in place. Zero is false, anything else is true.
-
-`jmp <label>` - unconditional jump.
-`je` / `jne` / `jg` / `jge` / `jl` / `jle <label>` - pop two values, jump on the comparison. `je`/`jne` compare strings by value; ordered jumps never jump on strings.
-
-A jump to a trailing label and falling off the end return implicitly.
-
-A runaway script is stopped after a bounded number of instructions.
-
-Wrong argument count, empty stack and reading a never-assigned variable fail the run.
+The portable wire format is major version 1, minor version 0. It uses fixed
+width little-endian fields and explicit typed operands; it is not compatible
+with older bytecode. Recompile source scripts when upgrading to 1.0.

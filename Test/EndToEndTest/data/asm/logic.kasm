@@ -1,7 +1,8 @@
 // Exercises and, or, not and xor as truth tables plus a combined expression.
-extern println 1
+extern println 1 -> void
 
 func main
+-> void
 {
   // and table: 00 01 10 11 -> 0 0 0 1
   pushi 0

@@ -1,9 +1,10 @@
-extern print 1
-extern println 1
-extern log 2
+extern print 1 -> void
+extern println 1 -> void
+extern log 2 -> void
 
 // Tests calling convention for extern functions
 func main
+-> void
 {
 	// Parameter(s) for extern functions are pushed on top of the stack
 	pushi 10

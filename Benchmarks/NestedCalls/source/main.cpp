@@ -32,8 +32,8 @@ void capture(int value)
     ++g_captureCalls;
 }
 
-const std::string kFibSource = R"(extern capture(x);
-func fib(n) {
+const std::string kFibSource = R"(extern capture(x) -> void;
+func fib(n) -> value {
   if (n <= 1) {
     return n;
   }
@@ -41,7 +41,7 @@ func fib(n) {
   var b = fib(n - 2);
   return a + b;
 }
-func main() {
+func main() -> void {
   capture(fib(20));
 }
 )";
@@ -52,13 +52,13 @@ func main() {
 std::string buildChainSource()
 {
     std::ostringstream source;
-    source << "extern capture(x);\n";
-    source << "func c0() {\n  return 1;\n}\n";
+    source << "extern capture(x) -> void;\n";
+    source << "func c0() -> value {\n  return 1;\n}\n";
     for (int i = 1; i < kChainDepth; ++i)
     {
-        source << "func c" << i << "() {\n  return c" << (i - 1) << "() + 1;\n}\n";
+        source << "func c" << i << "() -> value {\n  return c" << (i - 1) << "() + 1;\n}\n";
     }
-    source << "func main() {\n  capture(c" << (kChainDepth - 1) << "());\n}\n";
+    source << "func main() -> void {\n  capture(c" << (kChainDepth - 1) << "());\n}\n";
     return source.str();
 }
 
@@ -75,7 +75,7 @@ int main(int argumentCount, char **arguments)
         g_captured = 0;
         g_captureCalls = 0;
         std::unique_ptr<kern::IVirtualMachine> vm = bench::makeVm();
-        vm->addFunction("capture", kern::createExternFunction(&capture));
+        vm->addFunction("capture", &capture);
         if (!bench::compileLoad(kFibSource, *vm))
         {
             std::cerr << "NestedCalls/fib: pipeline failed\n";
@@ -136,7 +136,7 @@ int main(int argumentCount, char **arguments)
         g_captured = 0;
         g_captureCalls = 0;
         std::unique_ptr<kern::IVirtualMachine> vm = bench::makeVm();
-        vm->addFunction("capture", kern::createExternFunction(&capture));
+        vm->addFunction("capture", &capture);
         if (!bench::compileLoad(buildChainSource(), *vm))
         {
             std::cerr << "NestedCalls/chain: pipeline failed\n";

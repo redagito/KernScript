@@ -1,7 +1,8 @@
-extern println 1
+extern println 1 -> void
 
 // Second test for calling external functions
 func main
+-> void
 {
 	pushf 10.2
 	calle println

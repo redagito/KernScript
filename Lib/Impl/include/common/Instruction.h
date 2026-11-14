@@ -20,7 +20,4 @@ struct Instruction
     ArgumentType args[4] = {}; /**< Max 4 arguments supported per instruction. */
 };
 
-bool serialize(const Instruction &instruction, std::ostream &stream);
-bool deserialize(Instruction &instruction, std::istream &stream);
-
 std::string toString(const Instruction &instruction);

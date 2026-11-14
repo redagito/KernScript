@@ -1,20 +1,20 @@
-# KernScript Scripting Language (v1 Draft)
+# KernScript Scripting Language (1.0)
 
-Source compiles to KernScript assembly. One source file holds an optional
-`module` header, then `import` declarations, then `extern` declarations
-followed by `func` declarations, with at least one `func`. Execution starts at a host-chosen function;
-every call runs to completion — a script cannot wait across calls.
+Source compiles to typed assembly or directly to portable bytecode. A source
+file has an optional `module` header, imports, extern declarations, and at
+least one function. Execution starts at a host chosen zero argument, void
+function. Every VM call runs to completion.
 
-## Lexical
+## Lexical rules
 
-- Identifiers: `[A-Za-z_][A-Za-z0-9_]*` (`@` is excluded; it is reserved for mangled names).
+- Identifiers: `[A-Za-z_][A-Za-z0-9_]*` (`@` is reserved for mangled names).
 - Keywords: `func extern var if else while return and or xor not module import export`.
-- Integer literals: `-2147483648..2147483647` are signed; `2147483648..4294967295`
-  are unsigned; anything larger is a compile error.
-- Float literals: 32-bit, e.g. `3.5`. No exponents.
-- Strings: `"double-quoted"`, kept verbatim (`"\n"` is two characters,
-  not a newline); must close on the same line.
-- `//` comments run to end of line. Whitespace is insignificant.
+- Integer literals: `-2147483648..2147483647` are signed;
+  `2147483648..4294967295` are unsigned; larger values are errors.
+- Float literals are 32-bit, such as `3.5`. Exponents are not supported.
+- Strings use double quotes. Backslash sequences are kept verbatim; `"\n"`
+  is two characters, not a line break. Strings end on the same line.
+- `//` comments run to the end of the line. Whitespace is insignificant.
 
 ## Grammar
 
@@ -22,8 +22,9 @@ every call runs to completion — a script cannot wait across calls.
 Program    := [ModuleDecl] ImportDecl* ExternDecl* FuncDecl+
 ModuleDecl := "module" Ident ";"
 ImportDecl := "import" Ident ";"
-ExternDecl := "extern" Ident "(" [Ident ("," Ident)*] ")" ";"
-FuncDecl   := ["export"] "func" Ident "(" [Ident ("," Ident)*] ")" Block
+ExternDecl := "extern" Ident "(" [Ident ("," Ident)*] ")" "->" ReturnKind ";"
+FuncDecl   := ["export"] "func" Ident "(" [Ident ("," Ident)*] ")" "->" ReturnKind Block
+ReturnKind := "value" | "void"
 Block      := "{" Stmt* "}"
 Stmt       := VarDecl | Assign | If | While | Return | ExprStmt
 VarDecl    := "var" Ident ["=" Expr] ";"
@@ -44,78 +45,68 @@ Primary    := Integer | Float | String | Ident | Call | "(" Expr ")"
 Call       := [Ident "::"] Ident "(" [Expr ("," Expr)*] ")"
 ```
 
-At most one `module` declaration is allowed and it must come first.
-`import` declarations sit between the module header (if any) and the
-`extern`/`func` declarations; an `import` after an `extern` or `func` is
-a compile error. `export` prefixes `func` declarations only. A call may
-qualify its target once (`mod::func(...)`); the qualifier is recorded but
-not resolved here. Imports resolve at compile time through the search paths
-passed to `compile`: each `import name;` loads `name.ks` (first hit wins with
-an exact case-sensitive match), the file must declare the matching `module`,
-and each file loads once (diamonds and repeats share; cycles, mismatches,
-missing files and duplicate module names are compile errors).
+Imports follow the optional module header and precede externs and functions.
+`export` applies to functions. Imports resolve through the search paths passed
+to compilation; `import name;` loads `name.ks`, and that file must declare
+`module name;`. Repeated imports share one loaded module. Cycles, missing files,
+name mismatches, and duplicate modules are errors.
 
-Name resolution and mangling: an unqualified call resolves in the calling
-function's own module only, private functions included. A qualified call
-`m::f` resolves in `m`'s exported set only, and `m` must be the caller's own
-module or one of its direct imports; anything else is a compile error
-(unknown module, unknown function, or `m::f is not exported`). Visibility is
-transitive only through direct imports: a module sees its own functions and
-its direct imports' exports, never its imports' imports. Lowering mangles
-every named-module definition and every resolved qualified call to
-`mod@func` (exactly one `@`: both sides are `@`-free); functions owned by
-the anonymous root keep today's flat names. `main` mangles along with its
-module (`math@main`); only the anonymous root's `main` stays host-callable
-under the flat name.
+Unqualified calls resolve in the current module, including private functions.
+Qualified calls resolve only to exported functions in the current module or a
+direct import. Visibility is not transitive. Named module functions are
+mangled as `module@function`; anonymous root functions keep flat names.
 
-No `for`, `break` or `continue` in v1.
+## Values and operators
 
-## Types
+Variables are dynamically typed and can hold signed or unsigned integers,
+floats, or strings. Numeric zero is false and other numbers are true. Every
+string is true, including the empty string. Conditions and logical operators
+use these truth rules. Logical operators return integer `1` or `0`; `and` and
+`or` evaluate both operands. `+ - * /` require numbers. Division by zero and
+out of range results fail at runtime. Equality compares strings by value;
+ordered string comparisons are false. Comparisons involving NaN are true only
+for `!=`.
 
-Dynamic: a variable holds a signed int, unsigned int, float or string,
-and may hold different types over time. Zero is false, anything else is
-true. Truth values are ints (`1`/`0`).
+## Functions and externs
 
-## Operators
+Return kinds are explicit and part of the function signature:
 
-`+ - * /` need numbers; division by zero and out-of-range results fail
-the run. `and`/`or`/`xor` pop both sides (no short-circuit) and push
-1 or 0; `not` negates one value. `==`/`!=` compare strings by value;
-ordered comparisons (`< <= > >=`) on strings never hold. Comparisons
-with NaN hold only for `!=`.
+```ks
+extern read() -> value;
+extern emit(text) -> void;
 
-## Calls
+func twice(x) -> value {
+  return x * 2;
+}
 
-Arguments evaluate left to right. A call with the wrong number of
-arguments is a compile error. A function is valued if it contains
-`return expr;`, void otherwise; mixing both forms in one function is a
-compile error. Using a void call as a value is a compile error; a valued
-call used as a statement discards its value. Each extern must be used
-consistently - either always for its value or always as a statement.
-Recursion is allowed.
+func main() -> void {
+  emit(twice(read()));
+}
+```
 
-`extern name(params);` declares a host function; calls look like script
-calls. A call needs exactly the declared argument count pushed; values
-a previous extern call left behind count toward the next call, so
-consume what you do not need. Externs are global: declare them per file
-as needed and call them unqualified. The same extern name declared in
-several files merges silently when the arities match and is a compile
-error on mismatch; a qualified call never resolves to an extern since
-externs have no module.
+A value function must return a value on every reachable path. A void function
+may return only with `return;`. Missing returns, bare returns in value
+functions, and valued returns in void functions are compile errors. A void
+call cannot be used as a value. A valued call used as a statement is allowed
+and its result is discarded. Extern return kinds and argument counts must
+match the registered host binding. Declarations merged from imported files
+must have identical signatures. Nested calls preserve earlier expression
+values. Recursion is supported.
 
-Valued/void, arity, duplicate and forward-reference rules run on the
-mangled names exactly as they ran on flat names, so the same function name
-in two modules (`math::id` vs `util::id`) coexists and each call site checks
-against its own resolved target.
+## Errors and limits
 
-## Errors
+Compile errors include duplicate or undeclared names, wrong argument counts,
+return-kind mismatches, reachable fallthrough in value functions, void calls
+used as values, conflicting extern signatures, invalid literals, and returns
+outside functions. Runtime failures include invalid operand types, division by
+zero, overflow, uninitialized reads, missing host bindings, and instruction
+budget exhaustion.
 
-Compile errors: duplicate or undeclared names, wrong argument count,
-mixed valued/void returns, void call used as a value, inconsistent extern
-use, bad literals, `return` outside a function, or nesting past the depth
-bound (blocks and expressions share one bound, so runaway nesting fails
-clean instead of overflowing the host stack). Runtime failures (wrong
-operand types, division by zero, overflow, reading a never-assigned
-variable, missing host function, runaway execution past its bounded
-instruction count) fail the run.
-Diagnostics print as `<file>:<line>:<col>: error: <message>`, followed by a `note: <hint>` line when a hint applies.
+Blocks and expression trees are bounded at 128 levels. Flat operator chains
+count toward this bound; split long chains with intermediate variables.
+Import depth is also bounded at 128. Diagnostics use
+`<file>:<line>:<column>: error: <message>` and may include a hint.
+
+Return-path analysis is conservative: `if` requires both branches to return,
+or a later return, and loops are assumed able to exit. Add an explicit return
+after a loop in a value function, even if its condition is always true.

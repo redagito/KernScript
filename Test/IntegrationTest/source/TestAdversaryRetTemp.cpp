@@ -34,28 +34,30 @@ std::string runSource(const std::string &source)
 
 } // namespace
 
-TEST_CASE("Valued function keeps user variable beside hidden spill slot", "[integration][compiler][lower]")
+TEST_CASE("Valued function returns through a local that resembles a spill name", "[integration][compiler][lower]")
 {
-    // The hidden return spill slot is picked before the body lowers. A
-    // parameter named retmp must not steal retmp0 from the body.
-    REQUIRE(runSource("extern println(x);\nfunc f(retmp) {\n var retmp0 = retmp + 1;\n return retmp0;\n}\n"
-                      "func main() {\n println(f(41));\n}\n") == "42\n");
+    REQUIRE(
+        runSource("extern println(x) -> void;\nfunc f(retmp) -> value {\n var retmp0 = retmp + 1;\n return retmp0;\n}\n"
+                  "func main() -> void {\n println(f(41));\n}\n") == "42\n");
 }
 
-TEST_CASE("Valued function keeps retmp variable beside retmp0 parameter", "[integration][compiler][lower]")
+TEST_CASE("Valued function returns through similarly named locals and parameters", "[integration][compiler][lower]")
 {
-    REQUIRE(runSource("extern println(x);\nfunc f(retmp0) {\n var retmp = retmp0 + 1;\n return retmp;\n}\n"
-                      "func main() {\n println(f(41));\n}\n") == "42\n");
+    REQUIRE(
+        runSource("extern println(x) -> void;\nfunc f(retmp0) -> value {\n var retmp = retmp0 + 1;\n return retmp;\n}\n"
+                  "func main() -> void {\n println(f(41));\n}\n") == "42\n");
 }
 
-TEST_CASE("Valued function may declare its own retmp variable", "[integration][compiler][lower]")
+TEST_CASE("Valued function returns through a local named retmp", "[integration][compiler][lower]")
 {
-    REQUIRE(runSource("extern println(x);\nfunc f() {\n var retmp = 41;\n return retmp + 1;\n}\n"
-                      "func main() {\n println(f());\n}\n") == "42\n");
+    REQUIRE(runSource("extern println(x) -> void;\nfunc f() -> value {\n var retmp = 41;\n return retmp + 1;\n}\n"
+                      "func main() -> void {\n println(f());\n}\n") == "42\n");
 }
 
-TEST_CASE("Valued function may declare retmp inside nested blocks", "[integration][compiler][lower]")
+TEST_CASE("Valued function returns through a nested local named retmp", "[integration][compiler][lower]")
 {
-    REQUIRE(runSource("extern println(x);\nfunc f(v) {\n if (v) {\n var retmp = 41;\n return retmp + 1;\n }\n"
-                      " return 0;\n}\nfunc main() {\n println(f(1));\n}\n") == "42\n");
+    REQUIRE(
+        runSource(
+            "extern println(x) -> void;\nfunc f(v) -> value {\n if (v) {\n var retmp = 41;\n return retmp + 1;\n }\n"
+            " return 0;\n}\nfunc main() -> void {\n println(f(1));\n}\n") == "42\n");
 }

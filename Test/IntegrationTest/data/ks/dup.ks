@@ -1,4 +1,4 @@
 module dup;
-func dupfn() {
+func dupfn() -> value {
   return 1;
 }

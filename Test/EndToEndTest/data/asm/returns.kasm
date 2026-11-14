@@ -1,9 +1,10 @@
 // Exercises every return form through callees with parameters and locals,
 // plus nop, break and exit.
-extern println 1
-extern print 1
+extern println 1 -> void
+extern print 1 -> void
 
 func forty_two
+-> value
 {
   param unused
   var scratch
@@ -13,27 +14,32 @@ func forty_two
 }
 
 func pi
+-> value
 {
   retf 3.5
 }
 
 func greeting
+-> value
 {
   param unused
   rets "hello"
 }
 
 func empty
+-> value
 {
   rets ""
 }
 
 func nothing
+-> void
 {
   ret
 }
 
 func main
+-> void
 {
   // retv through a parameter and a local
   pushi 0

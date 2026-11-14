@@ -31,8 +31,8 @@ std::vector<int> g_captured;
 
 void put(int value) { g_captured.push_back(value); }
 
-const std::string kSource = R"(extern put(x);
-func fact(n) {
+const std::string kSource = R"(extern put(x) -> void;
+func fact(n) -> value {
   var acc = 1;
   var k = n;
   while (k > 1) {
@@ -41,7 +41,7 @@ func fact(n) {
   }
   return acc;
 }
-func gcd(a, b) {
+func gcd(a, b) -> value {
   var x = a;
   var y = b;
   while (x != y) {
@@ -53,7 +53,7 @@ func gcd(a, b) {
   }
   return x;
 }
-func fib(n) {
+func fib(n) -> value {
   if (n <= 1) {
     return n;
   }
@@ -61,7 +61,7 @@ func fib(n) {
   var s = fib(n - 2);
   return r + s;
 }
-func main() {
+func main() -> void {
   put(fact(12));
   var s = 0;
   var i = 1;
@@ -82,7 +82,7 @@ int main()
     std::cout << "machine: " << bench::machineNote() << '\n';
 
     std::unique_ptr<kern::IVirtualMachine> vm = bench::makeVm();
-    vm->addFunction("put", kern::createExternFunction(&put));
+    vm->addFunction("put", &put);
     if (!bench::compileLoad(kSource, *vm))
     {
         std::cerr << "RealProgram: pipeline failed\n";

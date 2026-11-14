@@ -1,28 +1,13 @@
 #pragma once
-
+#include "FunctionSignature.h"
+#include "IExternCall.h"
 namespace kern
 {
-
-class IVirtualMachine;
-
-/**
- * \brief Extern function interface class.
- *
- * Provides a function interface for calling native functions from scripts.
- */
 class IExternFunction
 {
 public:
     virtual ~IExternFunction() = default;
-
-    /**
-     * \brief Returns number of expected function arguments.
-     */
-    virtual unsigned int getArgumentCount() const = 0;
-
-    /**
-     * \brief Call function from script.
-     */
-    virtual bool call(IVirtualMachine &vm) = 0;
+    virtual FunctionSignature getSignature() const = 0;
+    virtual bool call(IExternCall &) = 0;
 };
 } // namespace kern

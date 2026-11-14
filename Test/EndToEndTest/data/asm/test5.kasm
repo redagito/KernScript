@@ -1,7 +1,8 @@
-extern println 1
+extern println 1 -> void
 
 // Test for conditional jump to label
 func main
+-> void
 {
 	pushi 5
 	calle println

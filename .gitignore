@@ -1,5 +1,6 @@
 # Conan build directory and generated presets (Conan 2)
 /build/
+/.conan2/
 /CMakeUserPresets.json
 
 # Test byte code output

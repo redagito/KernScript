@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 
 /**
@@ -9,6 +11,13 @@
 class Value
 {
 public:
+    // Shared by the VM's host-returned strings. Copies share immutable storage,
+    // so their bytes are charged once and released with the last reference.
+    struct StringBudget
+    {
+        size_t limit;
+        size_t used = 0;
+    };
     enum class Type
     {
         Integer,
@@ -21,11 +30,12 @@ public:
 
     Value();
     Value(const Value &value);
-    Value(Value &&value);
+    Value(Value &&value) noexcept;
     Value(int32_t value);
     Value(uint32_t value);
     Value(float value);
     Value(const std::string &value);
+    Value(const std::string &value, std::shared_ptr<StringBudget> budget);
 
     ~Value();
 
@@ -37,6 +47,7 @@ public:
     bool convert(bool &value) const;
 
     Type getType() const;
+    static size_t stringStorageBytes();
 
     std::string toString() const;
 
@@ -58,8 +69,13 @@ public:
      */
     bool isZero() const;
 
+    /** Zero is false; every other initialized value, including strings, is true. */
+    bool truthy() const;
+    /** Negates a number with checked integer bounds and IEEE floating-point sign semantics. */
+    Value negated() const;
+
     Value &operator=(const Value &rhs);
-    Value &operator=(Value &&rhs);
+    Value &operator=(Value &&rhs) noexcept;
 
     Value &operator+=(const Value &rhs);
     Value &operator-=(const Value &rhs);
@@ -111,10 +127,11 @@ private:
 
     union
     {
-        int32_t m_integer;
+        int32_t m_integer = 0;
         uint32_t m_unsignedInteger;
         float m_float;
-        char *m_string = nullptr;
     };
+    struct StringStorage;
+    std::shared_ptr<const StringStorage> m_string;
     Type m_type = Type::Invalid;
 };

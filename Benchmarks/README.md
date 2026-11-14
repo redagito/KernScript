@@ -9,7 +9,7 @@ timing: fast+wrong is a failure, exit code 1. Timing is min-of-7 wall time
 (one warmup run, best of 7), reported as ns/op plus ops/s plus the checksum
 verdict. Benchmarks are NOT tests: they register no ctest cases.
 
-- CallOverhead: empty `func main() {}` callFunction cost, ns/call.
+- CallOverhead: empty `func main() -> void {}` callFunction cost, ns/call.
 - StackOps: script loop, 50000 iterations of a compound expression folded
   into a total, ns/iteration.
 - ArithLoop: script-side nested `while`, 1000x1000 = 1M accumulation
@@ -27,11 +27,15 @@ verdict. Benchmarks are NOT tests: they register no ctest cases.
 Build: `cmake --build build --config Release --target <name>`, run
 `build/Benchmarks/<name>/Release/<name>.exe`. Release measurement needs
 Release Conan configs: `conan install . -s build_type=Release
---build=missing` (mirror of the Debug install; build/ only, never
+--build=missing -o "&:with_benchmarks=True"` (mirror of the Debug install; build/ only, never
 committed). Debug builds stay intact and `ctest --test-dir build -C Debug`
 covers the suite.
 
-## Baseline (Release)
+## Historical 0.1 baseline (Release)
+
+These measurements predate the 1.0 verified call contract and are retained
+for reference. Re-run the migrated benchmarks for current performance; the
+old timings are not a regression threshold for the new runtime.
 
 Date: 2026-10-13. Commit: e02e30e (scaffolding+benches; this file came
 second and changes no code, so the numbers stand for it too).

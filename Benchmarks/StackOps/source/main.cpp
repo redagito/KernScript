@@ -30,8 +30,8 @@ void capture(int value)
     ++g_captureCalls;
 }
 
-const std::string kSource = R"(extern capture(x);
-func main() {
+const std::string kSource = R"(extern capture(x) -> void;
+func main() -> void {
   var total = 0;
   var i = 0;
   while (i < 50000) {
@@ -50,7 +50,7 @@ int main()
     std::cout << "machine: " << bench::machineNote() << '\n';
 
     std::unique_ptr<kern::IVirtualMachine> vm = bench::makeVm();
-    vm->addFunction("capture", kern::createExternFunction(&capture));
+    vm->addFunction("capture", &capture);
     if (!bench::compileLoad(kSource, *vm))
     {
         std::cerr << "StackOps: pipeline failed\n";

@@ -1,4 +1,4 @@
 module which;
-export func whichfn() {
+export func whichfn() -> value {
   return 2;
 }

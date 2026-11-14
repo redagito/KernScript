@@ -1,393 +1,81 @@
 #pragma once
 
-#include <functional>
+#include <tuple>
 #include <type_traits>
+#include <utility>
 
+#include "IExternCall.h"
 #include "IExternFunction.h"
-#include "IVirtualMachine.h"
+#include "RuntimeError.h"
 
-/**
- * \brief Provides function wrappers for easy registration of C++ functions to
- * the VM.
- */
 namespace kern
 {
 
+/** Wraps a C++ function, preserving source argument order and return type. */
 template <typename ReturnType, typename... ArgumentTypes> class ExternFunction : public IExternFunction
 {
-    // Empty
-};
+    template <class T>
+    static constexpr bool supported =
+        std::is_same_v<std::remove_cvref_t<T>, int> || std::is_same_v<std::remove_cvref_t<T>, unsigned int> ||
+        std::is_same_v<std::remove_cvref_t<T>, float> || std::is_same_v<std::remove_cvref_t<T>, double> ||
+        std::is_same_v<std::remove_cvref_t<T>, bool> || std::is_same_v<std::remove_cvref_t<T>, std::string>;
+    static_assert((supported<ArgumentTypes> && ...), "Unsupported host argument type.");
+    static_assert(std::is_void_v<ReturnType> || supported<ReturnType>, "Unsupported host return type.");
+    using Arguments = std::tuple<std::remove_cvref_t<ArgumentTypes>...>;
 
-template <typename ReturnType> class ExternFunction<ReturnType> : public IExternFunction
-{
 public:
-    ExternFunction(ReturnType (*function)(void)) : m_function(function)
+    explicit ExternFunction(ReturnType (*function)(ArgumentTypes...)) : m_function(function)
     {
-        // Empty
+        if (!function)
+            throw RuntimeError("Host function pointer must not be null.");
     }
 
-    unsigned int getArgumentCount() const { return 0; }
-
-    bool call(IVirtualMachine &vm)
+    FunctionSignature getSignature() const override
     {
-        ReturnType retVal = m_function();
-        vm.setReturnValue(retVal);
-        return true;
+        return {sizeof...(ArgumentTypes), std::is_void_v<ReturnType> ? ReturnKind::Void : ReturnKind::Value};
     }
 
-private:
-    ::std::function<ReturnType(void)> m_function;
-};
-
-template <> class ExternFunction<void> : public IExternFunction
-{
-public:
-    ExternFunction(void (*function)(void)) : m_function(function)
+    bool call(IExternCall &call) override
     {
-        // Empty
-    }
-
-    unsigned int getArgumentCount() const { return 0; }
-
-    bool call(IVirtualMachine &vm)
-    {
-        m_function();
-        vm.setReturnValue();
-        return true;
-    }
-
-private:
-    ::std::function<void(void)> m_function;
-};
-
-template <typename ReturnType, typename ArgType0> class ExternFunction<ReturnType, ArgType0> : public IExternFunction
-{
-public:
-    ExternFunction(ReturnType (*function)(ArgType0)) : m_function(function)
-    {
-        // Empty
-    }
-
-    unsigned int getArgumentCount() const { return 1; }
-
-    bool call(IVirtualMachine &vm)
-    {
-        ArgType0 arg0;
-        if (!vm.popParameter(arg0))
+        Arguments arguments{};
+        if (!readArguments<0>(call, arguments))
         {
             return false;
         }
-        ReturnType retVal = m_function(arg0);
-        vm.setReturnValue(retVal);
-        return true;
-    }
-
-private:
-    ::std::function<ReturnType(ArgType0)> m_function;
-};
-
-template <typename ArgType0> class ExternFunction<void, ArgType0> : public IExternFunction
-{
-public:
-    ExternFunction(void (*function)(ArgType0)) : m_function(function)
-    {
-        // Empty
-    }
-
-    unsigned int getArgumentCount() const { return 1; }
-
-    bool call(IVirtualMachine &vm)
-    {
-        ArgType0 arg0;
-        if (!vm.popParameter(arg0))
+        auto invoke = [this](auto &...values) -> decltype(auto)
+        { return m_function(std::forward<ArgumentTypes>(values)...); };
+        if constexpr (std::is_void_v<ReturnType>)
         {
-            return false;
+            std::apply(invoke, arguments);
         }
-        m_function(arg0);
-        vm.setReturnValue();
-        return true;
-    }
-
-private:
-    ::std::function<void(ArgType0)> m_function;
-};
-
-template <typename ReturnType, typename ArgType0, typename ArgType1>
-class ExternFunction<ReturnType, ArgType0, ArgType1> : public IExternFunction
-{
-public:
-    ExternFunction(ReturnType (*function)(ArgType0, ArgType1)) : m_function(function)
-    {
-        // Empty
-    }
-
-    unsigned int getArgumentCount() const { return 2; }
-
-    bool call(IVirtualMachine &vm)
-    {
-        bool ok = true;
-        // The script pushes arguments in source order, so the last argument is on
-        // top of the runtime stack and has to be popped first.
-        ArgType1 arg1;
-        ok = vm.popParameter(arg1);
-
-        ArgType0 arg0;
-        ok &= vm.popParameter(arg0);
-
-        if (!ok)
+        else
         {
-            return false;
+            call.setReturnValue(std::apply(invoke, arguments));
         }
-
-        ReturnType retVal = m_function(arg0, arg1);
-        vm.setReturnValue(retVal);
         return true;
     }
 
 private:
-    ::std::function<ReturnType(ArgType0, ArgType1)> m_function;
-};
-
-template <typename ArgType0, typename ArgType1> class ExternFunction<void, ArgType0, ArgType1> : public IExternFunction
-{
-public:
-    ExternFunction(void (*function)(ArgType0, ArgType1)) : m_function(function)
+    template <size_t Index> static bool readArguments(IExternCall &call, Arguments &arguments)
     {
-        // Empty
-    }
-
-    unsigned int getArgumentCount() const { return 2; }
-
-    bool call(IVirtualMachine &vm)
-    {
-        bool ok = true;
-        // The script pushes arguments in source order, so the last argument is on
-        // top of the runtime stack and has to be popped first.
-        ArgType1 arg1;
-        ok = vm.popParameter(arg1);
-
-        ArgType0 arg0;
-        ok &= vm.popParameter(arg0);
-
-        if (!ok)
+        if constexpr (Index == sizeof...(ArgumentTypes))
         {
-            return false;
+            return true;
         }
-
-        m_function(arg0, arg1);
-        vm.setReturnValue();
-        return true;
-    }
-
-private:
-    ::std::function<void(ArgType0, ArgType1)> m_function;
-};
-
-template <typename ReturnType, typename ArgType0, typename ArgType1, typename ArgType2>
-class ExternFunction<ReturnType, ArgType0, ArgType1, ArgType2> : public IExternFunction
-{
-public:
-    ExternFunction(ReturnType (*function)(ArgType0, ArgType1, ArgType2)) : m_function(function)
-    {
-        // Empty
-    }
-
-    unsigned int getArgumentCount() const { return 3; }
-
-    bool call(IVirtualMachine &vm)
-    {
-        bool ok = true;
-        // The script pushes arguments in source order, so the last argument is on
-        // top of the runtime stack and has to be popped first.
-        ArgType2 arg2;
-        ok = vm.popParameter(arg2);
-
-        ArgType1 arg1;
-        ok &= vm.popParameter(arg1);
-
-        ArgType0 arg0;
-        ok &= vm.popParameter(arg0);
-
-        if (!ok)
+        else
         {
-            return false;
+            // Indexed reads never mutate the VM operand stack.
+            return call.getArgument(Index, std::get<Index>(arguments)) && readArguments<Index + 1>(call, arguments);
         }
-
-        ReturnType retVal = m_function(arg0, arg1, arg2);
-        vm.setReturnValue(retVal);
-        return true;
     }
 
-private:
-    ::std::function<ReturnType(ArgType0, ArgType1, ArgType2)> m_function;
+    ReturnType (*m_function)(ArgumentTypes...);
 };
 
-template <typename ArgType0, typename ArgType1, typename ArgType2>
-class ExternFunction<void, ArgType0, ArgType1, ArgType2> : public IExternFunction
+template <typename ReturnType, typename... ArgumentTypes>
+IExternFunction *createExternFunction(ReturnType (*function)(ArgumentTypes...))
 {
-public:
-    ExternFunction(void (*function)(ArgType0, ArgType1, ArgType2)) : m_function(function)
-    {
-        // Empty
-    }
-
-    unsigned int getArgumentCount() const { return 3; }
-
-    bool call(IVirtualMachine &vm)
-    {
-        bool ok = true;
-        // The script pushes arguments in source order, so the last argument is on
-        // top of the runtime stack and has to be popped first.
-        ArgType2 arg2;
-        ok = vm.popParameter(arg2);
-
-        ArgType1 arg1;
-        ok &= vm.popParameter(arg1);
-
-        ArgType0 arg0;
-        ok &= vm.popParameter(arg0);
-
-        if (!ok)
-        {
-            return false;
-        }
-
-        m_function(arg0, arg1, arg2);
-        vm.setReturnValue();
-        return true;
-    }
-
-private:
-    ::std::function<void(ArgType0, ArgType1, ArgType2)> m_function;
-};
-
-template <typename ReturnType, typename ArgType0, typename ArgType1, typename ArgType2, typename ArgType3>
-class ExternFunction<ReturnType, ArgType0, ArgType1, ArgType2, ArgType3> : public IExternFunction
-{
-public:
-    ExternFunction(ReturnType (*function)(ArgType0, ArgType1, ArgType2, ArgType3)) : m_function(function)
-    {
-        // Empty
-    }
-
-    unsigned int getArgumentCount() const { return 4; }
-
-    bool call(IVirtualMachine &vm)
-    {
-        bool ok = true;
-        // The script pushes arguments in source order, so the last argument is on
-        // top of the runtime stack and has to be popped first.
-        ArgType3 arg3;
-        ok = vm.popParameter(arg3);
-
-        ArgType2 arg2;
-        ok &= vm.popParameter(arg2);
-
-        ArgType1 arg1;
-        ok &= vm.popParameter(arg1);
-
-        ArgType0 arg0;
-        ok &= vm.popParameter(arg0);
-
-        if (!ok)
-        {
-            return false;
-        }
-
-        ReturnType retVal = m_function(arg0, arg1, arg2, arg3);
-        vm.setReturnValue(retVal);
-        return true;
-    }
-
-private:
-    ::std::function<ReturnType(ArgType0, ArgType1, ArgType2, ArgType3)> m_function;
-};
-
-template <typename ArgType0, typename ArgType1, typename ArgType2, typename ArgType3>
-class ExternFunction<void, ArgType0, ArgType1, ArgType2, ArgType3> : public IExternFunction
-{
-public:
-    ExternFunction(void (*function)(ArgType0, ArgType1, ArgType2, ArgType3)) : m_function(function)
-    {
-        // Empty
-    }
-
-    unsigned int getArgumentCount() const { return 4; }
-
-    bool call(IVirtualMachine &vm)
-    {
-        bool ok = true;
-        // The script pushes arguments in source order, so the last argument is on
-        // top of the runtime stack and has to be popped first.
-        ArgType3 arg3;
-        ok = vm.popParameter(arg3);
-
-        ArgType2 arg2;
-        ok &= vm.popParameter(arg2);
-
-        ArgType1 arg1;
-        ok &= vm.popParameter(arg1);
-
-        ArgType0 arg0;
-        ok &= vm.popParameter(arg0);
-
-        if (!ok)
-        {
-            return false;
-        }
-
-        m_function(arg0, arg1, arg2, arg3);
-        vm.setReturnValue();
-        return true;
-    }
-
-private:
-    ::std::function<void(ArgType0, ArgType1, ArgType2, ArgType3)> m_function;
-};
-
-/**
- * \brief Creates extern function with parameters.
- */
-template <typename ReturnType> IExternFunction *createExternFunction(ReturnType (*externFunction)(void))
-{
-    return new ExternFunction<ReturnType>(externFunction);
+    return new ExternFunction<ReturnType, ArgumentTypes...>(function);
 }
 
-template <typename ReturnType, typename ArgType0>
-IExternFunction *createExternFunction(ReturnType (*externFunction)(ArgType0))
-{
-    return new ExternFunction<ReturnType, ArgType0>(externFunction);
-}
-
-template <typename ReturnType, typename ArgType0, typename ArgType1>
-IExternFunction *createExternFunction(ReturnType (*externFunction)(ArgType0, ArgType1))
-{
-    return new ExternFunction<ReturnType, ArgType0, ArgType1>(externFunction);
-}
-
-template <typename ReturnType, typename ArgType0, typename ArgType1, typename ArgType2>
-IExternFunction *createExternFunction(ReturnType (*externFunction)(ArgType0, ArgType1, ArgType2))
-{
-    return new ExternFunction<ReturnType, ArgType0, ArgType1, ArgType2>(externFunction);
-}
-
-template <typename ReturnType, typename ArgType0, typename ArgType1, typename ArgType2, typename ArgType3>
-IExternFunction *createExternFunction(ReturnType (*externFunction)(ArgType0, ArgType1, ArgType2, ArgType3))
-{
-    return new ExternFunction<ReturnType, ArgType0, ArgType1, ArgType2, ArgType3>(externFunction);
-}
-
-/**
- * \brief Rejects extern functions with more than four arguments.
- *
- * The enable_if keeps this overload out of overload resolution for up to four
- * arguments, so the overloads above are never ambiguous. Anything larger lands
- * here and fails with the message below instead of a deduction backtrace.
- */
-template <typename ReturnType, typename... ArgTypes, typename std::enable_if<(sizeof...(ArgTypes) > 4), int>::type = 0>
-IExternFunction *createExternFunction(ReturnType (*externFunction)(ArgTypes...))
-{
-    static_assert(sizeof...(ArgTypes) <= 4, "Extern functions support at most 4 arguments.");
-    return nullptr;
-}
 } // namespace kern

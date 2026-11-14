@@ -1,8 +1,9 @@
 // Greatest common divisor by repeated subtraction: gcd(48, 18) = 6.
 // Exercises nested conditional branches inside a loop.
-extern println 1
+extern println 1 -> void
 
 func main
+-> void
 {
   var a
   var b

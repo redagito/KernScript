@@ -28,8 +28,8 @@ void capture(int value)
     ++g_captureCalls;
 }
 
-const std::string kSource = R"(extern capture(x);
-func main() {
+const std::string kSource = R"(extern capture(x) -> void;
+func main() -> void {
   var total = 0;
   var o = 0;
   while (o < 1000) {
@@ -55,7 +55,7 @@ int main()
     kern::VMConfig config;
     config.maxExecutionSteps = 100000000;
     std::unique_ptr<kern::IVirtualMachine> vm = bench::makeVm(config);
-    vm->addFunction("capture", kern::createExternFunction(&capture));
+    vm->addFunction("capture", &capture);
     if (!bench::compileLoad(kSource, *vm))
     {
         std::cerr << "ArithLoop: pipeline failed\n";

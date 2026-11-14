@@ -1,5 +1,5 @@
 module cyc_b;
 import cyc_a;
-func cfb() {
+func cfb() -> value {
   return 2;
 }

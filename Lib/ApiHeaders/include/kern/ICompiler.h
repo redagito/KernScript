@@ -46,5 +46,10 @@ public:
      */
     virtual bool compile(std::istream &sourceCode, std::ostream &asmCode, const std::string &sourceName,
                          const std::vector<std::string> &searchPaths) = 0;
+
+    /** Compile source directly to verified serialized bytecode. */
+    virtual bool compileBytecode(std::istream &sourceCode, std::ostream &byteCode,
+                                 const std::string &sourceName = "<input>",
+                                 const std::vector<std::string> &searchPaths = {}) = 0;
 };
 } // namespace kern

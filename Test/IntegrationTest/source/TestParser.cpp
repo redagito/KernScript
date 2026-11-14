@@ -28,7 +28,7 @@ bool parseAstSource(const std::string &source, std::vector<Tok> &toks, ast::Prog
     return ast::parseProgram(toks, nullLogger(), "test.ks", program);
 }
 
-bool lowerAstSource(const std::string &source, ast::Program &program, std::vector<Lowered> &lowered)
+bool lowerAstSource(const std::string &source, ast::Program &program, ir::Program &lowered)
 {
     std::vector<Tok> toks;
     std::istringstream input(source);
@@ -49,7 +49,7 @@ TEST_CASE("AST expresses add/mul precedence in order", "[integration][compiler][
 {
     std::vector<Tok> toks;
     ast::Program program;
-    REQUIRE(parseAstSource("func main() {\nvar r = 1 + 2 * 3;\n}\n", toks, program));
+    REQUIRE(parseAstSource("func main() -> void {\nvar r = 1 + 2 * 3;\n}\n", toks, program));
     REQUIRE(program.funcs.size() == 1);
     REQUIRE(program.funcs[0].body.size() == 1);
 
@@ -67,44 +67,49 @@ TEST_CASE("AST expresses add/mul precedence in order", "[integration][compiler][
 TEST_CASE("Lower rejects use of undeclared variable", "[integration][compiler][parser]")
 {
     ast::Program readProgram;
-    std::vector<Lowered> readLowered;
+    ir::Program readLowered;
     {
         std::vector<Tok> toks;
-        REQUIRE(parseAstSource("func main() {\nvar r = q;\n}\n", toks, readProgram));
+        REQUIRE(parseAstSource("func main() -> void {\nvar r = q;\n}\n", toks, readProgram));
         REQUIRE_FALSE(lowerProgram(readProgram, nullLogger(), "test.ks", readLowered));
     }
 
     ast::Program assignProgram;
-    std::vector<Lowered> assignLowered;
+    ir::Program assignLowered;
     {
         std::vector<Tok> toks;
-        REQUIRE(parseAstSource("func main() {\nq = 1;\n}\n", toks, assignProgram));
+        REQUIRE(parseAstSource("func main() -> void {\nq = 1;\n}\n", toks, assignProgram));
         REQUIRE_FALSE(lowerProgram(assignProgram, nullLogger(), "test.ks", assignLowered));
     }
 
     ast::Program badProgram;
     {
         std::vector<Tok> toks;
-        REQUIRE(parseAstSource("func main() {\nvar r = 1 +;\n}\n", toks, badProgram) == false);
+        REQUIRE(parseAstSource("func main() -> void {\nvar r = 1 +;\n}\n", toks, badProgram) == false);
     }
 }
 
 TEST_CASE("Lower lowers var declaration statement", "[integration][compiler][parser]")
 {
     ast::Program program;
-    std::vector<Lowered> lowered;
-    REQUIRE(lowerAstSource("func main() {\nvar r = 1 + 2;\n}\n", program, lowered));
-    REQUIRE(lowered.size() == 1);
-    REQUIRE(lowered[0].body == std::vector<std::string>{"pushi 1", "pushi 2", "add", "popv r"});
-    REQUIRE(lowered[0].vars == std::vector<std::string>{"r"});
+    ir::Program lowered;
+    REQUIRE(lowerAstSource("func main() -> void {\nvar r = 1 + 2;\n}\n", program, lowered));
+    REQUIRE(lowered.functions.size() == 1);
+    REQUIRE(lowered.functions[0].locals.size() == 1);
+    REQUIRE(lowered.functions[0].locals[0].name == "r");
+    REQUIRE(lowered.functions[0].code.items.size() == 5);
+    REQUIRE(std::get<ir::Operation>(lowered.functions[0].code.items[0]).id == Opcode::Pushi);
+    REQUIRE(std::get<ir::Operation>(lowered.functions[0].code.items[1]).id == Opcode::Pushi);
+    REQUIRE(std::get<ir::Operation>(lowered.functions[0].code.items[2]).id == Opcode::Add);
+    REQUIRE(std::get<ir::Operation>(lowered.functions[0].code.items[3]).id == Opcode::Popv);
 }
 
 TEST_CASE("Compiler tokenize keeps keywords and drops newlines/comments", "[integration][compiler][parser]")
 {
-    std::istringstream input("func main() {\n// a comment\nvar x;\n}");
+    std::istringstream input("func main() -> void {\n// a comment\nvar x;\n}");
     std::vector<Tok> toks;
     REQUIRE(tokenize(input, nullLogger(), toks, "test.ks"));
-    REQUIRE(toks.size() == 9);
+    REQUIRE(toks.size() == 12);
     REQUIRE(toks[0].type == LexerToken::Keyword);
     REQUIRE(toks[0].text == "func");
     REQUIRE(toks[1].type == LexerToken::Identifier);
@@ -136,7 +141,8 @@ TEST_CASE("Compiler tokenize rejects invalid characters", "[integration][compile
 
 TEST_CASE("AST collects extern and func signatures", "[integration][compiler][parser]")
 {
-    std::istringstream input("extern putc(c);\nfunc main(x) {\nputc(x);\n}\nfunc helper() {\n}\n");
+    std::istringstream input(
+        "extern putc(c) -> void;\nfunc main(x) -> void {\nputc(x);\n}\nfunc helper() -> void {\n}\n");
     std::vector<Tok> toks;
     REQUIRE(tokenize(input, nullLogger(), toks, "test.ks"));
     ast::Program program;
@@ -144,16 +150,20 @@ TEST_CASE("AST collects extern and func signatures", "[integration][compiler][pa
     REQUIRE(program.externs.size() == 1);
     REQUIRE(program.externs[0].name == "putc");
     REQUIRE(program.externs[0].params == std::vector<std::string>{"c"});
+    REQUIRE(program.externs[0].signature.argumentCount == 1);
+    REQUIRE(program.externs[0].signature.returnKind == kern::ReturnKind::Void);
     REQUIRE(program.funcs.size() == 2);
     REQUIRE(program.funcs[0].name == "main");
     REQUIRE(program.funcs[0].params == std::vector<std::string>{"x"});
+    REQUIRE(program.funcs[0].signature.argumentCount == 1);
+    REQUIRE(program.funcs[0].signature.returnKind == kern::ReturnKind::Void);
     REQUIRE(program.funcs[1].name == "helper");
     REQUIRE(program.funcs[1].params.empty());
 }
 
 TEST_CASE("AST rejects duplicate names", "[integration][compiler][parser]")
 {
-    std::istringstream input("func dup() {\n}\nfunc dup() {\n}\n");
+    std::istringstream input("func dup() -> void {\n}\nfunc dup() -> void {\n}\n");
     std::vector<Tok> toks;
     REQUIRE(tokenize(input, nullLogger(), toks, "test.ks"));
     ast::Program program;
@@ -164,59 +174,57 @@ TEST_CASE("AST classifies valued and void returns", "[integration][compiler][par
 {
     std::vector<Tok> valuedToks;
     ast::Program valuedProgram;
-    REQUIRE(parseAstSource("func v() {\nreturn 1;\n}\n", valuedToks, valuedProgram));
-    REQUIRE(valuedProgram.funcs.at(0).hasValuedReturn);
-    REQUIRE_FALSE(valuedProgram.funcs.at(0).hasBareReturn);
+    REQUIRE(parseAstSource("func v() -> value {\nreturn 1;\n}\n", valuedToks, valuedProgram));
+    REQUIRE(valuedProgram.funcs.at(0).signature.returnKind == kern::ReturnKind::Value);
 
     std::vector<Tok> bareToks;
     ast::Program bareProgram;
-    REQUIRE(parseAstSource("func w() {\nreturn;\n}\n", bareToks, bareProgram));
-    REQUIRE_FALSE(bareProgram.funcs.at(0).hasValuedReturn);
-    REQUIRE(bareProgram.funcs.at(0).hasBareReturn);
+    REQUIRE(parseAstSource("func w() -> void {\nreturn;\n}\n", bareToks, bareProgram));
+    REQUIRE(bareProgram.funcs.at(0).signature.returnKind == kern::ReturnKind::Void);
 
     std::vector<Tok> mixedToks;
     ast::Program mixedProgram;
-    REQUIRE_FALSE(parseAstSource("func m() {\nreturn 1;\nreturn;\n}\n", mixedToks, mixedProgram));
+    REQUIRE_FALSE(parseAstSource("func m() -> value {\nreturn 1;\nreturn;\n}\n", mixedToks, mixedProgram));
 }
 
-TEST_CASE("Compiler lowerProgram and emitProgram shape on tiny program", "[integration][compiler][parser]")
+TEST_CASE("Compiler lowers a tiny program to typed IR", "[integration][compiler][parser]")
 {
-    std::istringstream input("func main() {\nvar x = 1;\n}\n");
+    std::istringstream input("func main() -> void {\nvar x = 1;\n}\n");
     std::vector<Tok> toks;
     REQUIRE(tokenize(input, nullLogger(), toks, "test.ks"));
     ast::Program program;
     REQUIRE(ast::parseProgram(toks, nullLogger(), "test.ks", program));
 
-    std::vector<Lowered> lowered;
+    ir::Program lowered;
     REQUIRE(lowerProgram(program, nullLogger(), "test.ks", lowered));
-    REQUIRE(lowered.size() == 1);
-    REQUIRE(lowered[0].name == "main");
-    REQUIRE(lowered[0].vars == std::vector<std::string>{"x"});
-    REQUIRE(lowered[0].body == std::vector<std::string>{"movi x, 1"});
-
-    std::ostringstream asmCode;
-    emitProgram(program, lowered, asmCode);
-    REQUIRE(asmCode.str() == "func main\n{\nvar x\nmovi x, 1\nret\n}\n");
+    REQUIRE(lowered.functions.size() == 1);
+    REQUIRE(lowered.functions[0].name == "main");
+    REQUIRE(lowered.functions[0].locals.size() == 1);
+    REQUIRE(lowered.functions[0].locals[0].name == "x");
+    REQUIRE(lowered.functions[0].code.items.size() == 3);
+    REQUIRE(std::get<ir::Operation>(lowered.functions[0].code.items[0]).id == Opcode::Pushi);
+    REQUIRE(std::get<ir::Operation>(lowered.functions[0].code.items[1]).id == Opcode::Popv);
+    REQUIRE(std::get<ir::Operation>(lowered.functions[0].code.items[2]).id == Opcode::Ret);
 }
 
 TEST_CASE("Compiler tokenize records token positions", "[integration][compiler][parser]")
 {
-    std::istringstream input("func main() {\nvar x = 1;\n}\n");
+    std::istringstream input("func main() -> void {\nvar x = 1;\n}\n");
     std::vector<Tok> toks;
     REQUIRE(tokenize(input, nullLogger(), toks, "test.ks"));
-    REQUIRE(toks.size() == 11);
+    REQUIRE(toks.size() == 14);
     REQUIRE(toks[0].text == "func");
     REQUIRE(toks[0].pos.line == 1);
     REQUIRE(toks[0].pos.col == 1);
     REQUIRE(toks[1].text == "main");
     REQUIRE(toks[1].pos.line == 1);
     REQUIRE(toks[1].pos.col == 6);
-    REQUIRE(toks[5].text == "var");
-    REQUIRE(toks[5].pos.line == 2);
-    REQUIRE(toks[5].pos.col == 1);
-    REQUIRE(toks[7].text == "=");
-    REQUIRE(toks[7].pos.line == 2);
-    REQUIRE(toks[7].pos.col == 7);
+    REQUIRE(toks[8].text == "var");
+    REQUIRE(toks[8].pos.line == 2);
+    REQUIRE(toks[8].pos.col == 1);
+    REQUIRE(toks[10].text == "=");
+    REQUIRE(toks[10].pos.line == 2);
+    REQUIRE(toks[10].pos.col == 7);
 }
 
 TEST_CASE("Diagnostic format renders file line col with a note", "[integration][compiler][parser]")
@@ -240,7 +248,7 @@ TEST_CASE("Diagnostic format renders file line col with a note", "[integration][
 
 TEST_CASE("AST builds extern and valued func with spans", "[integration][compiler][parser]")
 {
-    const std::string source = "extern putc(c);\nfunc main(x) {\nvar r = x + 1;\nreturn r;\n}\n";
+    const std::string source = "extern putc(c) -> void;\nfunc main(x) -> value {\nvar r = x + 1;\nreturn r;\n}\n";
     std::vector<Tok> toks;
     ast::Program program;
     REQUIRE(parseAstSource(source, toks, program));
@@ -251,7 +259,7 @@ TEST_CASE("AST builds extern and valued func with spans", "[integration][compile
     REQUIRE(program.externs[0].pos.line == 1);
     REQUIRE(program.externs[0].pos.col == 1);
     REQUIRE(program.externs[0].end.line == 1);
-    REQUIRE(program.externs[0].end.col == 15);
+    REQUIRE(program.externs[0].end.col == 23);
 
     REQUIRE(program.funcs.size() == 1);
     const ast::Func &func = program.funcs[0];
@@ -261,8 +269,7 @@ TEST_CASE("AST builds extern and valued func with spans", "[integration][compile
     REQUIRE(func.pos.col == 1);
     REQUIRE(func.end.line == 5);
     REQUIRE(func.end.col == 1);
-    REQUIRE(func.hasValuedReturn);
-    REQUIRE_FALSE(func.hasBareReturn);
+    REQUIRE(func.signature.returnKind == kern::ReturnKind::Value);
     REQUIRE(func.body.size() == 2);
 
     const auto *varDecl = std::get_if<ast::Stmt::VarDecl>(&func.body[0].node);
@@ -294,16 +301,22 @@ TEST_CASE("AST builds extern and valued func with spans", "[integration][compile
     REQUIRE(func.body[1].pos.line == 4);
     REQUIRE(func.body[1].pos.col == 1);
 
-    // Lowering the same tree emits the expected body lines.
-    std::vector<Lowered> lowered;
+    // Lowering preserves values and emits one canonical return opcode.
+    ir::Program lowered;
     REQUIRE(lowerProgram(program, nullLogger(), "test.ks", lowered));
-    REQUIRE(lowered.size() == 1);
-    REQUIRE(lowered[0].body == std::vector<std::string>{"pushv x", "pushi 1", "add", "popv r", "retv r"});
+    REQUIRE(lowered.functions.size() == 1);
+    REQUIRE(lowered.functions[0].code.items.size() == 6);
+    REQUIRE(std::get<ir::Operation>(lowered.functions[0].code.items[0]).id == Opcode::Pushv);
+    REQUIRE(std::get<ir::Operation>(lowered.functions[0].code.items[1]).id == Opcode::Pushi);
+    REQUIRE(std::get<ir::Operation>(lowered.functions[0].code.items[2]).id == Opcode::Add);
+    REQUIRE(std::get<ir::Operation>(lowered.functions[0].code.items[3]).id == Opcode::Popv);
+    REQUIRE(std::get<ir::Operation>(lowered.functions[0].code.items[4]).id == Opcode::Pushv);
+    REQUIRE(std::get<ir::Operation>(lowered.functions[0].code.items[5]).id == Opcode::Ret);
 }
 
 TEST_CASE("AST builds if else while with logic precedence", "[integration][compiler][parser]")
 {
-    const std::string source = "func main(a) {\nif (a == 1 or a == 2) {\nputc(a);\n} else {\nputc(0);\n}\n"
+    const std::string source = "func main(a) -> void {\nif (a == 1 or a == 2) {\nputc(a);\n} else {\nputc(0);\n}\n"
                                "while (a > 0) {\na = a - 1;\n}\n}\n";
     std::vector<Tok> toks;
     ast::Program program;
@@ -352,7 +365,7 @@ TEST_CASE("AST builds if else while with logic precedence", "[integration][compi
 
 TEST_CASE("AST builds strings calls and unary with spans", "[integration][compiler][parser]")
 {
-    const std::string source = "func double(v) {\nreturn v * 2;\n}\nfunc main() {\nvar s = \"hi\";\n"
+    const std::string source = "func double(v) -> value {\nreturn v * 2;\n}\nfunc main() -> void {\nvar s = \"hi\";\n"
                                "var r = not double(21) + 1;\ndouble(r);\n}\n";
     std::vector<Tok> toks;
     ast::Program program;
@@ -403,13 +416,13 @@ TEST_CASE("AST builds strings calls and unary with spans", "[integration][compil
 
 TEST_CASE("AST rejects malformed input", "[integration][compiler][parser]")
 {
-    const std::string missingSemi = "func main() {\nvar x = 1\n}\n";
-    const std::string missingParen = "func main() {\nvar x = (1;\n}\n";
-    const std::string missingBrace = "func main() {\nvar x = 1;\n";
-    const std::string noFunc = "extern putc(c);\n";
-    const std::string badLiteral = "func main() {\nvar x = 4294967296;\n}\n";
-    const std::string duplicate = "func main() {\n}\nfunc main() {\n}\n";
-    const std::string mixed = "func main() {\nreturn 1;\nreturn;\n}\n";
+    const std::string missingSemi = "func main() -> void {\nvar x = 1\n}\n";
+    const std::string missingParen = "func main() -> void {\nvar x = (1;\n}\n";
+    const std::string missingBrace = "func main() -> void {\nvar x = 1;\n";
+    const std::string noFunc = "extern putc(c) -> void;\n";
+    const std::string badLiteral = "func main() -> void {\nvar x = 4294967296;\n}\n";
+    const std::string duplicate = "func main() -> void {\n}\nfunc main() -> void {\n}\n";
+    const std::string mixed = "func main() -> value {\nreturn 1;\nreturn;\n}\n";
     for (const std::string *source :
          {&missingSemi, &missingParen, &missingBrace, &noFunc, &badLiteral, &duplicate, &mixed})
     {
@@ -420,6 +433,14 @@ TEST_CASE("AST rejects malformed input", "[integration][compiler][parser]")
     std::vector<Tok> emptyToks;
     ast::Program emptyProgram;
     REQUIRE_FALSE(parseAstSource("", emptyToks, emptyProgram));
+}
+
+TEST_CASE("AST requires explicit return annotations", "[integration][compiler][parser]")
+{
+    std::vector<Tok> toks;
+    ast::Program program;
+    REQUIRE_FALSE(parseAstSource("extern print(x);\nfunc main() -> void {}\n", toks, program));
+    REQUIRE_FALSE(parseAstSource("func main() {}\n", toks, program));
 }
 
 namespace
@@ -439,7 +460,7 @@ std::vector<std::string> compileWithName(const std::string &source, const std::s
 
 TEST_CASE("Diagnostic reports undeclared name with position and hint", "[integration][compiler][diagnostic]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  println(q);\n}\n";
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n  println(q);\n}\n";
     bool ok = true;
     const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
     REQUIRE_FALSE(ok);
@@ -450,8 +471,9 @@ TEST_CASE("Diagnostic reports undeclared name with position and hint", "[integra
 
 TEST_CASE("Diagnostic reports arity with position and hint", "[integration][compiler][diagnostic]")
 {
-    const std::string source = "extern println(x);\nfunc double(v) {\n  return v * 2;\n}\nfunc main() {\n"
-                               "  println(double(1, 2));\n}\n";
+    const std::string source =
+        "extern println(x) -> void;\nfunc double(v) -> value {\n  return v * 2;\n}\nfunc main() -> void {\n"
+        "  println(double(1, 2));\n}\n";
     bool ok = true;
     const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
     REQUIRE_FALSE(ok);
@@ -462,19 +484,21 @@ TEST_CASE("Diagnostic reports arity with position and hint", "[integration][comp
 
 TEST_CASE("Diagnostic reports mixed returns with position and hint", "[integration][compiler][diagnostic]")
 {
-    const std::string source = "extern println(x);\nfunc f(v) {\n  if (v == 1) {\n    return 1;\n  }\n  return;\n}\n"
-                               "func main() {\n  println(f(2));\n}\n";
+    const std::string source =
+        "extern println(x) -> void;\nfunc f(v) -> value {\n  if (v == 1) {\n    return 1;\n  }\n  return;\n}\n"
+        "func main() -> void {\n  println(f(2));\n}\n";
     bool ok = true;
     const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
     REQUIRE_FALSE(ok);
     REQUIRE(messages.size() == 2);
-    REQUIRE(messages[0] == "test.ks:6:3: error: Mixed valued and void returns.");
-    REQUIRE(messages[1] == "note: use one return form in each function");
+    REQUIRE(messages[0] == "test.ks:6:3: error: Return statement does not match function return annotation.");
+    REQUIRE(messages[1] == "note: return a value from this function");
 }
 
 TEST_CASE("Diagnostic reports bad literal with position and hint", "[integration][compiler][diagnostic]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  var x = 4294967296;\n  println(x);\n}\n";
+    const std::string source =
+        "extern println(x) -> void;\nfunc main() -> void {\n  var x = 4294967296;\n  println(x);\n}\n";
     bool ok = true;
     const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
     REQUIRE_FALSE(ok);
@@ -485,7 +509,7 @@ TEST_CASE("Diagnostic reports bad literal with position and hint", "[integration
 
 TEST_CASE("Diagnostic reports expected token with position and no hint", "[integration][compiler][diagnostic]")
 {
-    const std::string source = "func main() {\nvar x = 1\n}\n";
+    const std::string source = "func main() -> void {\nvar x = 1\n}\n";
     bool ok = true;
     const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
     REQUIRE_FALSE(ok);
@@ -495,7 +519,7 @@ TEST_CASE("Diagnostic reports expected token with position and no hint", "[integ
 
 TEST_CASE("Diagnostic uses the input name without an explicit source name", "[integration][compiler][diagnostic]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  println(q);\n}\n";
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n  println(q);\n}\n";
     testutil::RecordingLogger logger;
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler(&logger));
     std::stringstream input(source);
@@ -510,7 +534,7 @@ namespace
 
 std::string makeNestedSource(int depth)
 {
-    std::string source = "extern println(x);\nfunc main() {\n";
+    std::string source = "extern println(x) -> void;\nfunc main() -> void {\n";
     for (int i = 0; i < depth; ++i)
     {
         source += "if (1 == 1) {\nprintln(1);\n} else {\n";
@@ -541,10 +565,30 @@ TEST_CASE("Parser still accepts moderate nesting", "[integration][compiler][pars
     REQUIRE(ok);
 }
 
+TEST_CASE("Parser bounds actual depth of flat binary expression chains", "[integration][compiler][parser]")
+{
+    const std::vector<std::string> operators = {" + ", " * ", " and ", " xor ", " or "};
+    for (const std::string &op : operators)
+    {
+        std::string expression = "1";
+        for (int i = 0; i < 180; ++i)
+        {
+            expression += op + "1";
+        }
+        const std::string source = "func main() -> void {\nvar value = " + expression + ";\n}\n";
+        bool ok = true;
+        const std::vector<std::string> messages = compileWithName(source, "flat.ks", ok);
+        REQUIRE_FALSE(ok);
+        REQUIRE_FALSE(messages.empty());
+        REQUIRE(messages[0].find("flat.ks:2:") == 0);
+        REQUIRE(messages[0].find("error: Nesting too deep.") != std::string::npos);
+    }
+}
+
 TEST_CASE("AST records module imports and export flag with spans", "[integration][compiler][parser]")
 {
-    const std::string source = "module mymod;\nimport other;\nimport third;\nexport func helper() {\n}\n"
-                               "func main() {\nhelper();\n}\n";
+    const std::string source = "module mymod;\nimport other;\nimport third;\nexport func helper() -> void {\n}\n"
+                               "func main() -> void {\nhelper();\n}\n";
     std::vector<Tok> toks;
     ast::Program program;
     REQUIRE(parseAstSource(source, toks, program));
@@ -595,7 +639,7 @@ TEST_CASE("AST records module imports and export flag with spans", "[integration
 
 TEST_CASE("AST records qualified calls in expression and statement position", "[integration][compiler][parser]")
 {
-    const std::string source = "func main() {\nvar r = m::helper(1);\nm::helper(2);\n}\n";
+    const std::string source = "func main() -> void {\nvar r = m::helper(1);\nm::helper(2);\n}\n";
     std::vector<Tok> toks;
     ast::Program program;
     REQUIRE(parseAstSource(source, toks, program));
@@ -637,7 +681,7 @@ TEST_CASE("AST records qualified calls in expression and statement position", "[
 
 TEST_CASE("Diagnostic reports duplicate module declaration", "[integration][compiler][diagnostic]")
 {
-    const std::string source = "module a;\nmodule b;\nfunc main() {}\n";
+    const std::string source = "module a;\nmodule b;\nfunc main() -> void {}\n";
     bool ok = true;
     const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
     REQUIRE_FALSE(ok);
@@ -648,7 +692,7 @@ TEST_CASE("Diagnostic reports duplicate module declaration", "[integration][comp
 
 TEST_CASE("Diagnostic reports module declaration after func", "[integration][compiler][diagnostic]")
 {
-    const std::string source = "func main() {}\nmodule m;\n";
+    const std::string source = "func main() -> void {}\nmodule m;\n";
     bool ok = true;
     const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
     REQUIRE_FALSE(ok);
@@ -659,7 +703,7 @@ TEST_CASE("Diagnostic reports module declaration after func", "[integration][com
 
 TEST_CASE("Diagnostic reports module declaration after import", "[integration][compiler][diagnostic]")
 {
-    const std::string source = "import a;\nmodule m;\nfunc main() {}\n";
+    const std::string source = "import a;\nmodule m;\nfunc main() -> void {}\n";
     bool ok = true;
     const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
     REQUIRE_FALSE(ok);
@@ -670,7 +714,7 @@ TEST_CASE("Diagnostic reports module declaration after import", "[integration][c
 
 TEST_CASE("Diagnostic reports import declaration after func", "[integration][compiler][diagnostic]")
 {
-    const std::string source = "func main() {}\nimport a;\n";
+    const std::string source = "func main() -> void {}\nimport a;\n";
     bool ok = true;
     const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
     REQUIRE_FALSE(ok);
@@ -681,7 +725,7 @@ TEST_CASE("Diagnostic reports import declaration after func", "[integration][com
 
 TEST_CASE("Diagnostic reports import declaration after extern", "[integration][compiler][diagnostic]")
 {
-    const std::string source = "extern f(x);\nimport a;\nfunc main() {\nf(1);\n}\n";
+    const std::string source = "extern f(x) -> void;\nimport a;\nfunc main() -> void {\nf(1);\n}\n";
     bool ok = true;
     const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
     REQUIRE_FALSE(ok);
@@ -692,7 +736,7 @@ TEST_CASE("Diagnostic reports import declaration after extern", "[integration][c
 
 TEST_CASE("Diagnostic reports export on extern declaration", "[integration][compiler][diagnostic]")
 {
-    const std::string source = "export extern f(x);\nfunc main() {}\n";
+    const std::string source = "export extern f(x) -> void;\nfunc main() -> void {}\n";
     bool ok = true;
     const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
     REQUIRE_FALSE(ok);
@@ -703,7 +747,7 @@ TEST_CASE("Diagnostic reports export on extern declaration", "[integration][comp
 
 TEST_CASE("Diagnostic reports export on non-func declaration", "[integration][compiler][diagnostic]")
 {
-    const std::string source = "export var x;\nfunc main() {}\n";
+    const std::string source = "export var x;\nfunc main() -> void {}\n";
     bool ok = true;
     const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
     REQUIRE_FALSE(ok);
@@ -714,7 +758,7 @@ TEST_CASE("Diagnostic reports export on non-func declaration", "[integration][co
 
 TEST_CASE("Diagnostic reports doubly qualified call", "[integration][compiler][diagnostic]")
 {
-    const std::string source = "func main() {\na::b::c();\n}\n";
+    const std::string source = "func main() -> void {\na::b::c();\n}\n";
     bool ok = true;
     const std::vector<std::string> messages = compileWithName(source, "test.ks", ok);
     REQUIRE_FALSE(ok);
@@ -725,7 +769,7 @@ TEST_CASE("Diagnostic reports doubly qualified call", "[integration][compiler][d
 
 TEST_CASE("Diagnostic reports call with empty qualifier", "[integration][compiler][diagnostic]")
 {
-    const std::string stmtSource = "func main() {\n::f();\n}\n";
+    const std::string stmtSource = "func main() -> void {\n::f();\n}\n";
     {
         bool ok = true;
         const std::vector<std::string> messages = compileWithName(stmtSource, "test.ks", ok);
@@ -733,7 +777,7 @@ TEST_CASE("Diagnostic reports call with empty qualifier", "[integration][compile
         REQUIRE(messages.size() == 1);
         REQUIRE(messages[0] == "test.ks:2:1: error: Expected a statement.");
     }
-    const std::string exprSource = "func main() {\nvar x = ::f();\n}\n";
+    const std::string exprSource = "func main() -> void {\nvar x = ::f();\n}\n";
     {
         bool ok = true;
         const std::vector<std::string> messages = compileWithName(exprSource, "test.ks", ok);
@@ -747,14 +791,15 @@ TEST_CASE("Diagnostic reports module import export used as identifiers", "[integ
 {
     {
         bool ok = true;
-        const std::vector<std::string> messages = compileWithName("func module() {}\n", "test.ks", ok);
+        const std::vector<std::string> messages = compileWithName("func module() -> void {}\n", "test.ks", ok);
         REQUIRE_FALSE(ok);
         REQUIRE(messages.size() == 1);
         REQUIRE(messages[0] == "test.ks:1:6: error: Expected a function name.");
     }
     {
         bool ok = true;
-        const std::vector<std::string> messages = compileWithName("func main() {\nvar import;\n}\n", "test.ks", ok);
+        const std::vector<std::string> messages =
+            compileWithName("func main() -> void {\nvar import;\n}\n", "test.ks", ok);
         REQUIRE_FALSE(ok);
         REQUIRE(messages.size() == 1);
         REQUIRE(messages[0] == "test.ks:2:5: error: Expected a variable name.");
@@ -762,7 +807,7 @@ TEST_CASE("Diagnostic reports module import export used as identifiers", "[integ
     {
         bool ok = true;
         const std::vector<std::string> messages =
-            compileWithName("func f(export) {\n}\nfunc main() {}\n", "test.ks", ok);
+            compileWithName("func f(export) -> void {\n}\nfunc main() -> void {}\n", "test.ks", ok);
         REQUIRE_FALSE(ok);
         REQUIRE(messages.size() == 1);
         REQUIRE(messages[0] == "test.ks:1:8: error: Expected ')'.");
@@ -773,7 +818,7 @@ namespace
 {
 
 bool lowerSingleFile(const std::string &source, const std::string &sourceName, ast::Program &program,
-                     std::vector<Lowered> &lowered, std::vector<std::string> &messages)
+                     ir::Program &lowered, std::vector<std::string> &messages)
 {
     std::istringstream input(source);
     std::vector<Tok> toks;
@@ -791,50 +836,67 @@ bool lowerSingleFile(const std::string &source, const std::string &sourceName, a
     return ok;
 }
 
+std::vector<Opcode> operationIds(const ir::Function &function)
+{
+    std::vector<Opcode> ids;
+    for (const auto &item : function.code.items)
+    {
+        if (const auto *operation = std::get_if<ir::Operation>(&item))
+        {
+            ids.push_back(operation->id);
+        }
+    }
+    return ids;
+}
+
 } // namespace
 
 TEST_CASE("Slice4 lower mangles named-module definitions and keeps roots flat",
           "[integration][compiler][parser][slice4]")
 {
     ast::Program named;
-    std::vector<Lowered> namedLowered;
+    ir::Program namedLowered;
     std::vector<std::string> namedMessages;
-    REQUIRE(lowerSingleFile("module mymod;\nexport func f(v) {\n  return v;\n}\nfunc main() {\n  f(1);\n}\n", "test.ks",
-                            named, namedLowered, namedMessages));
-    REQUIRE(namedLowered.size() == 2);
-    REQUIRE(namedLowered[0].name == "mymod@f");
-    REQUIRE(namedLowered[1].name == "mymod@main");
-    REQUIRE(namedLowered[1].body == std::vector<std::string>{"pushi 1", "call mymod@f", "pop"});
+    REQUIRE(lowerSingleFile(
+        "module mymod;\nexport func f(v) -> value {\n  return v;\n}\nfunc main() -> void {\n  f(1);\n}\n", "test.ks",
+        named, namedLowered, namedMessages));
+    REQUIRE(namedLowered.functions.size() == 2);
+    REQUIRE(namedLowered.functions[0].name == "mymod@f");
+    REQUIRE(namedLowered.functions[1].name == "mymod@main");
+    REQUIRE(operationIds(namedLowered.functions[1]) ==
+            std::vector<Opcode>{Opcode::Pushi, Opcode::Call, Opcode::Pop, Opcode::Ret});
 
     ast::Program anon;
-    std::vector<Lowered> anonLowered;
+    ir::Program anonLowered;
     std::vector<std::string> anonMessages;
-    REQUIRE(lowerSingleFile("func main() {\n  f(1);\n}\nfunc f(v) {\n  return v;\n}\n", "test.ks", anon, anonLowered,
-                            anonMessages));
-    REQUIRE(anonLowered.size() == 2);
-    REQUIRE(anonLowered[0].name == "main");
-    REQUIRE(anonLowered[1].name == "f");
-    REQUIRE(anonLowered[0].body == std::vector<std::string>{"pushi 1", "call f", "pop"});
+    REQUIRE(lowerSingleFile("func main() -> void {\n  f(1);\n}\nfunc f(v) -> value {\n  return v;\n}\n", "test.ks",
+                            anon, anonLowered, anonMessages));
+    REQUIRE(anonLowered.functions.size() == 2);
+    REQUIRE(anonLowered.functions[0].name == "main");
+    REQUIRE(anonLowered.functions[1].name == "f");
+    REQUIRE(operationIds(anonLowered.functions[0]) ==
+            std::vector<Opcode>{Opcode::Pushi, Opcode::Call, Opcode::Pop, Opcode::Ret});
 }
 
 TEST_CASE("Slice4 lower resolves qualified self calls to mangled targets", "[integration][compiler][parser][slice4]")
 {
     ast::Program program;
-    std::vector<Lowered> lowered;
+    ir::Program lowered;
     std::vector<std::string> messages;
-    REQUIRE(lowerSingleFile("module mymod;\nexport func f(v) {\n  return v;\n}\nfunc main() {\n"
+    REQUIRE(lowerSingleFile("module mymod;\nexport func f(v) -> value {\n  return v;\n}\nfunc main() -> void {\n"
                             "  var r = mymod::f(2);\n}\n",
                             "test.ks", program, lowered, messages));
-    REQUIRE(lowered.size() == 2);
-    REQUIRE(lowered[1].body == std::vector<std::string>{"pushi 2", "call mymod@f", "popv r"});
+    REQUIRE(lowered.functions.size() == 2);
+    REQUIRE(operationIds(lowered.functions[1]) ==
+            std::vector<Opcode>{Opcode::Pushi, Opcode::Call, Opcode::Popv, Opcode::Ret});
 }
 
 TEST_CASE("Slice4 lower rejects an unknown module with an exact diagnostic", "[integration][compiler][parser][slice4]")
 {
     ast::Program program;
-    std::vector<Lowered> lowered;
+    ir::Program lowered;
     std::vector<std::string> messages;
-    REQUIRE_FALSE(lowerSingleFile("module mymod;\nexport func f(v) {\n  return v;\n}\nfunc main() {\n"
+    REQUIRE_FALSE(lowerSingleFile("module mymod;\nexport func f(v) -> value {\n  return v;\n}\nfunc main() -> void {\n"
                                   "  nosuch::f(1);\n}\n",
                                   "test.ks", program, lowered, messages));
     REQUIRE(messages.size() == 2);

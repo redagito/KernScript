@@ -5,6 +5,37 @@
 
 #include <cmath>
 #include <limits>
+#include <utility>
+
+TEST_CASE("Value truth conversion treats only numeric zero as false", "[unit][Value]")
+{
+    for (const auto &value : {Value(0), Value(0u), Value(0.f), Value(-0.f)})
+        REQUIRE_FALSE(value.truthy());
+    for (const auto &value : {Value(-1), Value(1u), Value(-2.f), Value(std::string()),
+                              Value(std::string("0")), Value(std::numeric_limits<float>::quiet_NaN())})
+        REQUIRE(value.truthy());
+    REQUIRE_THROWS_AS(Value().truthy(), kern::RuntimeError);
+}
+
+TEST_CASE("Numeric negation preserves float signs and checks integer boundaries", "[unit][Value]")
+{
+    float result = 0;
+    REQUIRE(Value(0.f).negated().convert(result));
+    REQUIRE(std::signbit(result));
+    REQUIRE(Value(-0.f).negated().convert(result));
+    REQUIRE_FALSE(std::signbit(result));
+    REQUIRE(Value(1.5f).negated().convert(result));
+    REQUIRE(result == -1.5f);
+    int integer = 0;
+    REQUIRE(Value(2147483648u).negated().convert(integer));
+    REQUIRE(integer == std::numeric_limits<int32_t>::min());
+    REQUIRE(Value(-2147483647).negated().convert(integer));
+    REQUIRE(integer == 2147483647);
+    REQUIRE_THROWS_AS(Value(std::numeric_limits<int32_t>::min()).negated(), kern::RuntimeError);
+    REQUIRE_THROWS_AS(Value(2147483649u).negated(), kern::RuntimeError);
+    REQUIRE_THROWS_AS(Value(std::string("x")).negated(), kern::RuntimeError);
+    REQUIRE_THROWS_AS(Value().negated(), kern::RuntimeError);
+}
 
 TEST_CASE("Value carries the type it was constructed with", "[unit][Value]")
 {
@@ -780,4 +811,43 @@ TEST_CASE("Value NaN comparisons are unordered", "[unit][Value][nan]")
     REQUIRE_FALSE(one <= nan);
     REQUIRE_FALSE(one > nan);
     REQUIRE_FALSE(one >= nan);
+}
+
+TEST_CASE("Strings preserve zero bytes through copy move and comparison", "[unit][Value]")
+{
+    const std::string text("a\0b", 3);
+    Value original(text);
+    Value copy(original);
+    Value assigned(std::string("old"));
+    assigned = copy;
+    Value moved(std::move(copy));
+    Value moveAssigned;
+    moveAssigned = std::move(assigned);
+    for (const Value *value : {&original, &moved, &moveAssigned})
+    {
+        std::string result;
+        REQUIRE(value->convert(result));
+        REQUIRE(result == text);
+        REQUIRE(*value == original);
+        REQUIRE(*value != Value(std::string("a")));
+        REQUIRE(*value != Value(std::string("a\0c", 3)));
+    }
+    REQUIRE(copy.getType() == Value::Type::Invalid);
+    REQUIRE(assigned.getType() == Value::Type::Invalid);
+}
+
+TEST_CASE("Shared string storage charges its budget once and releases it", "[unit][Value]")
+{
+    auto budget = std::make_shared<Value::StringBudget>(Value::StringBudget{4});
+    {
+        Value original(std::string("1234"), budget);
+        Value copy(original);
+        REQUIRE(budget->used == 4);
+        REQUIRE_THROWS_AS(Value(std::string("x"), budget), kern::RuntimeError);
+        REQUIRE(budget->used == 4);
+        original = Value(1);
+        REQUIRE(budget->used == 4);
+    }
+    REQUIRE(budget->used == 0);
+    REQUIRE_NOTHROW(Value(std::string("1234"), budget));
 }

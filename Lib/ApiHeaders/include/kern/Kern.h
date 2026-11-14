@@ -5,6 +5,8 @@
 #include "kern/IVirtualMachine.h"
 
 #include "kern/FunctionBinding.h"
+#include "kern/FunctionSignature.h"
+#include "kern/IExternCall.h"
 #include "kern/IExternFunction.h"
 #include "kern/ILogger.h"
 #include "kern/NullLogger.h"

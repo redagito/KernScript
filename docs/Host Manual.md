@@ -1,139 +1,109 @@
 # KernScript Host Manual
 
-Pipeline: compile script source to assembly
-text, assemble to bytecode, load it, call a
-function. `Samples/HelloScript/source/main.cpp`
-is the canonical flow.
+Compile source to verified bytecode with `ICompiler::compileBytecode`, or
+compile source to typed assembly and assemble it. Load the bytecode and call a
+zero argument, void entry function. `Samples/HelloKern/source/main.cpp`
+shows the basic host flow.
 
 ## Factories and ownership
 
-`createAssembler`, `createCompiler` and
-`createVirtualMachine` return owning raw
-pointers (Kern.h:21-74). Wrap them in
-`unique_ptr`; the host deletes them.
+`createAssembler`, `createCompiler`, and `createVirtualMachine` return owning
+raw pointers. Wrap them in `std::unique_ptr`. Loggers are borrowed and must
+outlive objects that use them. A null logger discards diagnostics.
 
-Logger arguments are borrowed, never owned. A
-null logger discards diagnostics; any other
-logger must outlive every object using it
-(ILogger.h:22-24). The no-arg factories log
-through the spdlog default logger (Kern.h).
+`addFunction` takes ownership of a binding on success. Registering a name
+again replaces the previous binding; `removeFunction` deletes it. Empty names,
+null bindings, and registry changes during execution are rejected. Referenced
+host objects must outlive their bindings.
 
-Creation fails only by throwing (plain `new`
-in Lib/Api/source/Kern.cpp:25-44): `bad_alloc`,
-or `kern::RuntimeError` for an absurd VM stack
-budget (VirtualMachine.cpp:194-213). Ran with
-`maxStackBytes` at its maximum: throws
-"Maximum runtime stack size exceeds the limit."
+Register a normal C++ function pointer directly. The typed `addFunction`
+overload supports any parameter count when each argument and return type is
+one of `int`, `unsigned int`, `float`, `double`, `bool`, or `std::string`
+(arguments may be const or references to these types):
 
-`createExternFunction` supports 0-4 arguments;
-more is a compile-time `static_assert`
-(FunctionBinding.h:387-392).
+```cpp
+int mix(int left, unsigned int right, bool enabled, const std::string &label);
+vm->addFunction("mix", &mix);
+```
 
-## VMConfig budgets (VMConfig.h:23-29)
+The wrapper derives the script argument count and return kind from the C++
+signature. Argument reads convert numeric values with range checks, and can
+convert numbers to strings or numeric values to `bool`; they do not require
+the script value to have the exact C++ type. Strings cannot convert to numeric
+types or `bool`. Out-of-range numeric conversions fail with
+`kern::RuntimeError`.
 
-- `maxStackBytes` (default 1 MiB): divided by
-the value size into slots, so 0 allows
-nothing. Trip: "Maximum runtime stack size
-exceeded." Ran with 0: the first call throws.
-- `maxCallDepth` (default 1024): nested script
-calls. Trip: "Maximum call depth exceeded."
-- `maxStringBytes` (default 1 MiB): one string
-or name read from bytecode. Trip: "String
-length exceeds the limit."
-- `maxTableEntries` (default 1 MiB): each
-bytecode table. Trip: "String table size {}
-exceeds the limit." and siblings
-(VirtualMachine.cpp:578+).
-- `maxExecutionSteps` (default 10M): how many
-instructions one `callFunction` runs, counted
-from zero on every call. Trip: "Maximum
-execution steps exceeded." Ran `while (1) {}`
-with 1000: throws.
+`createExternFunction(functionPointer)` remains available when you want to
+construct the wrapper explicitly. It supports the same types and arbitrary
+parameter counts, and exposes the signature through `getSignature()`.
 
-## Errors: false versus throw
+## Custom extern bindings
 
-- `compile`/`assemble`: false on error.
-- `load`: false on a bad header or version,
-`kern::RuntimeError` on corrupt lengths. Empty
-input returns false; 20 garbage bytes throw
-"String length exceeds the limit." Ran both. A
-failed load leaves no script behind: load
-again before calling (IVirtualMachine.h:29-31).
-- `callFunction`: false only for unknown
-function names (ran: returns false, no throw).
-Every script failure throws `kern::RuntimeError`
-(IVirtualMachine.h:43-53).
-- `IExternFunction::call` returning false
-throws "The extern function '{}' reported
-failure." (VirtualMachine.cpp:886-889).
+Implement `kern::IExternFunction::getSignature() const` and
+`call(kern::IExternCall&)`. Arguments are read by zero-based index in source
+order, and a valued binding sets exactly one return value:
 
-## Calls run to completion
+```cpp
+class ReadExtern : public kern::IExternFunction
+{
+public:
+    kern::FunctionSignature getSignature() const override
+    {
+        return {0, kern::ReturnKind::Value};
+    }
+    bool call(kern::IExternCall &call) override
+    {
+        call.setReturnValue(42);
+        return true;
+    }
+};
+```
 
-No yield or suspend API exists (no such symbols
-in Lib). Each `callFunction` clears stale
-stacks, runs at most `maxExecutionSteps`, then
-returns or throws (VirtualMachine.cpp:379-429).
-Split long work into banded calls (Cookbook).
+Void bindings do not set a return. A failed argument conversion or a `false`
+return stops the script with `kern::RuntimeError`. The call context is valid
+only during `call`.
 
-## Threading
+## VM budgets
 
-The VM holds no locks (no sync primitives in
-Lib/Impl) and the reentrancy guard is a plain
-bool. Confine each VM to one thread; never call
-into one VM from two threads, and never call
-back into it from inside an extern. `load`,
-`clearScripts`, `callFunction`, `addFunction`
-and `removeFunction` all throw "... is not
-reentrant." mid-call (VirtualMachine.cpp).
+| Setting | Default | Scope |
+| --- | --- | --- |
+| `maxStackBytes` | 1 MiB | Runtime value slots, including locals and temporaries |
+| `maxCallDepth` | 1024 | Nested script frames |
+| `maxStringBytes` | 1 MiB | Each string or name decoded from bytecode |
+| `maxTableEntries` | 1,048,576 | Each table and each function's instruction count |
+| `maxExecutionSteps` | 10,000,000 | Instructions in one `callFunction` |
+| `maxProgramBytes` | 64 MiB | Combined program tables, instructions, names, and constants |
+| `maxRuntimeStringBytes` | 16 MiB | Live host-returned string contents |
 
-## Module search paths
+The VM checks execution budget before each instruction. Budgets cannot
+interrupt C++ code inside a binding. Program accounting bounds decoded data
+before allocation. It counts stored objects and contents, including cached constant storage;
+allocator overhead and spare capacity are excluded.
+Strings are immutable and length-aware, including embedded zero bytes;
+copies share storage. Host allocations and argument copies read into C++ are outside VM
+budgets.
 
-`compile(source, asm, name, paths)` resolves
-each `import name;` to `name.ks`: exact
-case-sensitive match, first hit wins
-(ICompiler.h:38-48, Compiler.cpp:55-92). A
-program with imports and empty paths is a
-compile error. Cycles, name mismatches and
-duplicates fail the compile (Compiler.cpp).
+## Errors and recovery
 
-## Extern registration
+Compilation and assembly return `false` and log diagnostics on invalid input.
+Semantic checks include symbol resolution, full function signatures, stack
+heights at control-flow joins, return values, and reachable fallthrough.
+Value types and reads of uninitialized locals remain runtime checks.
 
-`addFunction` replaces: re-registering a name
-deletes the previous binding
-(IVirtualMachine.h:67-69). `removeFunction`
-erases; unknown names are a no-op. Empty names,
-null functions and reentrant register/remove
-throw, and on failure ownership stays with the
-caller (IVirtualMachine.h:57-71,
-VirtualMachine.cpp:431-464).
+Loading malformed or truncated bytecode returns `false`; budget violations
+throw `kern::RuntimeError`. Either failure clears the loaded program while
+leaving host bindings registered. `callFunction` returns `false` for an
+unknown function. Script failures throw `kern::RuntimeError`; normal `ret`
+and `exit` terminate successfully. Exceptions thrown by host code propagate.
 
-`clearScripts` drops the program but keeps host
-bindings; `load` replaces the program and also
-keeps them, so hot-reload needs no re-register
-(ran: reload ran on old bindings, new body).
+Each call starts with clean value and call stacks, including after failure.
+Calls run to completion. There is no yield or suspend API; split long work
+into separate host calls as needed.
 
-The VM never reads `getArgumentCount` (unused
-in Lib/Impl): the pushed count must equal the
-bytecode-declared count, so the C++ arity must
-match the script declaration or Calle throws
-(VirtualMachine.cpp:868-875).
+## Imports and diagnostics
 
-## pop/set discipline
-
-Pop in reverse push order, last argument first
-(FunctionBinding.h:128-135). Each pop takes one
-value above the frame; leftovers count toward
-the next call (IVirtualMachine.h:86-90). `pop`
-returns false only for inapplicable
-conversions; empty stack, below-frame pops and
-string-to-number or out-of-range conversions
-throw, leaving the value in place
-(IVirtualMachine.h:74-90, Value.cpp).
-`setReturnValue` outside an extern call throws;
-void bindings set empty, valued bindings set
-exactly one value (FunctionBinding.h,
-IVirtualMachine.h:109-131).
-
-Verified: header and source lines cited above,
-plus ran `.scratch/docs_verify/driver.exe` in
-both modes (snippets ALL-OK, error texts match).
+The compile overload accepting search paths resolves `import name;` to
+`name.ks`, using exact case-sensitive matching and the first matching path.
+Missing files, cycles, mismatched module names, duplicate modules, and
+conflicting extern signatures fail compilation. Semantic diagnostics from an
+imported file retain its file name and source location.

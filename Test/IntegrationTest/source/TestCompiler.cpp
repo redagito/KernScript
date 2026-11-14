@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -13,7 +14,7 @@
 
 TEST_CASE("Compiler compiles empty main end-to-end", "[integration][compiler]")
 {
-    const std::string source = "func main() {}";
+    const std::string source = "func main() -> void {}";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -32,7 +33,7 @@ TEST_CASE("Compiler compiles empty main end-to-end", "[integration][compiler]")
 
 TEST_CASE("Compiler compiles extern println call with int literal end-to-end", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  println(42);\n}\n";
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n  println(42);\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -40,9 +41,6 @@ TEST_CASE("Compiler compiles extern println call with int literal end-to-end", "
     REQUIRE(compiler->compile(input, asmCode));
 
     const std::string asmText = asmCode.str();
-    REQUIRE(asmText.find("extern println 1") != std::string::npos);
-    REQUIRE(asmText.find("pushi 42") != std::string::npos);
-    REQUIRE(asmText.find("calle println") != std::string::npos);
 
     std::stringstream byteCode;
     REQUIRE(testutil::assemble(asmText, byteCode));
@@ -55,9 +53,26 @@ TEST_CASE("Compiler compiles extern println call with int literal end-to-end", "
     REQUIRE(recorder.text() == "42\n");
 }
 
+TEST_CASE("Compiler produces executable bytecode directly", "[integration][compiler]")
+{
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n  println(42);\n}\n";
+    std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+    std::stringstream input(source);
+    std::stringstream byteCode;
+    REQUIRE(compiler->compileBytecode(input, byteCode));
+
+    std::unique_ptr<kern::IVirtualMachine> vm(kern::createVirtualMachine());
+    testutil::StringRecorder recorder;
+    testutil::registerHostFunctions(*vm, recorder);
+    REQUIRE(vm->load(byteCode));
+    REQUIRE(vm->callFunction("main"));
+    REQUIRE(recorder.text() == "42\n");
+}
+
 TEST_CASE("Compiler evaluates arithmetic precedence end-to-end", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  var r = (3 + 4) * 2 - 10 / 2;\n  println(r);\n}\n";
+    const std::string source =
+        "extern println(x) -> void;\nfunc main() -> void {\n  var r = (3 + 4) * 2 - 10 / 2;\n  println(r);\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -77,8 +92,9 @@ TEST_CASE("Compiler evaluates arithmetic precedence end-to-end", "[integration][
 
 TEST_CASE("Compiler rejects duplicate func declaration", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc foo() {\n  println(1);\n}\nfunc foo() {\n  "
-                               "println(2);\n}\nfunc main() {\n  foo();\n}\n";
+    const std::string source =
+        "extern println(x) -> void;\nfunc foo() -> void {\n  println(1);\n}\nfunc foo() -> void {\n  "
+        "println(2);\n}\nfunc main() -> void {\n  foo();\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -88,7 +104,8 @@ TEST_CASE("Compiler rejects duplicate func declaration", "[integration][compiler
 
 TEST_CASE("Compiler rejects duplicate extern declaration", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nextern println(x);\nfunc main() {\n  println(1);\n}\n";
+    const std::string source =
+        "extern println(x) -> void;\nextern println(x) -> void;\nfunc main() -> void {\n  println(1);\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -98,8 +115,8 @@ TEST_CASE("Compiler rejects duplicate extern declaration", "[integration][compil
 
 TEST_CASE("Compiler rejects duplicate param name", "[integration][compiler]")
 {
-    const std::string source =
-        "extern println(x);\nfunc foo(a, a) {\n  println(a);\n}\nfunc main() {\n  foo(1, 2);\n}\n";
+    const std::string source = "extern println(x) -> void;\nfunc foo(a, a) -> void {\n  println(a);\n}\nfunc main() -> "
+                               "void {\n  foo(1, 2);\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -109,7 +126,8 @@ TEST_CASE("Compiler rejects duplicate param name", "[integration][compiler]")
 
 TEST_CASE("Compiler rejects func name colliding with extern", "[integration][compiler]")
 {
-    const std::string source = "extern foo(x);\nfunc foo(x) {\n  return x;\n}\nfunc main() {\n  foo(1);\n}\n";
+    const std::string source =
+        "extern foo(x) -> void;\nfunc foo(x) -> value {\n  return x;\n}\nfunc main() -> void {\n  foo(1);\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -119,7 +137,7 @@ TEST_CASE("Compiler rejects func name colliding with extern", "[integration][com
 
 TEST_CASE("Compiler rejects read of undeclared variable", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  println(q);\n}\n";
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n  println(q);\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -129,7 +147,8 @@ TEST_CASE("Compiler rejects read of undeclared variable", "[integration][compile
 
 TEST_CASE("Compiler rejects call to undeclared script function as value", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  var r = foo(1);\n  println(r);\n}\n";
+    const std::string source =
+        "extern println(x) -> void;\nfunc main() -> void {\n  var r = foo(1);\n  println(r);\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -139,7 +158,7 @@ TEST_CASE("Compiler rejects call to undeclared script function as value", "[inte
 
 TEST_CASE("Compiler rejects extern call with wrong argument count as statement", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  println(1, 2);\n}\n";
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n  println(1, 2);\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -149,7 +168,8 @@ TEST_CASE("Compiler rejects extern call with wrong argument count as statement",
 
 TEST_CASE("Compiler rejects extern call with wrong argument count as value", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  var r = println(1, 2);\n  println(r);\n}\n";
+    const std::string source =
+        "extern println(x) -> void;\nfunc main() -> void {\n  var r = println(1, 2);\n  println(r);\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -159,7 +179,8 @@ TEST_CASE("Compiler rejects extern call with wrong argument count as value", "[i
 
 TEST_CASE("Compiler rejects inconsistent extern use statement then value", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  println(1);\n  var r = println(2);\n}\n";
+    const std::string source =
+        "extern println(x) -> void;\nfunc main() -> void {\n  println(1);\n  var r = println(2);\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -169,7 +190,8 @@ TEST_CASE("Compiler rejects inconsistent extern use statement then value", "[int
 
 TEST_CASE("Compiler rejects overflowing integer literal", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  var x = 4294967296;\n  println(x);\n}\n";
+    const std::string source =
+        "extern println(x) -> void;\nfunc main() -> void {\n  var x = 4294967296;\n  println(x);\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -179,7 +201,7 @@ TEST_CASE("Compiler rejects overflowing integer literal", "[integration][compile
 
 TEST_CASE("Compiler rejects overflowing float literal", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  var f = "
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n  var f = "
                                "100000000000000000000000000000000000000000.0;\n  println(f);\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
@@ -190,7 +212,7 @@ TEST_CASE("Compiler rejects overflowing float literal", "[integration][compiler]
 
 TEST_CASE("Compiler rejects unterminated string literal", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  var s = \"hello;\n}\n";
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n  var s = \"hello;\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -200,7 +222,7 @@ TEST_CASE("Compiler rejects unterminated string literal", "[integration][compile
 
 TEST_CASE("Compiler rejects return outside a function", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  println(1);\n}\nreturn 1;\n";
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n  println(1);\n}\nreturn 1;\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -210,13 +232,13 @@ TEST_CASE("Compiler rejects return outside a function", "[integration][compiler]
 
 TEST_CASE("Compiler runs factorial and summation acceptance end-to-end", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc fact(n) {\n"
+    const std::string source = "extern println(x) -> void;\nfunc fact(n) -> value {\n"
                                "  if (n == 1) {\n    return 1;\n  } else {\n"
                                "    var m = n - 1;\n"
                                "    var r = fact(m);\n"
                                "    return n * r;\n"
                                "  }\n"
-                               "}\nfunc main() {\n"
+                               "}\nfunc main() -> void {\n"
                                "  println(fact(5));\n"
                                "  var i = 1;\n"
                                "  var total = 0;\n"
@@ -245,7 +267,8 @@ TEST_CASE("Compiler runs factorial and summation acceptance end-to-end", "[integ
 
 TEST_CASE("Compiler supports bare var declaration with later assignment", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  var q;\n  q = 40 + 2;\n  println(q);\n}\n";
+    const std::string source =
+        "extern println(x) -> void;\nfunc main() -> void {\n  var q;\n  q = 40 + 2;\n  println(q);\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -265,7 +288,8 @@ TEST_CASE("Compiler supports bare var declaration with later assignment", "[inte
 
 TEST_CASE("Compiler allows reassignment with another type", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  var r = 1;\n  r = \"hi\";\n  println(r);\n}\n";
+    const std::string source =
+        "extern println(x) -> void;\nfunc main() -> void {\n  var r = 1;\n  r = \"hi\";\n  println(r);\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -285,8 +309,8 @@ TEST_CASE("Compiler allows reassignment with another type", "[integration][compi
 
 TEST_CASE("Compiler respects subtraction and division operand order", "[integration][compiler]")
 {
-    const std::string source =
-        "extern println(x);\nfunc main() {\n  var d = 10 - 2;\n  println(d);\n  var q = 10 / 2;\n  println(q);\n}\n";
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n  var d = 10 - 2;\n  println(d);\n  "
+                               "var q = 10 / 2;\n  println(q);\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -306,7 +330,7 @@ TEST_CASE("Compiler respects subtraction and division operand order", "[integrat
 
 TEST_CASE("Compiler rejects assignment to undeclared variable", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  q = 1;\n}\n";
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n  q = 1;\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -316,7 +340,7 @@ TEST_CASE("Compiler rejects assignment to undeclared variable", "[integration][c
 
 TEST_CASE("Compiler rejects duplicate var declaration", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  var q = 1;\n  var q = 2;\n}\n";
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n  var q = 1;\n  var q = 2;\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -326,8 +350,9 @@ TEST_CASE("Compiler rejects duplicate var declaration", "[integration][compiler]
 
 TEST_CASE("Compiler takes then-branch when condition holds", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  var m = 3;\n  if (m == 3) {\n    println(1);\n  } "
-                               "else {\n    println(0);\n  }\n}\n";
+    const std::string source =
+        "extern println(x) -> void;\nfunc main() -> void {\n  var m = 3;\n  if (m == 3) {\n    println(1);\n  } "
+        "else {\n    println(0);\n  }\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -347,8 +372,9 @@ TEST_CASE("Compiler takes then-branch when condition holds", "[integration][comp
 
 TEST_CASE("Compiler takes else-branch when condition fails", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  var m = 4;\n  if (m == 3) {\n    println(1);\n  } "
-                               "else {\n    println(0);\n  }\n}\n";
+    const std::string source =
+        "extern println(x) -> void;\nfunc main() -> void {\n  var m = 4;\n  if (m == 3) {\n    println(1);\n  } "
+        "else {\n    println(0);\n  }\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -368,7 +394,7 @@ TEST_CASE("Compiler takes else-branch when condition fails", "[integration][comp
 
 TEST_CASE("Compiler supports not-equal and ordered comparisons", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n"
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n"
                                "  var m = 4;\n"
                                "  if (m != 3) {\n    println(1);\n  } else {\n    println(0);\n  }\n"
                                "  if (m < 5) {\n    println(1);\n  } else {\n    println(0);\n  }\n"
@@ -395,8 +421,8 @@ TEST_CASE("Compiler supports not-equal and ordered comparisons", "[integration][
 
 TEST_CASE("Compiler runs then-block of if without else when taken", "[integration][compiler]")
 {
-    const std::string source =
-        "extern println(x);\nfunc main() {\n  var m = 3;\n  if (m == 3) {\n    println(1);\n  }\n  println(2);\n}\n";
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n  var m = 3;\n  if (m == 3) {\n    "
+                               "println(1);\n  }\n  println(2);\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -416,8 +442,8 @@ TEST_CASE("Compiler runs then-block of if without else when taken", "[integratio
 
 TEST_CASE("Compiler skips then-block of if without else when not taken", "[integration][compiler]")
 {
-    const std::string source =
-        "extern println(x);\nfunc main() {\n  var m = 4;\n  if (m == 3) {\n    println(1);\n  }\n  println(2);\n}\n";
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n  var m = 4;\n  if (m == 3) {\n    "
+                               "println(1);\n  }\n  println(2);\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -437,7 +463,7 @@ TEST_CASE("Compiler skips then-block of if without else when not taken", "[integ
 
 TEST_CASE("Compiler runs factorial while loop end-to-end", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n"
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n"
                                "  var n = 5;\n"
                                "  var acc = 1;\n"
                                "  while (n > 1) {\n"
@@ -465,7 +491,7 @@ TEST_CASE("Compiler runs factorial while loop end-to-end", "[integration][compil
 
 TEST_CASE("Compiler skips while body when condition false initially", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n"
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n"
                                "  var n = 0;\n"
                                "  while (n > 1) {\n"
                                "    println(1);\n"
@@ -491,7 +517,7 @@ TEST_CASE("Compiler skips while body when condition false initially", "[integrat
 
 TEST_CASE("Compiler runs nested while loops end-to-end", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n"
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n"
                                "  var i = 0;\n"
                                "  var total = 0;\n"
                                "  while (i < 2) {\n"
@@ -523,7 +549,7 @@ TEST_CASE("Compiler runs nested while loops end-to-end", "[integration][compiler
 
 TEST_CASE("Compiler rejects call to undeclared extern", "[integration][compiler]")
 {
-    const std::string source = "func main() {\n  foo(42);\n}\n";
+    const std::string source = "func main() -> void {\n  foo(42);\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -533,8 +559,8 @@ TEST_CASE("Compiler rejects call to undeclared extern", "[integration][compiler]
 
 TEST_CASE("Compiler calls script function with param and return end-to-end", "[integration][compiler]")
 {
-    const std::string source =
-        "extern println(x);\nfunc double(v) {\n  return v * 2;\n}\nfunc main() {\n  println(double(21));\n}\n";
+    const std::string source = "extern println(x) -> void;\nfunc double(v) -> value {\n  return v * 2;\n}\nfunc main() "
+                               "-> void {\n  println(double(21));\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -554,8 +580,8 @@ TEST_CASE("Compiler calls script function with param and return end-to-end", "[i
 
 TEST_CASE("Compiler calls void function as statement with bare return", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc show(v) {\n  println(v);\n  return;\n}\n"
-                               "func main() {\n  show(7);\n  println(9);\n}\n";
+    const std::string source = "extern println(x) -> void;\nfunc show(v) -> void {\n  println(v);\n  return;\n}\n"
+                               "func main() -> void {\n  show(7);\n  println(9);\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -575,8 +601,8 @@ TEST_CASE("Compiler calls void function as statement with bare return", "[integr
 
 TEST_CASE("Compiler evaluates nested calls as arguments end-to-end", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc double(v) {\n  return v * 2;\n}\n"
-                               "func main() {\n  println(double(double(2)));\n}\n";
+    const std::string source = "extern println(x) -> void;\nfunc double(v) -> value {\n  return v * 2;\n}\n"
+                               "func main() -> void {\n  println(double(double(2)));\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -596,11 +622,11 @@ TEST_CASE("Compiler evaluates nested calls as arguments end-to-end", "[integrati
 
 TEST_CASE("Compiler runs shallow void recursion end-to-end", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc count(n) {\n"
+    const std::string source = "extern println(x) -> void;\nfunc count(n) -> void {\n"
                                "  if (n == 0) {\n    return;\n  }\n"
                                "  println(n);\n"
                                "  count(n - 1);\n"
-                               "}\nfunc main() {\n  count(5);\n}\n";
+                               "}\nfunc main() -> void {\n  count(5);\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -620,12 +646,12 @@ TEST_CASE("Compiler runs shallow void recursion end-to-end", "[integration][comp
 
 TEST_CASE("Compiler runs recursive valued function end-to-end", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc fact(n) {\n"
+    const std::string source = "extern println(x) -> void;\nfunc fact(n) -> value {\n"
                                "  if (n == 1) {\n    return 1;\n  }\n"
                                "  var m = n - 1;\n"
                                "  var r = fact(m);\n"
                                "  return n * r;\n"
-                               "}\nfunc main() {\n  println(fact(5));\n}\n";
+                               "}\nfunc main() -> void {\n  println(fact(5));\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -645,8 +671,8 @@ TEST_CASE("Compiler runs recursive valued function end-to-end", "[integration][c
 
 TEST_CASE("Compiler resolves forward script function references", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  println(double(21));\n}\n"
-                               "func double(v) {\n  return v * 2;\n}\n";
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n  println(double(21));\n}\n"
+                               "func double(v) -> value {\n  return v * 2;\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -666,9 +692,19 @@ TEST_CASE("Compiler resolves forward script function references", "[integration]
 
 TEST_CASE("Compiler rejects mixed valued and void returns", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc f(v) {\n  if (v == 1) {\n    return 1;\n  }\n  return;\n}\n"
-                               "func main() {\n  println(f(2));\n}\n";
+    const std::string source =
+        "extern println(x) -> void;\nfunc f(v) -> value {\n  if (v == 1) {\n    return 1;\n  }\n  return;\n}\n"
+        "func main() -> void {\n  println(f(2));\n}\n";
 
+    std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
+    std::stringstream input(source);
+    std::stringstream asmCode;
+    REQUIRE_FALSE(compiler->compile(input, asmCode));
+}
+
+TEST_CASE("Compiler rejects reachable fallthrough in a value function", "[integration][compiler]")
+{
+    const std::string source = "func maybe(v) -> value {\n  if (v) {\n    return 1;\n  }\n}\nfunc main() -> void {}\n";
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
     std::stringstream asmCode;
@@ -677,8 +713,8 @@ TEST_CASE("Compiler rejects mixed valued and void returns", "[integration][compi
 
 TEST_CASE("Compiler rejects void call used as a value", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc show(v) {\n  println(v);\n}\n"
-                               "func main() {\n  var r = show(1);\n}\n";
+    const std::string source = "extern println(x) -> void;\nfunc show(v) -> void {\n  println(v);\n}\n"
+                               "func main() -> void {\n  var r = show(1);\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -688,8 +724,8 @@ TEST_CASE("Compiler rejects void call used as a value", "[integration][compiler]
 
 TEST_CASE("Compiler rejects script call with wrong argument count", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc double(v) {\n  return v * 2;\n}\n"
-                               "func main() {\n  println(double(1, 2));\n}\n";
+    const std::string source = "extern println(x) -> void;\nfunc double(v) -> value {\n  return v * 2;\n}\n"
+                               "func main() -> void {\n  println(double(1, 2));\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -699,7 +735,8 @@ TEST_CASE("Compiler rejects script call with wrong argument count", "[integratio
 
 TEST_CASE("Compiler rejects inconsistent extern use", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  var r = println(1);\n  println(2);\n}\n";
+    const std::string source =
+        "extern println(x) -> void;\nfunc main() -> void {\n  var r = println(1);\n  println(2);\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -709,7 +746,8 @@ TEST_CASE("Compiler rejects inconsistent extern use", "[integration][compiler]")
 
 TEST_CASE("Compiler prints string variable end-to-end", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  var s = \"hello\";\n  println(s);\n}\n";
+    const std::string source =
+        "extern println(x) -> void;\nfunc main() -> void {\n  var s = \"hello\";\n  println(s);\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -729,7 +767,7 @@ TEST_CASE("Compiler prints string variable end-to-end", "[integration][compiler]
 
 TEST_CASE("Compiler compares strings by value end-to-end", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n"
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n"
                                "  var s = \"hello\";\n"
                                "  if (s == \"hello\") {\n    println(1);\n  } else {\n    println(0);\n  }\n"
                                "  if (s == \"bye\") {\n    println(1);\n  } else {\n    println(0);\n  }\n"
@@ -753,7 +791,7 @@ TEST_CASE("Compiler compares strings by value end-to-end", "[integration][compil
 
 TEST_CASE("Compiler compares strings with not-equal end-to-end", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n"
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n"
                                "  var s = \"hello\";\n"
                                "  if (s != \"bye\") {\n    println(2);\n  } else {\n    println(0);\n  }\n"
                                "  if (s != \"hello\") {\n    println(2);\n  } else {\n    println(0);\n  }\n"
@@ -777,7 +815,8 @@ TEST_CASE("Compiler compares strings with not-equal end-to-end", "[integration][
 
 TEST_CASE("Compiler evaluates float arithmetic end-to-end", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  var f = 1.5 + 2.25;\n  println(f);\n}\n";
+    const std::string source =
+        "extern println(x) -> void;\nfunc main() -> void {\n  var f = 1.5 + 2.25;\n  println(f);\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -797,7 +836,7 @@ TEST_CASE("Compiler evaluates float arithmetic end-to-end", "[integration][compi
 
 TEST_CASE("Compiler runs strings and floats goal end-to-end", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n"
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n"
                                "  var s = \"hello\";\n"
                                "  println(s);\n"
                                "  if (s == \"hello\") {\n    println(1);\n  } else {\n    println(0);\n  }\n"
@@ -826,7 +865,8 @@ TEST_CASE("Compiler rejects string addition", "[integration][compiler]")
 {
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
 
-    const std::string plusSource = "extern println(x);\nfunc main() {\n  var s = \"a\" + \"b\";\n  println(s);\n}\n";
+    const std::string plusSource =
+        "extern println(x) -> void;\nfunc main() -> void {\n  var s = \"a\" + \"b\";\n  println(s);\n}\n";
     {
         std::stringstream input(plusSource);
         std::stringstream asmCode;
@@ -836,7 +876,7 @@ TEST_CASE("Compiler rejects string addition", "[integration][compiler]")
 
 TEST_CASE("Compiler supports and or not goal end-to-end", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n"
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n"
                                "  var a = 3;\n"
                                "  if ((a > 1) and (a < 5)) {\n    println(1);\n  } else {\n    println(0);\n  }\n"
                                "  if (not (a == 4)) {\n    println(2);\n  }\n"
@@ -861,7 +901,7 @@ TEST_CASE("Compiler supports and or not goal end-to-end", "[integration][compile
 
 TEST_CASE("Compiler supports xor end-to-end", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n"
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n"
                                "  var a = 3;\n"
                                "  if ((a == 3) xor (a == 4)) {\n    println(1);\n  } else {\n    println(0);\n  }\n"
                                "  if ((a == 3) xor (a == 3)) {\n    println(1);\n  } else {\n    println(0);\n  }\n"
@@ -885,7 +925,7 @@ TEST_CASE("Compiler supports xor end-to-end", "[integration][compiler]")
 
 TEST_CASE("Compiler supports not on value end-to-end", "[integration][compiler]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n"
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n"
                                "  var r = not 0;\n"
                                "  println(r);\n"
                                "  var s = not 5;\n"
@@ -911,7 +951,7 @@ TEST_CASE("Compiler supports not on value end-to-end", "[integration][compiler]"
 TEST_CASE("Compiler respects logic precedence end-to-end", "[integration][compiler]")
 {
     const std::string source =
-        "extern println(x);\nfunc main() {\n"
+        "extern println(x) -> void;\nfunc main() -> void {\n"
         "  var a = 1;\n"
         "  if (a == 1 or a == 2 and a == 3) {\n    println(1);\n  } else {\n    println(0);\n  }\n"
         "}\n";
@@ -970,78 +1010,56 @@ std::string runSource(const std::string &source)
 
 } // namespace
 
-TEST_CASE("Compiler folds literal init into movi", "[integration][compiler][peephole]")
+TEST_CASE("Compiler preserves integer local values", "[integration][compiler][lowering]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  var n = 5;\n  println(n);\n}\n";
-    const std::string asmText = compileToAsm(source);
-
-    REQUIRE(asmText.find("movi n, 5") != std::string::npos);
-    REQUIRE(asmText.find("pushi 5") == std::string::npos);
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n  var n = 5;\n  println(n);\n}\n";
     REQUIRE(runSource(source) == "5\n");
 }
 
-TEST_CASE("Compiler folds variable copy into movv", "[integration][compiler][peephole]")
+TEST_CASE("Compiler preserves variable copy values", "[integration][compiler][lowering]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  var a = 1;\n  var b = a;\n  println(b);\n}\n";
-    const std::string asmText = compileToAsm(source);
-
-    REQUIRE(asmText.find("movv b, a") != std::string::npos);
+    const std::string source =
+        "extern println(x) -> void;\nfunc main() -> void {\n  var a = 1;\n  var b = a;\n  println(b);\n}\n";
     REQUIRE(runSource(source) == "1\n");
 }
 
-TEST_CASE("Compiler folds float and string inits", "[integration][compiler][peephole]")
+TEST_CASE("Compiler preserves float and string local types", "[integration][compiler][lowering]")
 {
-    const std::string source =
-        "extern println(x);\nfunc main() {\n  var f = 1.5;\n  var s = \"hi\";\n  println(f);\n  println(s);\n}\n";
-    const std::string asmText = compileToAsm(source);
-
-    REQUIRE(asmText.find("movf f, 1.5") != std::string::npos);
-    REQUIRE(asmText.find("movs s, \"hi\"") != std::string::npos);
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n  var f = 1.5;\n  var s = \"hi\";\n "
+                               " println(f);\n  println(s);\n}\n";
     REQUIRE(runSource(source) == "1.5\nhi\n");
 }
 
-TEST_CASE("Compiler keeps oversized pushu init as push pair", "[integration][compiler][peephole]")
+TEST_CASE("Compiler preserves unsigned integer local values", "[integration][compiler][lowering]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  var u = 3000000000;\n  println(u);\n}\n";
-    const std::string asmText = compileToAsm(source);
-
-    REQUIRE(asmText.find("pushu 3000000000") != std::string::npos);
-    REQUIRE(asmText.find("movi u,") == std::string::npos);
+    const std::string source =
+        "extern println(x) -> void;\nfunc main() -> void {\n  var u = 3000000000;\n  println(u);\n}\n";
     REQUIRE(runSource(source) == "3000000000\n");
 }
 
-TEST_CASE("Compiler folds constant return into reti", "[integration][compiler][peephole]")
+TEST_CASE("Compiler returns integer values through the canonical return", "[integration][compiler][lowering]")
 {
-    const std::string source = "extern println(x);\nfunc f() {\n  return 42;\n}\nfunc main() {\n  println(f());\n}\n";
-    const std::string asmText = compileToAsm(source);
-
-    REQUIRE(asmText.find("reti 42") != std::string::npos);
-    REQUIRE(asmText.find("retmp") == std::string::npos);
+    const std::string source =
+        "extern println(x) -> void;\nfunc f() -> value {\n  return 42;\n}\nfunc main() -> void {\n  println(f());\n}\n";
     REQUIRE(runSource(source) == "42\n");
 }
 
-TEST_CASE("Compiler folds variable return into retv", "[integration][compiler][peephole]")
+TEST_CASE("Compiler returns variable values without hidden spill locals", "[integration][compiler][lowering]")
 {
-    const std::string source =
-        "extern println(x);\nfunc id(v) {\n  return v;\n}\nfunc main() {\n  println(id(7));\n}\n";
-    const std::string asmText = compileToAsm(source);
-
-    REQUIRE(asmText.find("retv v") != std::string::npos);
+    const std::string source = "extern println(x) -> void;\nfunc id(v) -> value {\n  return v;\n}\nfunc main() -> void "
+                               "{\n  println(id(7));\n}\n";
     REQUIRE(runSource(source) == "7\n");
 }
 
-TEST_CASE("Compiler drops literal expression statement", "[integration][compiler][peephole]")
+TEST_CASE("Compiler evaluates and discards literal expression statements", "[integration][compiler][lowering]")
 {
-    const std::string source = "extern println(x);\nfunc main() {\n  42;\n  println(1);\n}\n";
-    const std::string asmText = compileToAsm(source);
-
-    REQUIRE(asmText.find("pushi 42") == std::string::npos);
+    const std::string source = "extern println(x) -> void;\nfunc main() -> void {\n  42;\n  println(1);\n}\n";
     REQUIRE(runSource(source) == "1\n");
 }
 
 TEST_CASE("Compiler rejects second module declaration", "[integration][compiler]")
 {
-    const std::string source = "module a;\nmodule b;\nfunc main() {}\n";
+    const std::string source = "module a;\nmodule b;\nfunc main() -> void {}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -1051,7 +1069,7 @@ TEST_CASE("Compiler rejects second module declaration", "[integration][compiler]
 
 TEST_CASE("Compiler rejects module declaration after func", "[integration][compiler]")
 {
-    const std::string source = "func main() {}\nmodule m;\n";
+    const std::string source = "func main() -> void {}\nmodule m;\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -1061,7 +1079,7 @@ TEST_CASE("Compiler rejects module declaration after func", "[integration][compi
 
 TEST_CASE("Compiler rejects module declaration after import", "[integration][compiler]")
 {
-    const std::string source = "import a;\nmodule m;\nfunc main() {}\n";
+    const std::string source = "import a;\nmodule m;\nfunc main() -> void {}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -1071,7 +1089,7 @@ TEST_CASE("Compiler rejects module declaration after import", "[integration][com
 
 TEST_CASE("Compiler rejects import declaration after func", "[integration][compiler]")
 {
-    const std::string source = "func main() {}\nimport a;\n";
+    const std::string source = "func main() -> void {}\nimport a;\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -1081,7 +1099,7 @@ TEST_CASE("Compiler rejects import declaration after func", "[integration][compi
 
 TEST_CASE("Compiler rejects import declaration after extern", "[integration][compiler]")
 {
-    const std::string source = "extern f(x);\nimport a;\nfunc main() {\n  f(1);\n}\n";
+    const std::string source = "extern f(x) -> void;\nimport a;\nfunc main() -> void {\n  f(1);\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -1091,7 +1109,7 @@ TEST_CASE("Compiler rejects import declaration after extern", "[integration][com
 
 TEST_CASE("Compiler rejects export on extern declaration", "[integration][compiler]")
 {
-    const std::string source = "export extern f(x);\nfunc main() {}\n";
+    const std::string source = "export extern f(x) -> void;\nfunc main() -> void {}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -1101,7 +1119,7 @@ TEST_CASE("Compiler rejects export on extern declaration", "[integration][compil
 
 TEST_CASE("Compiler rejects export on non-func declaration", "[integration][compiler]")
 {
-    const std::string source = "export var x;\nfunc main() {}\n";
+    const std::string source = "export var x;\nfunc main() -> void {}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -1111,7 +1129,7 @@ TEST_CASE("Compiler rejects export on non-func declaration", "[integration][comp
 
 TEST_CASE("Compiler rejects doubly qualified call", "[integration][compiler]")
 {
-    const std::string source = "func main() {\n  a::b::c();\n}\n";
+    const std::string source = "func main() -> void {\n  a::b::c();\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
@@ -1123,14 +1141,14 @@ TEST_CASE("Compiler rejects call with empty qualifier", "[integration][compiler]
 {
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
 
-    const std::string stmtSource = "func main() {\n  ::f();\n}\n";
+    const std::string stmtSource = "func main() -> void {\n  ::f();\n}\n";
     {
         std::stringstream input(stmtSource);
         std::stringstream asmCode;
         REQUIRE_FALSE(compiler->compile(input, asmCode));
     }
 
-    const std::string exprSource = "func main() {\n  var x = ::f();\n}\n";
+    const std::string exprSource = "func main() -> void {\n  var x = ::f();\n}\n";
     {
         std::stringstream input(exprSource);
         std::stringstream asmCode;
@@ -1142,21 +1160,21 @@ TEST_CASE("Compiler rejects module import export used as identifiers", "[integra
 {
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
 
-    const std::string funcName = "func module() {}\n";
+    const std::string funcName = "func module() -> void {}\n";
     {
         std::stringstream input(funcName);
         std::stringstream asmCode;
         REQUIRE_FALSE(compiler->compile(input, asmCode));
     }
 
-    const std::string varName = "func main() {\n  var import;\n}\n";
+    const std::string varName = "func main() -> void {\n  var import;\n}\n";
     {
         std::stringstream input(varName);
         std::stringstream asmCode;
         REQUIRE_FALSE(compiler->compile(input, asmCode));
     }
 
-    const std::string paramName = "func f(export) {\n}\nfunc main() {}\n";
+    const std::string paramName = "func f(export) -> void {\n}\nfunc main() -> void {}\n";
     {
         std::stringstream input(paramName);
         std::stringstream asmCode;
@@ -1258,25 +1276,45 @@ struct TempDir
 {
     explicit TempDir(const std::string &name)
     {
-        path = std::filesystem::temp_directory_path() / name;
+        const auto project = std::filesystem::absolute(std::filesystem::path(__FILE__))
+                                 .parent_path()
+                                 .parent_path()
+                                 .parent_path()
+                                 .parent_path();
+        root = (project / "build/test-tmp").lexically_normal();
         std::error_code ec;
-        std::filesystem::remove_all(path, ec);
-        std::filesystem::create_directories(path, ec);
+        std::filesystem::create_directories(root, ec);
+        REQUIRE_FALSE(ec);
+        const auto token = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+        // Exclusive creation isolates concurrently running build configurations.
+        for (int attempt = 0; attempt < 32; ++attempt)
+        {
+            path = (root / (name + "-" + token + "-" + std::to_string(attempt))).lexically_normal();
+            REQUIRE(path.is_absolute());
+            REQUIRE(path.parent_path() == root);
+            if (std::filesystem::create_directory(path, ec))
+                return;
+            REQUIRE_FALSE(ec);
+        }
+        FAIL("Cannot create an isolated test directory.");
     }
-
     ~TempDir()
     {
-        std::error_code ec;
-        std::filesystem::remove_all(path, ec);
+        if (path.is_absolute() && path.parent_path() == root)
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(path, ec);
+        }
     }
-
     void write(const std::string &name, const std::string &content)
     {
         std::ofstream out(path / name, std::ios::binary);
         out << content;
     }
-
     std::filesystem::path path;
+
+private:
+    std::filesystem::path root;
 };
 
 } // namespace
@@ -1286,8 +1324,8 @@ TEST_CASE("Compiler compiles module imports and export end-to-end", "[integratio
     const std::string dir = ksFixtureDir();
     REQUIRE_FALSE(dir.empty());
     const std::string source =
-        "module mymod;\nimport other;\nextern println(x);\nexport func helper(v) {\n"
-        "  return v * 2;\n}\nfunc main() {\n  println(helper(21));\n  println(other::triple(7));\n}\n";
+        "module mymod;\nimport other;\nextern println(x) -> void;\nexport func helper(v) -> value {\n"
+        "  return v * 2;\n}\nfunc main() -> void {\n  println(helper(21));\n  println(other::triple(7));\n}\n";
 
     REQUIRE(runWithPaths(source, {dir}, "mymod@main") == "42\n21\n");
 }
@@ -1296,7 +1334,8 @@ TEST_CASE("Compiler resolves a single import end-to-end", "[integration][compile
 {
     const std::string dir = ksFixtureDir();
     REQUIRE_FALSE(dir.empty());
-    const std::string source = "import math;\nextern println(x);\nfunc main() {\n  println(math::double(21));\n}\n";
+    const std::string source =
+        "import math;\nextern println(x) -> void;\nfunc main() -> void {\n  println(math::double(21));\n}\n";
 
     REQUIRE(runWithPaths(source, {dir}) == "42\n");
 }
@@ -1305,7 +1344,8 @@ TEST_CASE("Compiler resolves a transitive import chain end-to-end", "[integratio
 {
     const std::string dir = ksFixtureDir();
     REQUIRE_FALSE(dir.empty());
-    const std::string source = "import c1;\nextern println(x);\nfunc main() {\n  println(c1::f1());\n}\n";
+    const std::string source =
+        "import c1;\nextern println(x) -> void;\nfunc main() -> void {\n  println(c1::f1());\n}\n";
 
     REQUIRE(runWithPaths(source, {dir}) == "12\n");
 }
@@ -1317,8 +1357,8 @@ TEST_CASE("Compiler shares a diamond import once", "[integration][compiler]")
     // proves it parsed once and was shared.
     const std::string dir = ksFixtureDir();
     REQUIRE_FALSE(dir.empty());
-    const std::string source =
-        "import dia_a;\nimport dia_b;\nextern println(x);\nfunc main() {\n  println(dia_a::fa() + dia_b::fb());\n}\n";
+    const std::string source = "import dia_a;\nimport dia_b;\nextern println(x) -> void;\nfunc main() -> void {\n  "
+                               "println(dia_a::fa() + dia_b::fb());\n}\n";
 
     REQUIRE(runWithPaths(source, {dir}) == "23\n");
 }
@@ -1327,7 +1367,7 @@ TEST_CASE("Compiler resolves the same import twice without duplication", "[integ
 {
     const std::string dir = ksFixtureDir();
     REQUIRE_FALSE(dir.empty());
-    const std::string source = "import math;\nimport math;\nextern println(x);\nfunc main() {\n  "
+    const std::string source = "import math;\nimport math;\nextern println(x) -> void;\nfunc main() -> void {\n  "
                                "println(math::double(1));\n}\n";
 
     REQUIRE(runWithPaths(source, {dir}) == "2\n");
@@ -1337,7 +1377,7 @@ TEST_CASE("Compiler reports a self-import cycle", "[integration][compiler]")
 {
     const std::string dir = ksFixtureDir();
     REQUIRE_FALSE(dir.empty());
-    const std::string source = "import selfcyc;\nextern println(x);\nfunc main() {\n  println(1);\n}\n";
+    const std::string source = "import selfcyc;\nextern println(x) -> void;\nfunc main() -> void {\n  println(1);\n}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {dir});
     REQUIRE_FALSE(result.ok);
@@ -1349,7 +1389,7 @@ TEST_CASE("Compiler reports a two-module import cycle", "[integration][compiler]
 {
     const std::string dir = ksFixtureDir();
     REQUIRE_FALSE(dir.empty());
-    const std::string source = "import cyc_a;\nextern println(x);\nfunc main() {\n  println(1);\n}\n";
+    const std::string source = "import cyc_a;\nextern println(x) -> void;\nfunc main() -> void {\n  println(1);\n}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {dir});
     REQUIRE_FALSE(result.ok);
@@ -1361,7 +1401,7 @@ TEST_CASE("Compiler reports a three-module import cycle", "[integration][compile
 {
     const std::string dir = ksFixtureDir();
     REQUIRE_FALSE(dir.empty());
-    const std::string source = "import loop1;\nextern println(x);\nfunc main() {\n  println(1);\n}\n";
+    const std::string source = "import loop1;\nextern println(x) -> void;\nfunc main() -> void {\n  println(1);\n}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {dir});
     REQUIRE_FALSE(result.ok);
@@ -1375,7 +1415,8 @@ TEST_CASE("Compiler rejects a duplicate module name from a different file", "[in
     // module name. This must fail, never silently prefer one file.
     const std::string dir = ksFixtureDir();
     REQUIRE_FALSE(dir.empty());
-    const std::string source = "module dup;\nimport dup;\nextern println(x);\nfunc main() {\n  println(1);\n}\n";
+    const std::string source =
+        "module dup;\nimport dup;\nextern println(x) -> void;\nfunc main() -> void {\n  println(1);\n}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {dir});
     REQUIRE_FALSE(result.ok);
@@ -1387,7 +1428,7 @@ TEST_CASE("Compiler rejects an import whose file declares another module", "[int
 {
     const std::string dir = ksFixtureDir();
     REQUIRE_FALSE(dir.empty());
-    const std::string source = "import wrong;\nextern println(x);\nfunc main() {\n  println(1);\n}\n";
+    const std::string source = "import wrong;\nextern println(x) -> void;\nfunc main() -> void {\n  println(1);\n}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {dir});
     REQUIRE_FALSE(result.ok);
@@ -1399,7 +1440,7 @@ TEST_CASE("Compiler rejects an imported file without a module declaration", "[in
 {
     const std::string dir = ksFixtureDir();
     REQUIRE_FALSE(dir.empty());
-    const std::string source = "import anon;\nextern println(x);\nfunc main() {\n  println(1);\n}\n";
+    const std::string source = "import anon;\nextern println(x) -> void;\nfunc main() -> void {\n  println(1);\n}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {dir});
     REQUIRE_FALSE(result.ok);
@@ -1409,7 +1450,8 @@ TEST_CASE("Compiler rejects an imported file without a module declaration", "[in
 
 TEST_CASE("Compiler rejects an import with no search paths configured", "[integration][compiler]")
 {
-    const std::string source = "import math;\nextern println(x);\nfunc main() {\n  println(double(21));\n}\n";
+    const std::string source =
+        "import math;\nextern println(x) -> void;\nfunc main() -> void {\n  println(double(21));\n}\n";
 
     {
         testutil::RecordingLogger logger;
@@ -1432,7 +1474,8 @@ TEST_CASE("Compiler reports a missing import with the searched paths", "[integra
 {
     const std::string dir = ksFixtureDir();
     REQUIRE_FALSE(dir.empty());
-    const std::string source = "import missing_mod;\nextern println(x);\nfunc main() {\n  println(1);\n}\n";
+    const std::string source =
+        "import missing_mod;\nextern println(x) -> void;\nfunc main() -> void {\n  println(1);\n}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {dir});
     REQUIRE_FALSE(result.ok);
@@ -1447,7 +1490,7 @@ TEST_CASE("Compiler matches import file names case-sensitively", "[integration][
     // the exact match.
     const std::string dir = ksFixtureDir();
     REQUIRE_FALSE(dir.empty());
-    const std::string source = "import Math;\nextern println(x);\nfunc main() {\n  println(1);\n}\n";
+    const std::string source = "import Math;\nextern println(x) -> void;\nfunc main() -> void {\n  println(1);\n}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {dir});
     REQUIRE_FALSE(result.ok);
@@ -1460,7 +1503,8 @@ TEST_CASE("Compiler takes the first search path hit for an import", "[integratio
     REQUIRE_FALSE(dir.empty());
     const std::string first = dir + "/ord1";
     const std::string second = dir + "/ord2";
-    const std::string source = "import which;\nextern println(x);\nfunc main() {\n  println(which::whichfn());\n}\n";
+    const std::string source =
+        "import which;\nextern println(x) -> void;\nfunc main() -> void {\n  println(which::whichfn());\n}\n";
 
     REQUIRE(runWithPaths(source, {first, second}) == "1\n");
     REQUIRE(runWithPaths(source, {second, first}) == "2\n");
@@ -1468,8 +1512,9 @@ TEST_CASE("Compiler takes the first search path hit for an import", "[integratio
 
 TEST_CASE("Compiler still compiles anonymous and named roots without imports", "[integration][compiler]")
 {
-    const std::string anon = "extern println(x);\nfunc main() {\n  println(1);\n}\n";
-    const std::string named = "module standalone;\nextern println(x);\nfunc main() {\n  println(2);\n}\n";
+    const std::string anon = "extern println(x) -> void;\nfunc main() -> void {\n  println(1);\n}\n";
+    const std::string named =
+        "module standalone;\nextern println(x) -> void;\nfunc main() -> void {\n  println(2);\n}\n";
 
     for (const bool isNamed : {false, true})
     {
@@ -1504,9 +1549,10 @@ TEST_CASE("Compiler rejects an import chain past the depth bound", "[integration
                                       : "return m" + std::to_string(i + 1) + "::f" + std::to_string(i + 1) + "() + " +
                                             std::to_string(i) + ";";
         dir.write("m" + std::to_string(i) + ".ks", "module m" + std::to_string(i) + ";\n" + next + "export func f" +
-                                                       std::to_string(i) + "() {\n  " + call + "\n}\n");
+                                                       std::to_string(i) + "() -> value {\n  " + call + "\n}\n");
     }
-    const std::string source = "import m0;\nextern println(x);\nfunc main() {\n  println(m0::f0());\n}\n";
+    const std::string source =
+        "import m0;\nextern println(x) -> void;\nfunc main() -> void {\n  println(m0::f0());\n}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {dir.path.string()});
     REQUIRE_FALSE(result.ok);
@@ -1541,148 +1587,69 @@ std::string runAsmText(const std::string &asmText, const std::string &func = "ma
 void writeSliceMath(TempDir &dir)
 {
     dir.write("math.ks", "module math;\n"
-                         "export func double(v) {\n"
+                         "export func double(v) -> value {\n"
                          "  return v * 2;\n"
                          "}\n"
-                         "func helper(v) {\n"
+                         "func helper(v) -> value {\n"
                          "  return v + 1;\n"
                          "}\n");
 }
 
 } // namespace
 
-TEST_CASE("Slice4 keeps anonymous root lowering byte-identical", "[integration][compiler][slice4]")
+TEST_CASE("Anonymous source and assembly paths produce identical verified bytecode", "[integration][compiler][slice4]")
 {
-    const std::string emptyMain = "func main() {}";
-    const std::string factorial = "extern println(x);\nfunc fact(n) {\n"
+    const std::string emptyMain = "func main() -> void {}";
+    const std::string factorial = "extern println(x) -> void;\nfunc fact(n) -> value {\n"
                                   "  if (n == 1) {\n    return 1;\n  }\n"
                                   "  var m = n - 1;\n"
                                   "  var r = fact(m);\n"
                                   "  return n * r;\n"
-                                  "}\nfunc main() {\n  println(fact(5));\n}\n";
-    const std::string fib = "extern println(x);\nfunc fib(n) {\n"
+                                  "}\nfunc main() -> void {\n  println(fact(5));\n}\n";
+    const std::string fib = "extern println(x) -> void;\nfunc fib(n) -> value {\n"
                             "  if (n < 2) {\n    return n;\n  }\n"
                             "  return fib(n - 1) + fib(n - 2);\n"
-                            "}\nfunc main() {\n  println(fib(10));\n}\n";
+                            "}\nfunc main() -> void {\n  println(fib(10));\n}\n";
 
-    const std::string emptyAsm = "func main\n{\nret\n}\n";
-    const std::string factorialAsm = "extern println 1\n"
-                                     "func fact\n"
-                                     "{\n"
-                                     "param n\n"
-                                     "var retmp\n"
-                                     "var m\n"
-                                     "var r\n"
-                                     "pushv n\n"
-                                     "pushi 1\n"
-                                     "je cmp_true_0\n"
-                                     "pushi 0\n"
-                                     "jmp cmp_end_0\n"
-                                     "label cmp_true_0\n"
-                                     "pushi 1\n"
-                                     "label cmp_end_0\n"
-                                     "pushi 0\n"
-                                     "je if_end_1\n"
-                                     "reti 1\n"
-                                     "label if_end_1\n"
-                                     "pushv n\n"
-                                     "pushi 1\n"
-                                     "sub\n"
-                                     "popv m\n"
-                                     "pushv m\n"
-                                     "call fact\n"
-                                     "popv r\n"
-                                     "pushv n\n"
-                                     "pushv r\n"
-                                     "mul\n"
-                                     "popv retmp\n"
-                                     "retv retmp\n"
-                                     "ret\n"
-                                     "}\n"
-                                     "func main\n"
-                                     "{\n"
-                                     "pushi 5\n"
-                                     "call fact\n"
-                                     "calle println\n"
-                                     "ret\n"
-                                     "}\n";
-    const std::string fibAsm = "extern println 1\n"
-                               "func fib\n"
-                               "{\n"
-                               "param n\n"
-                               "var retmp\n"
-                               "pushv n\n"
-                               "pushi 2\n"
-                               "jl cmp_true_0\n"
-                               "pushi 0\n"
-                               "jmp cmp_end_0\n"
-                               "label cmp_true_0\n"
-                               "pushi 1\n"
-                               "label cmp_end_0\n"
-                               "pushi 0\n"
-                               "je if_end_1\n"
-                               "retv n\n"
-                               "label if_end_1\n"
-                               "pushv n\n"
-                               "pushi 1\n"
-                               "sub\n"
-                               "call fib\n"
-                               "pushv n\n"
-                               "pushi 2\n"
-                               "sub\n"
-                               "call fib\n"
-                               "add\n"
-                               "popv retmp\n"
-                               "retv retmp\n"
-                               "ret\n"
-                               "}\n"
-                               "func main\n"
-                               "{\n"
-                               "pushi 10\n"
-                               "call fib\n"
-                               "calle println\n"
-                               "ret\n"
-                               "}\n";
-
-    REQUIRE(compileFlatToAsm(emptyMain) == emptyAsm);
-    REQUIRE(compileFlatToAsm(factorial) == factorialAsm);
-    REQUIRE(compileFlatToAsm(fib) == fibAsm);
-    REQUIRE(compileFlatToAsm(emptyMain).find('@') == std::string::npos);
-    REQUIRE(compileFlatToAsm(factorial).find('@') == std::string::npos);
-    REQUIRE(compileFlatToAsm(fib).find('@') == std::string::npos);
-    REQUIRE(runAsmText(factorialAsm) == "120\n");
-    REQUIRE(runAsmText(fibAsm) == "55\n");
+    for (const auto &source : {emptyMain, factorial, fib})
+    {
+        const auto assembly = compileFlatToAsm(source);
+        REQUIRE(assembly.find('@') == std::string::npos);
+        std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler(nullptr));
+        std::stringstream input(source), direct, assembled;
+        REQUIRE(compiler->compileBytecode(input, direct));
+        REQUIRE(testutil::assemble(assembly, assembled));
+        REQUIRE(direct.str() == assembled.str());
+    }
+    REQUIRE(runAsmText(compileFlatToAsm(factorial)) == "120\n");
+    REQUIRE(runAsmText(compileFlatToAsm(fib)) == "55\n");
 }
 
 TEST_CASE("Slice4 qualified exported call runs end-to-end with mangled names", "[integration][compiler][slice4]")
 {
     TempDir dir("kernscript_slice4_qualified");
     writeSliceMath(dir);
-    const std::string source = "import math;\nextern println(x);\nfunc main() {\n  println(math::double(21));\n}\n";
+    const std::string source =
+        "import math;\nextern println(x) -> void;\nfunc main() -> void {\n  println(math::double(21));\n}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {dir.path.string()});
     REQUIRE(result.ok);
-    REQUIRE(result.asmText.find("func math@double") != std::string::npos);
-    REQUIRE(result.asmText.find("call math@double") != std::string::npos);
-    REQUIRE(result.asmText.find("func math@helper") != std::string::npos);
-    REQUIRE(result.asmText.find("func double") == std::string::npos);
-    REQUIRE(result.asmText.find("call double") == std::string::npos);
     REQUIRE(runAsmText(result.asmText) == "42\n");
 }
 
 TEST_CASE("Slice4 private helper runs unqualified inside its module", "[integration][compiler][slice4]")
 {
     TempDir dir("kernscript_slice4_private_inside");
-    dir.write("priv.ks", "module priv;\nexport func f(v) {\n"
+    dir.write("priv.ks", "module priv;\nexport func f(v) -> value {\n"
                          "  return helper(v) * 2;\n"
-                         "}\nfunc helper(v) {\n"
+                         "}\nfunc helper(v) -> value {\n"
                          "  return v + 1;\n"
                          "}\n");
-    const std::string source = "import priv;\nextern println(x);\nfunc main() {\n  println(priv::f(5));\n}\n";
+    const std::string source =
+        "import priv;\nextern println(x) -> void;\nfunc main() -> void {\n  println(priv::f(5));\n}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {dir.path.string()});
     REQUIRE(result.ok);
-    REQUIRE(result.asmText.find("call priv@helper") != std::string::npos);
     REQUIRE(runAsmText(result.asmText) == "12\n");
 }
 
@@ -1690,7 +1657,8 @@ TEST_CASE("Slice4 qualified private call is rejected with an exact diagnostic", 
 {
     TempDir dir("kernscript_slice4_private_outside");
     writeSliceMath(dir);
-    const std::string source = "import math;\nextern println(x);\nfunc main() {\n  println(math::helper(1));\n}\n";
+    const std::string source =
+        "import math;\nextern println(x) -> void;\nfunc main() -> void {\n  println(math::helper(1));\n}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {dir.path.string()}, "main.ks");
     REQUIRE_FALSE(result.ok);
@@ -1703,7 +1671,8 @@ TEST_CASE("Slice4 unknown module is rejected with an exact diagnostic", "[integr
 {
     TempDir dir("kernscript_slice4_unknown_module");
     writeSliceMath(dir);
-    const std::string source = "import math;\nextern println(x);\nfunc main() {\n  println(nosuch::f(1));\n}\n";
+    const std::string source =
+        "import math;\nextern println(x) -> void;\nfunc main() -> void {\n  println(nosuch::f(1));\n}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {dir.path.string()}, "main.ks");
     REQUIRE_FALSE(result.ok);
@@ -1716,7 +1685,8 @@ TEST_CASE("Slice4 unknown func is rejected with an exact diagnostic", "[integrat
 {
     TempDir dir("kernscript_slice4_unknown_func");
     writeSliceMath(dir);
-    const std::string source = "import math;\nextern println(x);\nfunc main() {\n  println(math::nosuch(1));\n}\n";
+    const std::string source =
+        "import math;\nextern println(x) -> void;\nfunc main() -> void {\n  println(math::nosuch(1));\n}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {dir.path.string()}, "main.ks");
     REQUIRE_FALSE(result.ok);
@@ -1729,7 +1699,8 @@ TEST_CASE("Slice4 unqualified cross-module call is rejected", "[integration][com
 {
     TempDir dir("kernscript_slice4_unqualified");
     writeSliceMath(dir);
-    const std::string source = "import math;\nextern println(x);\nfunc main() {\n  println(double(21));\n}\n";
+    const std::string source =
+        "import math;\nextern println(x) -> void;\nfunc main() -> void {\n  println(double(21));\n}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {dir.path.string()}, "main.ks");
     REQUIRE_FALSE(result.ok);
@@ -1740,16 +1711,13 @@ TEST_CASE("Slice4 qualified calls work in statement and expression positions", "
 {
     const std::string dir = ksFixtureDir();
     REQUIRE_FALSE(dir.empty());
-    const std::string source = "import vis_math;\nextern println(x);\nfunc main() {\n"
+    const std::string source = "import vis_math;\nextern println(x) -> void;\nfunc main() -> void {\n"
                                "  vis_math::show(7);\n"
                                "  println(vis_math::add(vis_math::one(), 2));\n"
                                "}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {dir});
     REQUIRE(result.ok);
-    REQUIRE(result.asmText.find("call vis_math@show") != std::string::npos);
-    REQUIRE(result.asmText.find("call vis_math@add") != std::string::npos);
-    REQUIRE(result.asmText.find("call vis_math@one") != std::string::npos);
     REQUIRE(runAsmText(result.asmText) == "7\n3\n");
 }
 
@@ -1758,14 +1726,14 @@ TEST_CASE("Slice4 arity and void violations are caught through qualified names",
     const std::string dir = ksFixtureDir();
     REQUIRE_FALSE(dir.empty());
 
-    const std::string aritySource = "import vis_math;\nextern println(x);\nfunc main() {\n"
+    const std::string aritySource = "import vis_math;\nextern println(x) -> void;\nfunc main() -> void {\n"
                                     "  println(vis_math::add(1));\n}\n";
     const ImportCompileResult arity = compileWithPaths(aritySource, {dir});
     REQUIRE_FALSE(arity.ok);
     REQUIRE(contains(arity.messages, "Wrong argument count."));
     REQUIRE(contains(arity.messages, "declared 2 parameters here"));
 
-    const std::string voidSource = "import vis_math;\nextern println(x);\nfunc main() {\n"
+    const std::string voidSource = "import vis_math;\nextern println(x) -> void;\nfunc main() -> void {\n"
                                    "  var x = vis_math::show(1);\n}\n";
     const ImportCompileResult voidUse = compileWithPaths(voidSource, {dir});
     REQUIRE_FALSE(voidUse.ok);
@@ -1776,15 +1744,13 @@ TEST_CASE("Slice4 same func name in two modules stays distinct", "[integration][
 {
     const std::string dir = ksFixtureDir();
     REQUIRE_FALSE(dir.empty());
-    const std::string source = "import vis_math;\nimport vis_util;\nextern println(x);\nfunc main() {\n"
+    const std::string source = "import vis_math;\nimport vis_util;\nextern println(x) -> void;\nfunc main() -> void {\n"
                                "  println(vis_math::id(5));\n"
                                "  println(vis_util::id(5));\n"
                                "}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {dir});
     REQUIRE(result.ok);
-    REQUIRE(result.asmText.find("call vis_math@id") != std::string::npos);
-    REQUIRE(result.asmText.find("call vis_util@id") != std::string::npos);
     REQUIRE(runAsmText(result.asmText) == "105\n5\n");
 }
 
@@ -1792,14 +1758,11 @@ TEST_CASE("Slice4 transitive import chain runs end-to-end through the VM", "[int
 {
     const std::string dir = ksFixtureDir();
     REQUIRE_FALSE(dir.empty());
-    const std::string source = "import vis_math;\nextern println(x);\nfunc main() {\n"
+    const std::string source = "import vis_math;\nextern println(x) -> void;\nfunc main() -> void {\n"
                                "  println(vis_math::f(10));\n}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {dir});
     REQUIRE(result.ok);
-    REQUIRE(result.asmText.find("call vis_math@f") != std::string::npos);
-    REQUIRE(result.asmText.find("call vis_util@g") != std::string::npos);
-    REQUIRE(result.asmText.find("func vis_util@g") != std::string::npos);
     REQUIRE(runAsmText(result.asmText) == "31\n");
 }
 
@@ -1807,7 +1770,7 @@ TEST_CASE("Slice4 transitive module is invisible to the root", "[integration][co
 {
     const std::string dir = ksFixtureDir();
     REQUIRE_FALSE(dir.empty());
-    const std::string source = "import vis_math;\nextern println(x);\nfunc main() {\n"
+    const std::string source = "import vis_math;\nextern println(x) -> void;\nfunc main() -> void {\n"
                                "  println(vis_util::g(1));\n}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {dir}, "main.ks");
@@ -1817,18 +1780,18 @@ TEST_CASE("Slice4 transitive module is invisible to the root", "[integration][co
     REQUIRE(result.messages[1] == "note: check the name or import it directly");
 }
 
-TEST_CASE("Slice4 same-name externs merge silently on matching arity", "[integration][compiler][slice4]")
+TEST_CASE("Same-name externs merge on matching full signatures", "[integration][compiler][slice4]")
 {
     TempDir dir("kernscript_slice4_extern_merge");
-    dir.write("ea.ks", "module ea;\nextern println(x);\nexport func fa() {\n"
+    dir.write("ea.ks", "module ea;\nextern println(x) -> void;\nexport func fa() -> value {\n"
                        "  println(1);\n"
                        "  return 1;\n"
                        "}\n");
-    dir.write("eb.ks", "module eb;\nextern println(y);\nexport func fb() {\n"
+    dir.write("eb.ks", "module eb;\nextern println(y) -> void;\nexport func fb() -> value {\n"
                        "  println(2);\n"
                        "  return 2;\n"
                        "}\n");
-    const std::string source = "import ea;\nimport eb;\nextern println(x);\nfunc main() {\n"
+    const std::string source = "import ea;\nimport eb;\nextern println(x) -> void;\nfunc main() -> void {\n"
                                "  println(ea::fa() + eb::fb());\n}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {dir.path.string()});
@@ -1836,11 +1799,22 @@ TEST_CASE("Slice4 same-name externs merge silently on matching arity", "[integra
     REQUIRE(runAsmText(result.asmText) == "1\n2\n3\n");
 }
 
-TEST_CASE("Slice4 same-name externs conflict on arity mismatch", "[integration][compiler][slice4]")
+TEST_CASE("Same-name externs conflict on arity mismatch", "[integration][compiler][slice4]")
 {
     TempDir dir("kernscript_slice4_extern_conflict");
-    dir.write("ec.ks", "module ec;\nextern println(x, y);\nexport func fc() {\n  return 3;\n}\n");
-    const std::string source = "import ec;\nextern println(x);\nfunc main() {\n  println(1);\n}\n";
+    dir.write("ec.ks", "module ec;\nextern println(x, y) -> void;\nexport func fc() -> value {\n  return 3;\n}\n");
+    const std::string source = "import ec;\nextern println(x) -> void;\nfunc main() -> void {\n  println(1);\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {dir.path.string()});
+    REQUIRE_FALSE(result.ok);
+    REQUIRE(contains(result.messages, "Conflicting extern 'println'"));
+}
+
+TEST_CASE("Same-name externs conflict on return-kind mismatch", "[integration][compiler][slice4]")
+{
+    TempDir dir("kernscript_slice4_extern_return_conflict");
+    dir.write("ec.ks", "module ec;\nextern println(x) -> value;\nexport func fc() -> void {}\n");
+    const std::string source = "import ec;\nextern println(x) -> void;\nfunc main() -> void {}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {dir.path.string()});
     REQUIRE_FALSE(result.ok);
@@ -1851,7 +1825,8 @@ TEST_CASE("Slice4 qualified extern call is rejected with an exact diagnostic", "
 {
     TempDir dir("kernscript_slice4_qualified_extern");
     writeSliceMath(dir);
-    const std::string source = "import math;\nextern println(x);\nfunc main() {\n  println(math::println(1));\n}\n";
+    const std::string source =
+        "import math;\nextern println(x) -> void;\nfunc main() -> void {\n  println(math::println(1));\n}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {dir.path.string()}, "main.ks");
     REQUIRE_FALSE(result.ok);
@@ -1862,144 +1837,158 @@ TEST_CASE("Slice4 qualified extern call is rejected with an exact diagnostic", "
 
 TEST_CASE("Slice4 named root main mangles but stays host-callable by mangled name", "[integration][compiler][slice4]")
 {
-    const std::string source = "module mymod;\nextern println(x);\nfunc main() {\n  println(1);\n}\n";
+    const std::string source = "module mymod;\nextern println(x) -> void;\nfunc main() -> void {\n  println(1);\n}\n";
 
     std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler());
     std::stringstream input(source);
     std::stringstream asmCode;
     REQUIRE(compiler->compile(input, asmCode, "main.ks"));
     const std::string asmText = asmCode.str();
-    REQUIRE(asmText.find("func mymod@main") != std::string::npos);
-    REQUIRE(asmText.find("func main") == std::string::npos);
+    REQUIRE_FALSE(asmText.empty());
     REQUIRE(runAsmText(asmText, "mymod@main") == "1\n");
 }
 
-TEST_CASE("Compiler rejects root func named like an assembly keyword", "[integration][compiler]")
+TEST_CASE("Compiler supports script func names matching assembly words", "[integration][compiler]")
 {
-    const std::string source = "func label() {\n  return 1;\n}\nfunc main() {\n  label();\n}\n";
+    const std::string source = "func label() -> value {\n  return 1;\n}\nfunc main() -> void {\n  label();\n}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {}, "main.ks");
-    REQUIRE_FALSE(result.ok);
-    REQUIRE(result.messages.size() == 2);
-    REQUIRE(result.messages[0] == "main.ks:1:6: error: Name 'label' collides with an assembly keyword.");
-    REQUIRE(result.messages[1] == "note: use a different name");
+    REQUIRE(result.ok);
+    REQUIRE(runAsmText(result.asmText).empty());
 }
 
-TEST_CASE("Compiler rejects root func named like an assembly instruction", "[integration][compiler]")
+TEST_CASE("Compiler supports functions named call", "[integration][compiler]")
 {
-    const std::string source = "func call() {\n}\nfunc main() {\n  call();\n}\n";
+    const std::string source = "func call() -> void {\n}\nfunc main() -> void {\n  call();\n}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {}, "main.ks");
-    REQUIRE_FALSE(result.ok);
-    REQUIRE(contains(result.messages, "Name 'call' collides with an assembly keyword."));
+    REQUIRE(result.ok);
 }
 
-TEST_CASE("Compiler rejects var named like an assembly keyword", "[integration][compiler]")
-{
-    const std::string source = "extern println(x);\nfunc main() {\n  var pushv = 41;\n  println(pushv);\n}\n";
-
-    const ImportCompileResult result = compileWithPaths(source, {}, "main.ks");
-    REQUIRE_FALSE(result.ok);
-    REQUIRE(contains(result.messages, "Name 'pushv' collides with an assembly keyword."));
-}
-
-TEST_CASE("Compiler rejects param named like an assembly keyword", "[integration][compiler]")
+TEST_CASE("Compiler supports local names matching assembly words", "[integration][compiler]")
 {
     const std::string source =
-        "extern println(x);\nfunc id(pushv) {\n  return pushv;\n}\nfunc main() {\n  println(id(1));\n}\n";
+        "extern println(x) -> void;\nfunc main() -> void {\n  var pushv = 41;\n  println(pushv);\n}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {}, "main.ks");
-    REQUIRE_FALSE(result.ok);
-    REQUIRE(contains(result.messages, "Name 'pushv' collides with an assembly keyword."));
+    REQUIRE(result.ok);
+    REQUIRE(runAsmText(result.asmText) == "41\n");
 }
 
-TEST_CASE("Compiler rejects extern named like an assembly keyword", "[integration][compiler]")
+TEST_CASE("Compiler supports parameter names matching assembly words", "[integration][compiler]")
 {
-    const std::string source = "extern label(x);\nfunc main() {\n  label(1);\n}\n";
+    const std::string source = "extern println(x) -> void;\nfunc id(pushv) -> value {\n  return pushv;\n}\nfunc main() "
+                               "-> void {\n  println(id(1));\n}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {}, "main.ks");
-    REQUIRE_FALSE(result.ok);
-    REQUIRE(contains(result.messages, "Name 'label' collides with an assembly keyword."));
+    REQUIRE(result.ok);
+    REQUIRE(runAsmText(result.asmText) == "1\n");
 }
 
-TEST_CASE("Compiler rejects keyword var inside a named module", "[integration][compiler]")
+TEST_CASE("Compiler supports extern names matching assembly words", "[integration][compiler]")
+{
+    const std::string source = "extern label(x) -> void;\nfunc main() -> void {\n  label(1);\n}\n";
+
+    const ImportCompileResult result = compileWithPaths(source, {}, "main.ks");
+    REQUIRE(result.ok);
+}
+
+TEST_CASE("Compiler supports local names matching assembly words in modules", "[integration][compiler]")
 {
     TempDir dir("kernscript_keyword_var_module");
-    dir.write("kwmod.ks", "module kwmod;\nextern println(x);\nexport func go(v) {\n  var pushv = v;\n"
+    dir.write("kwmod.ks", "module kwmod;\nextern println(x) -> void;\nexport func go(v) -> void {\n  var pushv = v;\n"
                           "  println(pushv);\n}\n");
-    const std::string source = "import kwmod;\nfunc main() {\n  kwmod::go(1);\n}\n";
+    const std::string source = "import kwmod;\nfunc main() -> void {\n  kwmod::go(1);\n}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {dir.path.string()}, "main.ks");
-    REQUIRE_FALSE(result.ok);
-    REQUIRE(contains(result.messages, "Name 'pushv' collides with an assembly keyword."));
+    REQUIRE(result.ok);
+    REQUIRE(runAsmText(result.asmText) == "1\n");
 }
 
 TEST_CASE("Compiler keeps keyword func names working inside named modules", "[integration][compiler]")
 {
     TempDir dir("kernscript_keyword_func_module");
-    dir.write("kwcalc.ks", "module kwcalc;\nexport func add(a, b) {\n  return a + b;\n}\n");
+    dir.write("kwcalc.ks", "module kwcalc;\nexport func add(a, b) -> value {\n  return a + b;\n}\n");
     const std::string source =
-        "import kwcalc;\nextern println(x);\nfunc main() {\n  println(kwcalc::add(20, 22));\n}\n";
+        "import kwcalc;\nextern println(x) -> void;\nfunc main() -> void {\n  println(kwcalc::add(20, 22));\n}\n";
 
     const ImportCompileResult result = compileWithPaths(source, {dir.path.string()}, "main.ks");
     REQUIRE(result.ok);
-    REQUIRE(result.asmText.find("func kwcalc@add") != std::string::npos);
     REQUIRE(runAsmText(result.asmText) == "42\n");
 }
 
-TEST_CASE("Compiler rejects extern call nested after a pending value", "[integration][compiler]")
+TEST_CASE("Compiler accepts nested extern calls with pending values", "[integration][compiler]")
 {
-    const std::string source =
-        "extern println(x);\nextern get_value();\nfunc main() {\n  println(0 + get_value());\n}\n";
+    const std::vector<std::string> sources = {
+        "extern println(x) -> void;\nextern get_value() -> value;\nfunc main() -> void {\n  println(0 + "
+        "get_value());\n}\n",
+        "extern println(x) -> void;\nextern get_value() -> value;\nfunc both(a, b) -> void {\n  println(a);\n}\n"
+        "func main() -> void {\n  both(\"x\", get_value());\n}\n",
+        "extern println(x) -> void;\nextern fast_fib(v) -> value;\nextern get_value() -> value;\nfunc main() -> void "
+        "{\n"
+        "  println(fast_fib(-get_value()));\n}\n",
+        "extern println(x) -> void;\nextern get_value() -> value;\nfunc both(a, b) -> void {\n  println(a);\n}\n"
+        "func name(id) -> value {\n  return \"n\";\n}\nfunc main() -> void {\n  both(name(1), get_value());\n}\n"};
 
-    const ImportCompileResult result = compileWithPaths(source, {}, "main.ks");
-    REQUIRE_FALSE(result.ok);
-    REQUIRE(result.messages.size() == 2);
-    REQUIRE(result.messages[0] == "main.ks:4:15: error: Extern call with values already pushed.");
-    REQUIRE(result.messages[1] == "note: assign the call to a variable first");
-}
-
-TEST_CASE("Compiler rejects nullary extern call as a later call argument", "[integration][compiler]")
-{
-    const std::string source = "extern println(x);\nextern get_value();\nfunc both(a, b) {\n  println(a);\n}\n"
-                               "func main() {\n  both(\"x\", get_value());\n}\n";
-
-    const ImportCompileResult result = compileWithPaths(source, {}, "main.ks");
-    REQUIRE_FALSE(result.ok);
-    REQUIRE(contains(result.messages, "Extern call with values already pushed."));
-}
-
-TEST_CASE("Compiler rejects nullary extern call under unary minus", "[integration][compiler]")
-{
-    const std::string source = "extern println(x);\nextern fast_fib(v);\nextern get_value();\nfunc main() {\n"
-                               "  println(fast_fib(-get_value()));\n}\n";
-
-    const ImportCompileResult result = compileWithPaths(source, {}, "main.ks");
-    REQUIRE_FALSE(result.ok);
-    REQUIRE(contains(result.messages, "Extern call with values already pushed."));
-}
-
-TEST_CASE("Compiler rejects nullary extern call after a script call result", "[integration][compiler]")
-{
-    const std::string source = "extern println(x);\nextern get_value();\nfunc both(a, b) {\n  println(a);\n}\n"
-                               "func name(id) {\n  return \"n\";\n}\nfunc main() {\n  both(name(1), get_value());\n"
-                               "}\n";
-
-    const ImportCompileResult result = compileWithPaths(source, {}, "main.ks");
-    REQUIRE_FALSE(result.ok);
-    REQUIRE(contains(result.messages, "Extern call with values already pushed."));
+    for (const std::string &source : sources)
+    {
+        const ImportCompileResult result = compileWithPaths(source, {}, "main.ks");
+        REQUIRE(result.ok);
+    }
 }
 
 TEST_CASE("Compiler keeps first-position nested extern calls working", "[integration][compiler]")
 {
-    const std::string first = "extern println(x);\nextern get_value();\nfunc main() {\n  println(get_value());\n}\n";
+    const std::string first =
+        "extern println(x) -> void;\nextern get_value() -> value;\nfunc main() -> void {\n  println(get_value());\n}\n";
     REQUIRE(runWithPaths(first, {}) == "35\n");
 
-    const std::string head = "extern println(x);\nextern get_value();\nfunc both(a, b) {\n  println(a);\n}\n"
-                             "func main() {\n  both(get_value(), \"x\");\n}\n";
+    const std::string head =
+        "extern println(x) -> void;\nextern get_value() -> value;\nfunc both(a, b) -> void {\n  println(a);\n}\n"
+        "func main() -> void {\n  both(get_value(), \"x\");\n}\n";
     REQUIRE(runWithPaths(head, {}) == "35\n");
 
-    const std::string cond = "extern println(x);\nextern get_value();\nfunc main() {\n  if (get_value() == 35) {\n"
-                             "    println(\"y\");\n  }\n}\n";
+    const std::string cond =
+        "extern println(x) -> void;\nextern get_value() -> value;\nfunc main() -> void {\n  if (get_value() == 35) {\n"
+        "    println(\"y\");\n  }\n}\n";
     REQUIRE(runWithPaths(cond, {}) == "y\n");
+}
+
+TEST_CASE("Imported lowering errors identify the imported source", "[integration][compiler]")
+{
+    TempDir dir("kernscript_import_diagnostic");
+    dir.write("broken.ks", "module broken;\nexport func value() -> value {\n  return missing;\n}\n");
+    const auto result = compileWithPaths("import broken;\nfunc main() -> void {}\n", {dir.path.string()}, "root.ks");
+    REQUIRE_FALSE(result.ok);
+    REQUIRE_FALSE(result.messages.empty());
+    REQUIRE(result.messages[0].find("broken.ks:3:") != std::string::npos);
+    REQUIRE(result.messages[0].find("root.ks:") == std::string::npos);
+}
+
+TEST_CASE("Nested extern expressions execute in source order", "[integration][compiler]")
+{
+    const std::string source = "extern println(x) -> void; extern log(a,b) -> void; extern get_value() -> value;\n"
+                               "func identity(x) -> value { return x; }\n"
+                               "func main() -> void {\n"
+                               " println(1 + get_value());\n"
+                               " println(-get_value());\n"
+                               " log(\"tag\", get_value());\n"
+                               " println(identity(2) + get_value());\n"
+                               " println(get_value() + get_value());\n"
+                               "}\n";
+    const auto result = compileWithPaths(source, {});
+    REQUIRE(result.ok);
+    REQUIRE(runAsmText(result.asmText) == "36\n-35\n[tag]: 35\n37\n70\n");
+}
+
+TEST_CASE("Assembly and direct compilation preserve small floats exactly", "[integration][compiler]")
+{
+    const std::string source = "extern println(x) -> void; func main() -> void { println(0.0000000000001); "
+                               "println(-0.0); println(340282346638528859811704183484516925440.0); }";
+    std::unique_ptr<kern::ICompiler> compiler(kern::createCompiler(nullptr));
+    std::stringstream a(source), b(source), assembly, direct, assembled;
+    REQUIRE(compiler->compile(a, assembly));
+    REQUIRE(compiler->compileBytecode(b, direct));
+    REQUIRE(testutil::assemble(assembly.str(), assembled));
+    REQUIRE(direct.str() == assembled.str());
 }

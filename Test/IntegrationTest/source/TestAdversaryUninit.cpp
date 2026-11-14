@@ -53,29 +53,29 @@ TEST_CASE("Folded copy of a never-assigned variable fails the run", "[integratio
 {
     // Lowering folds "pushv x; popv y" into "movv y, x". The unfolded pair
     // pushes an Invalid value and throws; the fold must throw the same way.
-    requireScriptThrows("func main() {\n var x;\n var y = x;\n}\n");
+    requireScriptThrows("func main() -> void {\n var x;\n var y = x;\n}\n");
 }
 
 TEST_CASE("Folded discard of a never-assigned variable fails the run", "[integration][compiler][peephole]")
 {
     // An expression statement "x;" lowers to "pushv x; pop", which the
     // peephole drops. Dropping must not swallow the uninitialized read.
-    requireScriptThrows("func main() {\n var x;\n x;\n}\n");
+    requireScriptThrows("func main() -> void {\n var x;\n x;\n}\n");
 }
 
-TEST_CASE("Folded return of a never-assigned variable fails the run", "[integration][compiler][peephole]")
+TEST_CASE("Return of a never-assigned variable fails the run", "[integration][compiler][verifier]")
 {
-    // "return x;" lowers to "pushv x; popv retTemp; retv retTemp", which the
-    // peephole bypasses into "retv x". The bypass must throw the same way.
-    requireScriptThrows("func f() {\n var x;\n return x;\n}\nfunc main() {\n f();\n}\n");
+    // Canonical returns consume the value directly, preserving the invalid
+    // local read check.
+    requireScriptThrows("func f() -> value {\n var x;\n return x;\n}\nfunc main() -> void {\n f();\n}\n");
 }
 
 TEST_CASE("Movv of an uninitialized variable throws", "[integration][vm]")
 {
-    requireAsmThrows("func main\n{\nvar x\nvar y\nmovv y, x\nret\n}\n");
+    requireAsmThrows("func \"main\" -> void {\nvar \"x\"\nvar \"y\"\nmovv \"y\", \"x\"\nret\n}\n");
 }
 
 TEST_CASE("Retv of an uninitialized variable throws", "[integration][vm]")
 {
-    requireAsmThrows("func callee\n{\nvar x\nretv x\n}\nfunc main\n{\ncall callee\npop\nret\n}\n");
+    requireAsmThrows("func callee -> value\n{\nvar x\nretv x\n}\nfunc main -> void\n{\ncall callee\npop\nret\n}\n");
 }

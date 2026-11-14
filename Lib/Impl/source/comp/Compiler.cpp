@@ -260,15 +260,12 @@ struct ImportResolver
                 if (have.name == ext.name)
                 {
                     known = true;
-                    // Externs merge on arity only: parameter names never reach
-                    // the assembly (only the count is emitted), so the same
-                    // host function declared with different names is one
-                    // declaration, while a count mismatch is a conflict.
-                    if (have.params.size() != ext.params.size())
+                    if (have.signature != ext.signature)
                     {
                         reportError(logger, importerDisplay, namePos,
                                     "Conflicting extern '" + ext.name + "' from '" + display + "'.",
-                                    "declare each extern with one parameter list");
+                                    "first declared at " + have.sourceName + ":" + std::to_string(have.pos.line) + ":" +
+                                        std::to_string(have.pos.col) + "; use the same argument count and return kind");
                         return false;
                     }
                     break;
@@ -322,13 +319,55 @@ bool Compiler::compile(std::istream &sourceCode, std::ostream &asmCode, const st
 bool Compiler::compile(std::istream &sourceCode, std::ostream &asmCode, const std::string &sourceName,
                        const std::vector<std::string> &searchPaths)
 {
+    ir::Program program;
+    if (!compileIr(sourceCode, sourceName, searchPaths, program))
+    {
+        return false;
+    }
+    Program linked;
+    std::string error;
+    if (!linkProgram(program, linked, error) || !verifyProgram(std::move(linked), error))
+    {
+        m_logger->error("{}", error);
+        return false;
+    }
+    emitAssembly(program, asmCode);
+    return static_cast<bool>(asmCode);
+}
+
+bool Compiler::compileBytecode(std::istream &sourceCode, std::ostream &byteCode, const std::string &sourceName,
+                               const std::vector<std::string> &searchPaths)
+{
+    ir::Program irProgram;
+    if (!compileIr(sourceCode, sourceName, searchPaths, irProgram))
+    {
+        return false;
+    }
+    Program linked;
+    std::string error;
+    if (!linkProgram(irProgram, linked, error))
+    {
+        m_logger->error("{}", error);
+        return false;
+    }
+    auto verified = verifyProgram(std::move(linked), error);
+    if (!verified)
+    {
+        m_logger->error("{}", error);
+        return false;
+    }
+    return serializeProgram(verified->data(), byteCode);
+}
+
+bool Compiler::compileIr(std::istream &sourceCode, const std::string &sourceName,
+                         const std::vector<std::string> &searchPaths, ir::Program &lowered)
+{
     // Orchestration only: tokenize, parse to an AST, resolve imports into one
     // merged table, lower, emit. The language contract lives on the ctor (see
     // Compiler.h); each phase lives in its own module (see Ast.h, Parser.h
     // and Lower.h). The root itself may be anonymous or named: no file name
-    // is ever checked against its module declaration. Lowering sees the
-    // merged table under the root source name (per-file lowering errors keep
-    // their line and column but not their file).
+    // is ever checked against its module declaration. Functions preserve
+    // their original source names through merging for lowering diagnostics.
     std::vector<Tok> toks;
     if (!tokenize(sourceCode, m_logger, toks, sourceName))
     {
@@ -370,11 +409,9 @@ bool Compiler::compile(std::istream &sourceCode, std::ostream &asmCode, const st
             }
         }
     }
-    std::vector<Lowered> lowered;
     if (!lowerProgram(program, m_logger, sourceName, lowered))
     {
         return false;
     }
-    emitProgram(program, lowered, asmCode);
     return true;
 }

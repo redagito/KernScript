@@ -5,18 +5,18 @@ diagnose.
 
 ## 1. Build (5 min)
 
-Needs CMake 4.4+, Conan 2, a C++23 compiler.
+Needs CMake 4.4.3+, Conan 2, a C++23 compiler.
 
 ```sh
-conan install . -s build_type=Debug --build=missing
+conan install . -s build_type=Debug --build=missing -o "&:with_samples=True"
 cmake --preset conan-default
 cmake --build build --config Debug
 ```
 
-## 2. Run the HelloScript sample (2 min)
+## 2. Run the HelloKern sample (2 min)
 
 ```sh
-build/Samples/HelloScript/Debug/HelloScript.exe
+build/Samples/HelloKern/Debug/HelloKern.exe
 ```
 
 Prints:
@@ -33,15 +33,15 @@ Ran: exit 0.
 hello.ks:
 
 ```ks
-extern println(x);
-func main() {
+extern println(x) -> void;
+func main() -> void {
   println("hi");
   println(40 + 2);
 }
 ```
 
 Compile, assemble, load and call "main" exactly
-like Samples/HelloScript/source/main.cpp:27-60
+like Samples/HelloKern/source/main.cpp:27-60
 (compiler, assembler, VM, `addFunction` for
 `println`, `load`, `callFunction`). Prints
 "hi" and 42. That sample source is this script.
@@ -50,14 +50,13 @@ like Samples/HelloScript/source/main.cpp:27-60
 
 ```cpp
 int double_it(int x) { return 2 * x; }
-vm->addFunction("double_it",
-  kern::createExternFunction(&double_it));
+vm->addFunction("double_it", &double_it);
 ```
 
 ```ks
-extern double_it(x);
-extern emit(x);
-func main() {
+extern double_it(x) -> value;
+extern emit(x) -> void;
+func main() -> void {
   emit(double_it(21));
 }
 ```
@@ -69,7 +68,7 @@ Emits "42". Ran end-to-end.
 Drop the extern declaration:
 
 ```ks
-func main() {
+func main() -> void {
   println("hi");
 }
 ```

@@ -1,288 +1,234 @@
-#include <sstream>
-
+#include "common/Program.h"
+#include "kern/RuntimeError.h"
+#include <bit>
 #include <catch2/catch_test_macros.hpp>
-
-#include "common/Deserialize.h"
-#include "common/ExternFunction.h"
-#include "common/Instruction.h"
-#include "common/Instructions.h"
-#include "common/ScriptHeader.h"
-
-#include <kern/RuntimeError.h>
-
+#include <sstream>
 namespace
 {
-
-template <typename T> void writeRaw(std::stringstream &stream, T value)
+Instruction ins(Opcode op, int32_t a = 0)
 {
-    stream.write(reinterpret_cast<const char *>(&value), sizeof(T));
+    Instruction i;
+    i.id = op;
+    i.args[0] = a;
+    return i;
+}
+Program sample()
+{
+    Program p;
+    p.moduleName = "module";
+    p.strings = {std::string("a\0b", 3)};
+    p.externs = {{"out", {1, kern::ReturnKind::Void}}};
+    p.functions = {
+        {"main", {0, kern::ReturnKind::Void}, 1, {ins(Opcode::Pushi, -7), ins(Opcode::Pop), ins(Opcode::Ret)}, {}}};
+    return p;
+}
+std::string encode(const Program &p)
+{
+    std::stringstream s;
+    REQUIRE(serializeProgram(p, s));
+    return s.str();
 }
 } // namespace
-
-TEST_CASE("Instructions table matches the instruction enum", "[unit][serialize]")
+TEST_CASE("Program wire format round trips signatures frames strings and instructions", "[unit][serialize]")
 {
-    REQUIRE(instructions[static_cast<unsigned int>(Opcode::Nop)].mnemonic == "nop");
-    REQUIRE(instructions[static_cast<unsigned int>(Opcode::Jle)].mnemonic == "jle");
+    const auto original = sample();
+    std::stringstream s(encode(original));
+    Program result;
+    std::string error;
+    REQUIRE(deserializeProgram(s, result, {}, error));
+    REQUIRE(result.moduleName == "module");
+    REQUIRE(result.strings == original.strings);
+    REQUIRE(result.externs[0].signature == original.externs[0].signature);
+    REQUIRE(result.functions[0].signature == original.functions[0].signature);
+    REQUIRE(result.functions[0].frameSize == 1);
+    REQUIRE(result.functions[0].instructions[0].args[0] == -7);
+    REQUIRE(verifyProgram(std::move(result), error).has_value());
 }
-
-TEST_CASE("Every instruction has a mnemonic and an argument count", "[unit][serialize]")
+TEST_CASE("Wire format uses explicit version and little endian counts", "[unit][serialize]")
 {
-    const unsigned int count = static_cast<unsigned int>(sizeof(instructions) / sizeof(instructions[0]));
-
-    for (unsigned int i = 0; i < count; ++i)
+    const auto data = encode(sample());
+    REQUIRE(data.substr(0, 6) == std::string("KERN\1\0", 6));
+    REQUIRE(static_cast<unsigned char>(data[6]) == 6);
+    REQUIRE(data[7] == 0);
+    REQUIRE(data[8] == 0);
+    REQUIRE(data[9] == 0);
+}
+TEST_CASE("Old or future bytecode versions are rejected deterministically", "[unit][serialize]")
+{
+    for (int version : {0, 2, 255})
+    {
+        auto data = encode(sample());
+        data[4] = static_cast<char>(version);
+        std::stringstream s(data);
+        Program p;
+        std::string error;
+        REQUIRE_FALSE(deserializeProgram(s, p, {}, error));
+        REQUIRE(error.find("Unsupported bytecode") != std::string::npos);
+    }
+}
+TEST_CASE("Every truncation boundary is rejected", "[unit][serialize]")
+{
+    const auto data = encode(sample());
+    for (size_t i = 0; i < data.size(); ++i)
+    {
+        CAPTURE(i);
+        std::stringstream s(data.substr(0, i));
+        Program p;
+        std::string error;
+        REQUIRE_FALSE(deserializeProgram(s, p, {}, error));
+    }
+}
+TEST_CASE("Numeric operand bit patterns survive the portable codec", "[unit][serialize]")
+{
+    for (auto bits : {0u, 1u, 0x80000000u, 0xffffffffu, 0x7fc12345u, 0x3fc00000u})
+    {
+        auto p = sample();
+        p.functions[0].instructions[0] = ins(Opcode::Pushf, std::bit_cast<int32_t>(bits));
+        std::stringstream s(encode(p));
+        Program decoded;
+        std::string error;
+        REQUIRE(deserializeProgram(s, decoded, {}, error));
+        REQUIRE(std::bit_cast<uint32_t>(decoded.functions[0].instructions[0].args[0]) == bits);
+    }
+}
+TEST_CASE("Invalid signature kinds and frame layouts cannot become executable", "[unit][serialize]")
+{
+    for (int mode = 0; mode < 3; ++mode)
+    {
+        auto p = sample();
+        if (mode == 0)
+            p.functions[0].signature.returnKind = static_cast<kern::ReturnKind>(3);
+        if (mode == 1)
+            p.externs[0].signature.returnKind = static_cast<kern::ReturnKind>(3);
+        if (mode == 2)
+            p.functions[0].signature.argumentCount = 2;
+        std::string error;
+        REQUIRE_FALSE(verifyProgram(std::move(p), error));
+    }
+}
+TEST_CASE("Duplicate and empty symbols are rejected by verification", "[unit][serialize]")
+{
+    for (int mode = 0; mode < 4; ++mode)
+    {
+        auto p = sample();
+        if (mode == 0)
+            p.functions.push_back(p.functions[0]);
+        if (mode == 1)
+            p.externs.push_back(p.externs[0]);
+        if (mode == 2)
+            p.functions[0].name = "";
+        if (mode == 3)
+            p.functions[0].name = p.externs[0].name;
+        std::string error;
+        REQUIRE_FALSE(verifyProgram(std::move(p), error));
+    }
+}
+TEST_CASE("Linker assigns parameter slots before locals regardless of declaration placement", "[unit][ir]")
+{
+    ir::Program p;
+    ir::Function f;
+    f.name = "identity";
+    f.signature = {1, kern::ReturnKind::Value};
+    f.params = {"x"};
+    f.locals = {{"before", 3}};
+    f.code.emit(Opcode::Pushv, {ir::Local{"x"}});
+    f.code.emit(Opcode::Ret);
+    p.functions.push_back(f);
+    Program linked;
+    std::string error;
+    REQUIRE(linkProgram(p, linked, error));
+    REQUIRE(linked.functions[0].frameSize == 4);
+    REQUIRE(linked.functions[0].instructions[0].args[0] == 0);
+    REQUIRE(verifyProgram(std::move(linked), error));
+}
+TEST_CASE("Typed IR refuses a mismatched operand kind", "[unit][ir]")
+{
+    ir::Program p;
+    ir::Function f;
+    f.name = "main";
+    f.code.emit(Opcode::Pushf, {int32_t(42)});
+    f.code.emit(Opcode::Pop);
+    p.functions.push_back(f);
+    Program result;
+    std::string error;
+    REQUIRE_FALSE(linkProgram(p, result, error));
+}
+TEST_CASE("Unknown symbols and duplicate labels fail linking", "[unit][ir]")
+{
+    for (int mode = 0; mode < 4; ++mode)
+    {
+        ir::Program p;
+        ir::Function f;
+        f.name = "main";
+        if (mode == 0)
+            f.code.emit(Opcode::Pushv, {ir::Local{"missing"}});
+        if (mode == 1)
+            f.code.emit(Opcode::Call, {ir::FunctionRef{"missing"}});
+        if (mode == 2)
+            f.code.emit(Opcode::Jmp, {ir::LabelRef{"missing"}});
+        if (mode == 3)
+        {
+            f.code.label("same");
+            f.code.label("same");
+        }
+        p.functions.push_back(f);
+        Program result;
+        std::string error;
+        REQUIRE_FALSE(linkProgram(p, result, error));
+    }
+}
+TEST_CASE("Return conveniences normalize into canonical operations", "[unit][ir]")
+{
+    ir::Program p;
+    ir::Function f;
+    f.name = "value";
+    f.signature.returnKind = kern::ReturnKind::Value;
+    f.code.emit(Opcode::Reti, {int32_t(42)});
+    p.functions.push_back(f);
+    Program linked;
+    std::string error;
+    REQUIRE(linkProgram(p, linked, error));
+    REQUIRE(linked.functions[0].instructions.size() == 2);
+    REQUIRE(linked.functions[0].instructions[0].id == Opcode::Pushi);
+    REQUIRE(linked.functions[0].instructions[1].id == Opcode::Ret);
+    REQUIRE(verifyProgram(std::move(linked), error));
+}
+TEST_CASE("Void trailing labels resolve to a real return instruction", "[unit][ir]")
+{
+    ir::Program p;
+    ir::Function f;
+    f.name = "main";
+    f.code.emit(Opcode::Jmp, {ir::LabelRef{"end"}});
+    f.code.label("end");
+    p.functions.push_back(f);
+    Program linked;
+    std::string error;
+    REQUIRE(linkProgram(p, linked, error));
+    REQUIRE(linked.functions[0].instructions[1].id == Opcode::Ret);
+    REQUIRE(verifyProgram(std::move(linked), error));
+}
+TEST_CASE("Value functions cannot jump to a nonexistent implicit return", "[unit][ir]")
+{
+    ir::Program p;
+    ir::Function f;
+    f.name = "bad";
+    f.signature.returnKind = kern::ReturnKind::Value;
+    f.code.emit(Opcode::Jmp, {ir::LabelRef{"end"}});
+    f.code.label("end");
+    p.functions.push_back(f);
+    Program linked;
+    std::string error;
+    REQUIRE(linkProgram(p, linked, error));
+    REQUIRE_FALSE(verifyProgram(std::move(linked), error));
+}
+TEST_CASE("Opcode names cover the complete instruction enum", "[unit][ir]")
+{
+    for (size_t i = 0; i < std::size(instructions); ++i)
     {
         REQUIRE_FALSE(instructions[i].mnemonic.empty());
         REQUIRE(instructions[i].argCount <= 4);
     }
-}
-
-TEST_CASE("Instruction survives serialization", "[unit][serialize]")
-{
-    Instruction instruction;
-    instruction.id = Opcode::Movi;
-    instruction.args[0] = 12;
-    instruction.args[1] = 34;
-
-    std::stringstream stream;
-    REQUIRE(serialize(instruction, stream));
-
-    Instruction result;
-    REQUIRE(deserialize(result, stream));
-
-    REQUIRE(result.id == instruction.id);
-    REQUIRE(result.args[0] == instruction.args[0]);
-    REQUIRE(result.args[1] == instruction.args[1]);
-}
-
-TEST_CASE("Instruction serializes only the declared arguments", "[unit][serialize]")
-{
-    Instruction instruction;
-    instruction.id = Opcode::Pushi;
-    instruction.args[0] = 99;
-
-    std::stringstream stream;
-    REQUIRE(serialize(instruction, stream));
-
-    const unsigned int expectedSize = sizeof(uint16_t) + sizeof(ArgumentType);
-    REQUIRE(static_cast<unsigned int>(stream.str().size()) == expectedSize);
-}
-
-TEST_CASE("ExternFunction survives serialization", "[unit][serialize]")
-{
-    ExternFunction externFunction;
-    externFunction.name = "println";
-    externFunction.argCount = 1;
-
-    std::stringstream stream;
-    REQUIRE(serialize(externFunction, stream));
-
-    ExternFunction result;
-    REQUIRE(deserialize(stream, result, 1024));
-
-    REQUIRE(result.name == "println");
-    REQUIRE(result.argCount == 1);
-}
-
-TEST_CASE("ScriptHeader survives serialization", "[unit][serialize]")
-{
-    ScriptHeader header;
-    header.identifier[0] = 'K';
-    header.identifier[1] = 'E';
-    header.identifier[2] = 'R';
-    header.identifier[3] = 'N';
-    header.majorVersion = 0;
-    header.minorVersion = 1;
-    header.moduleName = "Test";
-
-    std::stringstream stream;
-    REQUIRE(serialize(header, stream));
-
-    ScriptHeader result;
-    REQUIRE(deserialize(result, stream, 1024));
-
-    REQUIRE(result.identifier[0] == 'K');
-    REQUIRE(result.identifier[3] == 'N');
-    REQUIRE(result.majorVersion == 0);
-    REQUIRE(result.minorVersion == 1);
-    REQUIRE(result.moduleName == "Test");
-}
-
-TEST_CASE("Deserialize reads integer types", "[unit][serialize]")
-{
-    {
-        std::stringstream stream;
-        writeRaw<int8_t>(stream, -8);
-        int8_t result = 0;
-        REQUIRE(deserialize(stream, result));
-        REQUIRE(result == -8);
-    }
-    {
-        std::stringstream stream;
-        writeRaw<uint8_t>(stream, 8);
-        uint8_t result = 0;
-        REQUIRE(deserialize(stream, result));
-        REQUIRE(result == 8);
-    }
-    {
-        std::stringstream stream;
-        writeRaw<int16_t>(stream, -16);
-        int16_t result = 0;
-        REQUIRE(deserialize(stream, result));
-        REQUIRE(result == -16);
-    }
-    {
-        std::stringstream stream;
-        writeRaw<uint16_t>(stream, 16);
-        uint16_t result = 0;
-        REQUIRE(deserialize(stream, result));
-        REQUIRE(result == 16);
-    }
-    {
-        std::stringstream stream;
-        writeRaw<int32_t>(stream, -32);
-        int32_t result = 0;
-        REQUIRE(deserialize(stream, result));
-        REQUIRE(result == -32);
-    }
-    {
-        std::stringstream stream;
-        writeRaw<uint32_t>(stream, 32);
-        uint32_t result = 0;
-        REQUIRE(deserialize(stream, result));
-        REQUIRE(result == 32);
-    }
-    {
-        std::stringstream stream;
-        writeRaw<uint64_t>(stream, 64);
-        uint64_t result = 0;
-        REQUIRE(deserialize(stream, result));
-        REQUIRE(result == 64);
-    }
-}
-
-TEST_CASE("Deserialize reports failure on an empty stream", "[unit][serialize]")
-{
-    std::stringstream stream;
-    int32_t result = 0;
-    REQUIRE_FALSE(deserialize(stream, result));
-}
-
-TEST_CASE("Deserialize reads strings", "[unit][serialize]")
-{
-    const std::string text = "a string constant";
-
-    std::stringstream stream;
-    const uint32_t length = static_cast<uint32_t>(text.size());
-    writeRaw<uint32_t>(stream, length);
-    stream.write(text.data(), length);
-
-    std::string result;
-    REQUIRE(deserialize(stream, result, 1024));
-    REQUIRE(result == text);
-}
-
-TEST_CASE("Deserialize reports failure on a truncated stream", "[unit][serialize]")
-{
-    std::stringstream stream;
-    const uint32_t length = 100;
-    writeRaw<uint32_t>(stream, length);
-    stream.write("short", 5);
-
-    std::string result;
-    REQUIRE_FALSE(deserialize(stream, result, 1024));
-}
-
-TEST_CASE("Deserialize leaves the target alone on a truncated string", "[unit][serialize][trunc]")
-{
-    std::stringstream stream;
-    writeRaw<uint32_t>(stream, 10);
-    stream.write("abc", 3);
-
-    std::string result = "sentinel";
-    REQUIRE_FALSE(deserialize(stream, result, 1024));
-    REQUIRE(result == "sentinel");
-}
-
-TEST_CASE("Deserialize throws on a string longer than the limit", "[unit][serialize][c7]")
-{
-    std::stringstream stream;
-    writeRaw<uint32_t>(stream, 16);
-    stream.write("1234567890123456", 16);
-
-    std::string result;
-    REQUIRE_THROWS_AS(deserialize(stream, result, 15), kern::RuntimeError);
-}
-
-TEST_CASE("Deserialize accepts a string at exactly the limit", "[unit][serialize][c7]")
-{
-    std::stringstream stream;
-    writeRaw<uint32_t>(stream, 16);
-    stream.write("1234567890123456", 16);
-
-    std::string result;
-    REQUIRE(deserialize(stream, result, 16));
-    REQUIRE(result == "1234567890123456");
-}
-
-TEST_CASE("Deserialize clears the target on an empty string", "[unit][serialize][m1]")
-{
-    std::stringstream stream;
-    writeRaw<uint32_t>(stream, 0);
-
-    std::string result = "stale";
-    REQUIRE(deserialize(stream, result, 1024));
-    REQUIRE(result.empty());
-}
-
-TEST_CASE("Default constructed Instruction has zero arguments", "[unit][serialize][m6]")
-{
-    Instruction instruction;
-    REQUIRE(instruction.id == Opcode::Nop);
-    for (int i = 0; i < 4; ++i)
-    {
-        REQUIRE(instruction.args[i] == 0);
-    }
-}
-
-TEST_CASE("Serialize refuses an unknown instruction id", "[unit][serialize]")
-{
-    Instruction instruction;
-    instruction.id = static_cast<Opcode>(999);
-
-    std::stringstream stream;
-    REQUIRE_FALSE(serialize(instruction, stream));
-    REQUIRE(stream.str().empty());
-}
-
-TEST_CASE("Deserialize refuses an unknown instruction id", "[unit][serialize]")
-{
-    std::stringstream stream;
-    writeRaw<uint16_t>(stream, 999);
-
-    Instruction result;
-    REQUIRE_FALSE(deserialize(result, stream));
-}
-
-TEST_CASE("ExternFunction with an empty name is refused", "[unit][serialize][m12]")
-{
-    ExternFunction empty;
-    empty.argCount = 0;
-
-    std::stringstream stream;
-    REQUIRE_FALSE(serialize(empty, stream));
-
-    std::stringstream corrupt;
-    writeRaw<uint32_t>(corrupt, 0);
-    writeRaw<uint8_t>(corrupt, 0);
-
-    ExternFunction result;
-    REQUIRE_FALSE(deserialize(corrupt, result, 1024));
-}
-
-TEST_CASE("toString names an unknown instruction id", "[unit][serialize]")
-{
-    Instruction instruction;
-    instruction.id = static_cast<Opcode>(999);
-
-    REQUIRE(toString(instruction) == "<invalid>");
+    Instruction unknown;
+    unknown.id = static_cast<Opcode>(65535);
+    REQUIRE(toString(unknown) == "<invalid>");
 }

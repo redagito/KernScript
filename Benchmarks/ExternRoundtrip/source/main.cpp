@@ -41,10 +41,10 @@ void capture(int value)
     ++g_captureCalls;
 }
 
-const std::string kSource = R"(extern tick();
-extern succ(x);
-extern capture(x);
-func main() {
+const std::string kSource = R"(extern tick() -> void;
+extern succ(x) -> value;
+extern capture(x) -> void;
+func main() -> void {
   var acc = 0;
   var i = 0;
   while (i < 50000) {
@@ -65,9 +65,9 @@ int main(int argumentCount, char **arguments)
     const bool profile = argumentCount > 1 && std::string(arguments[1]) == "--profile";
 
     std::unique_ptr<kern::IVirtualMachine> vm = bench::makeVm();
-    vm->addFunction("tick", kern::createExternFunction(&tick));
-    vm->addFunction("succ", kern::createExternFunction(&succ));
-    vm->addFunction("capture", kern::createExternFunction(&capture));
+    vm->addFunction("tick", &tick);
+    vm->addFunction("succ", &succ);
+    vm->addFunction("capture", &capture);
     if (!bench::compileLoad(kSource, *vm))
     {
         std::cerr << "ExternRoundtrip: pipeline failed\n";

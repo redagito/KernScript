@@ -1,4 +1,4 @@
 module dia_u;
-export func fu() {
+export func fu() -> value {
   return 10;
 }

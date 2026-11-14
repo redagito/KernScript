@@ -1,156 +1,51 @@
 # KernScript Diagnostics Guide
 
-Compile errors print as:
+Source diagnostics use `<file>:<line>:<column>: error: <message>` and may
+include a `note:` hint. Imported source errors retain their original file and
+location. Assembly and bytecode verification errors identify the invalid
+program structure; runtime failures throw `kern::RuntimeError`.
 
-```text
-<file>:<line>:<col>: error: <message>
-```
+## Common compile errors
 
-with a following `note: <hint>` line when a
-hint applies (Parser.cpp:84-99). Assembler
-lines carry no position. Runtime failures throw
-`kern::RuntimeError`; the message is `what()`.
+**Undeclared function or variable.** Add the missing `extern` or `func`
+declaration, or declare a local with `var`.
 
-## Catalog
+**Wrong argument count.** The number of call arguments must match the function
+or extern signature.
 
-Cause plus fix per entry. "Ran" means produced
-by `.scratch/docs_verify/driver.exe`; the rest
-cite the source line.
+**Return kind mismatch.** Declare `-> value` when returning expressions and
+`-> void` when returning no value. A value function must return a value on
+every reachable path; a void function may use only `return;`.
 
-Undeclared call:
+**Void call used as a value.** A void call cannot initialize a variable or be
+used in an expression. A valued call can be used as a statement; its value is
+discarded.
 
-```text
-hello.ks:2:3: error: Call to undeclared function.
-note: declare it with extern or func
-```
+**Conflicting extern signature.** Every declaration with the same extern name
+must agree on both argument count and return kind, and must match the host
+binding registered with the VM.
 
-Cause: the name is neither `extern` nor `func`.
-Fix: declare it. Ran.
+**Nesting too deep.** Blocks and expression trees have a limit of 128 levels.
+Long flat binary chains count toward the expression depth; split them into
+intermediate variables.
 
-Undeclared variable:
+## Assembly and bytecode verification
 
-```text
-t.ks:3:8: error: Use of undeclared variable.
-note: declare it with var or as a parameter
-```
+The assembler and bytecode loader verify symbol references, declared
+signatures, stack effects, return stacks, and control-flow joins. Errors
+include unknown symbols, mismatched call signatures, inconsistent stack
+types/heights, malformed operands, and reachable fallthrough. Correct the
+assembly or regenerate bytecode from source. Bytecode format 1.0 is not
+compatible with earlier formats; rebuild older scripts.
 
-Cause: reading a name never declared. Fix: add
-a `var` or parameter. Ran. Sibling:
-"Assignment to undeclared variable."
-(Lower.cpp:828).
+## Runtime errors
 
-Wrong arity:
+`kern::RuntimeError` reports execution problems such as division by zero,
+invalid operand types, overflow, uninitialized variable reads, missing host
+bindings, max call depth, stack or string budget exhaustion, and exceeding
+`maxExecutionSteps`. A host extern returning `false` also stops execution.
 
-```text
-t.ks:3:3: error: Wrong argument count.
-note: declared 1 parameters here
-```
-
-Cause: call count differs from declaration.
-Fix: match the declared count. Ran.
-
-Mixed returns:
-
-```text
-t.ks:6:3: error: Mixed valued and void returns.
-note: use one return form in each function
-```
-
-Cause: `return 1;` and `return;` in one func.
-Fix: pick one form. Ran.
-
-Bad integer:
-
-```text
-t.ks:3:8: error: Integer literal out of range.
-note: use 0 to 4294967295
-```
-
-Cause: magnitude above 2^32-1. Fix: stay in
-range. Ran.
-
-Bad float:
-
-```text
-Invalid float literal: 340282356779261762211166863146581399890.0
-Parse function failed.
-```
-
-Cause: a decimal beyond 32-bit float range
-reaching the assembler. Fix: use a 32-bit
-float. Ran. Compiler-side sibling: "Float
-literal out of range." (Parser.cpp:247,
-Lower.cpp:398).
-
-Extern misuse:
-
-```text
-t.ks:5:11: error: Inconsistent extern use.
-note: use it always as a value or always as a statement
-```
-
-Cause: one extern used both as a value and as
-a statement. Fix: bind valued calls to vars,
-keep one form. Ran.
-
-Stale stack value at runtime:
-
-```text
-The extern function 'hi' expects 0 arguments, but 1 were pushed.
-```
-
-Cause: a value left on the stack (e.g. `y` in
-`y < hi()`) counts toward the call. Fix: hoist
-extern calls into variables first. Ran.
-
-Missing host binding:
-
-```text
-The extern function 'ghost' does not exist.
-```
-
-Cause: the script declares it but the host
-never registered it. Fix: `addFunction` it.
-Ran.
-
-Failing host call: "The extern function 'f'
-reported failure." Cause: host `call()` returned
-false. Fix: make the host pop/set succeed.
-(VirtualMachine.cpp:886-889).
-
-"Division by zero." Cause: `x / 0` on numbers.
-Fix: guard the divisor. Ran.
-
-"Maximum execution steps exceeded." Cause:
-runaway loop past the budget. Fix: band the
-loop or raise it. Ran.
-
-"Maximum runtime stack size exceeded." Cause:
-frames deeper than the budget allows (0 allows
-nothing). Fix: shrink frames or raise it. Ran
-with a zero budget.
-
-"Maximum call depth exceeded." Cause: nested
-calls past `maxCallDepth`. Fix: recurse less
-or raise it. (VirtualMachine.cpp:797).
-
-"String length exceeds the limit." Cause:
-corrupt length prefix while loading. Fix: load
-bytes the assembler wrote. Ran: garbage load
-throws; empty input instead returns false.
-
-Protocol: unknown `callFunction` names return
-false, never throw (ran); a failed `load`
-leaves no script, so load again before calling
-(IVirtualMachine.h:29-31).
-
-Import failures: "Cannot find module 'm'",
-"Import cycle detected", "Module name
-mismatch", "Duplicate module", "Conflicting
-extern" (Compiler.cpp:151-292). Fix: point
-search paths at the files, break the cycle,
-match names.
-
-Verified: ran the driver errors mode; texts
-above are byte-for-byte except entries marked
-with a source line.
+`callFunction` returns `false` for an unknown entry name. A failed bytecode
+load returns `false` for malformed input; budget violations throw. Either
+failed load clears the previously loaded program, so load a valid program
+again before calling.

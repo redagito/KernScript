@@ -1,4 +1,4 @@
 module notwrong;
-func wf() {
+func wf() -> value {
   return 1;
 }

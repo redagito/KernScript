@@ -23,15 +23,15 @@ void put(int value) { g_captured = value; }
 std::string buildSource()
 {
     std::ostringstream source;
-    source << "extern put(x);\n";
+    source << "extern put(x) -> void;\n";
     for (int i = 0; i < kFunctionCount; ++i)
     {
-        source << "func f" << i << "() {\n";
+        source << "func f" << i << "() -> value {\n";
         source << "  return " << i << ";\n";
         source << "}\n";
         source << "\n";
     }
-    source << "func main() {\n";
+    source << "func main() -> void {\n";
     source << "  var t = f0() + f1() + f2() + f3() + f4() + f5() + f6() + f7() + f8() + f9();\n";
     for (int base = 10; base < kFunctionCount; base += 10)
     {
@@ -62,7 +62,7 @@ long long countLines(const std::string &text)
 bool verifyOutput(const std::string &source)
 {
     std::unique_ptr<kern::IVirtualMachine> vm = bench::makeVm();
-    vm->addFunction("put", kern::createExternFunction(&put));
+    vm->addFunction("put", &put);
     if (!bench::compileLoad(source, *vm))
     {
         std::cerr << "Pipeline: checksum FAIL, pipeline failed\n";

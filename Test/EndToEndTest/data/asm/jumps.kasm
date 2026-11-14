@@ -1,8 +1,9 @@
 // Exercises every jump: each conditional taken and not taken, an
 // unconditional jump, and a counted loop that jumps backward.
-extern println 1
+extern println 1 -> void
 
 func main
+-> void
 {
   // jmp skips the block
   jmp after

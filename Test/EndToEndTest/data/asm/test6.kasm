@@ -1,8 +1,9 @@
-extern println 1
+extern println 1 -> void
 
 // Test for calling convention with return value
 
 func a
+-> value
 {
 	param x // Parameter should, be 10
 	pushv x
@@ -11,6 +12,7 @@ func a
 }
 
 func main
+-> void
 {
 	// Push 10 on stack
 	pushi 10

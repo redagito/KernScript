@@ -1,9 +1,10 @@
 // Fibonacci function test
-extern println 1
-extern get_value 0
-extern fast_fib 1
+extern println 1 -> void
+extern get_value 0 -> void
+extern fast_fib 1 -> void
 
 func fib
+-> value
 {
 	// Parameter x
 	param x
@@ -44,6 +45,7 @@ func fib
 }
 
 func main
+-> void
 {
 	var x
 	// Retrieve value from host

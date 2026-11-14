@@ -5,9 +5,9 @@
 namespace
 {
 
-const std::string header = "extern println 1\n";
+const std::string header = "extern println 1 -> void\n";
 
-std::string wrap(const std::string &body) { return header + "\nfunc main\n{\n" + body + "\n}\n"; }
+std::string wrap(const std::string &body) { return header + "\nfunc main\n-> void\n{\n" + body + "\n}\n"; }
 
 void requireOutput(const std::string &source, const std::string &expected)
 {
@@ -39,36 +39,34 @@ TEST_CASE("e2e exit stops the script", "[e2e][instruction]")
 
 TEST_CASE("e2e movv copies between variables", "[e2e][instruction]")
 {
-    requireOutput("extern println 1\nfunc main\n{\nvar a\nvar b\n"
-                  "movi a, 3\nmovv b, a\npushv b\ncalle println\nret\n}\n",
+    requireOutput("extern println 1 -> void\nfunc main\n-> void\n{\nvar a\nvar b\nmovi a, 3\nmovv b, a\npushv b\ncalle "
+                  "println\nret\n}\n",
                   "3\n");
 }
 
 TEST_CASE("e2e movi stores an integer", "[e2e][instruction]")
 {
-    requireOutput("extern println 1\nfunc main\n{\nvar a\n"
-                  "movi a, 7\npushv a\ncalle println\nret\n}\n",
+    requireOutput("extern println 1 -> void\nfunc main\n-> void\n{\nvar a\nmovi a, 7\npushv a\ncalle println\nret\n}\n",
                   "7\n");
 }
 
 TEST_CASE("e2e movf stores a float", "[e2e][instruction]")
 {
-    requireOutput("extern println 1\nfunc main\n{\nvar a\n"
-                  "movf a, 1.5\npushv a\ncalle println\nret\n}\n",
-                  "1.5\n");
+    requireOutput(
+        "extern println 1 -> void\nfunc main\n-> void\n{\nvar a\nmovf a, 1.5\npushv a\ncalle println\nret\n}\n",
+        "1.5\n");
 }
 
 TEST_CASE("e2e movs stores a string", "[e2e][instruction]")
 {
-    requireOutput("extern println 1\nfunc main\n{\nvar x\n"
-                  "movs x, \"hello\"\npushv x\ncalle println\nret\n}\n",
-                  "hello\n");
+    requireOutput(
+        "extern println 1 -> void\nfunc main\n-> void\n{\nvar x\nmovs x, \"hello\"\npushv x\ncalle println\nret\n}\n",
+        "hello\n");
 }
 
 TEST_CASE("e2e pushv pushes a variable", "[e2e][instruction]")
 {
-    requireOutput("extern println 1\nfunc main\n{\nvar a\n"
-                  "movi a, 9\npushv a\ncalle println\nret\n}\n",
+    requireOutput("extern println 1 -> void\nfunc main\n-> void\n{\nvar a\nmovi a, 9\npushv a\ncalle println\nret\n}\n",
                   "9\n");
 }
 
@@ -99,15 +97,15 @@ TEST_CASE("e2e pop discards the top value", "[e2e][instruction]")
 
 TEST_CASE("e2e popv stores the top value", "[e2e][instruction]")
 {
-    requireOutput("extern println 1\nfunc main\n{\nvar x\n"
-                  "pushi 5\npopv x\npushv x\ncalle println\nret\n}\n",
-                  "5\n");
+    requireOutput(
+        "extern println 1 -> void\nfunc main\n-> void\n{\nvar x\npushi 5\npopv x\npushv x\ncalle println\nret\n}\n",
+        "5\n");
 }
 
 TEST_CASE("e2e call runs another function", "[e2e][instruction]")
 {
-    requireOutput("extern println 1\nfunc f\n{\nreti 3\n}\n"
-                  "\nfunc main\n{\ncall f\ncalle println\nret\n}\n",
+    requireOutput("extern println 1 -> void\nfunc f\n-> value\n{\nreti 3\n}\n\nfunc main\n-> void\n{\ncall f\ncalle "
+                  "println\nret\n}\n",
                   "3\n");
 }
 
@@ -125,30 +123,29 @@ TEST_CASE("e2e ret ends the function", "[e2e][instruction]")
 
 TEST_CASE("e2e retv returns a variable", "[e2e][instruction]")
 {
-    requireOutput("extern println 1\nfunc f\n{\nparam x\nvar b\n"
-                  "pushi 77\npopv b\nretv b\n}\n"
-                  "\nfunc main\n{\npushi 5\ncall f\ncalle println\nret\n}\n",
+    requireOutput("extern println 1 -> void\nfunc f\n-> value\n{\nparam x\nvar b\npushi 77\npopv b\nretv b\n}\n\nfunc "
+                  "main\n-> void\n{\npushi 5\ncall f\ncalle println\nret\n}\n",
                   "77\n");
 }
 
 TEST_CASE("e2e reti returns an integer", "[e2e][instruction]")
 {
-    requireOutput("extern println 1\nfunc a\n{\nparam x\nreti 20\n}\n"
-                  "\nfunc main\n{\npushi 10\ncall a\ncalle println\nret\n}\n",
+    requireOutput("extern println 1 -> void\nfunc a\n-> value\n{\nparam x\nreti 20\n}\n\nfunc main\n-> void\n{\npushi "
+                  "10\ncall a\ncalle println\nret\n}\n",
                   "20\n");
 }
 
 TEST_CASE("e2e retf returns a float", "[e2e][instruction]")
 {
-    requireOutput("extern println 1\nfunc f\n{\nretf 2.5\n}\n"
-                  "\nfunc main\n{\ncall f\ncalle println\nret\n}\n",
+    requireOutput("extern println 1 -> void\nfunc f\n-> value\n{\nretf 2.5\n}\n\nfunc main\n-> void\n{\ncall f\ncalle "
+                  "println\nret\n}\n",
                   "2.5\n");
 }
 
 TEST_CASE("e2e rets returns a string", "[e2e][instruction]")
 {
-    requireOutput("extern println 1\nfunc f\n{\nrets \"returned\"\n}\n"
-                  "\nfunc main\n{\ncall f\ncalle println\nret\n}\n",
+    requireOutput("extern println 1 -> void\nfunc f\n-> value\n{\nrets \"returned\"\n}\n\nfunc main\n-> void\n{\ncall "
+                  "f\ncalle println\nret\n}\n",
                   "returned\n");
 }
 
