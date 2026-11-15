@@ -8,6 +8,7 @@
 #   NestedCalls/     recursive fib plus deep call chain
 #   Pipeline/        compile plus assemble plus load time
 #   RealProgram/     scripted computation mix, the anti-microbenchmark anchor
+#   PerformanceLab/  stage timings, scaling workloads, allocation measurements
 add_subdirectory (CallOverhead)
 add_subdirectory (StackOps)
 add_subdirectory (ArithLoop)
@@ -15,3 +16,4 @@ add_subdirectory (ExternRoundtrip)
 add_subdirectory (NestedCalls)
 add_subdirectory (Pipeline)
 add_subdirectory (RealProgram)
+add_subdirectory (PerformanceLab)

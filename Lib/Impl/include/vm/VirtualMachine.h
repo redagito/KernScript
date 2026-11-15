@@ -54,6 +54,9 @@ private:
     std::shared_ptr<Value::StringBudget> m_stringBudget;
     std::unordered_map<std::string, std::unique_ptr<kern::IExternFunction>> m_bindings;
     std::unique_ptr<Profile> m_profile;
+    // Cold lookup data stays after the runtime state used by the dispatch loop.
+    // Sorted indices preserve bytecode call targets and own no function names.
+    std::vector<uint32_t> m_entryIndex;
     void idle(const char *) const;
     [[noreturn]] void fail(const std::string &) const;
     void checkStack(size_t locals, size_t operands) const;

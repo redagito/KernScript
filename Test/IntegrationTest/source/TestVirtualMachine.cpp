@@ -557,3 +557,105 @@ TEST_CASE("Program accounting includes cached string objects even for empty cons
     REQUIRE_THROWS_AS(vm.load(s), kern::RuntimeError);
     REQUIRE_FALSE(vm.callFunction("main"));
 }
+
+TEST_CASE("Entry lookup preserves unsorted names internal call targets and signature checks",
+          "[integration][vm][entry]")
+{
+    Program p;
+    p.externs = {{"capture", {1, kern::ReturnKind::Void}}};
+    for (int i = 0; i < 127; ++i)
+    {
+        const int value = (i * 37) % 127;
+        p.functions.push_back(
+            {"entry_" + std::to_string(value),
+             {0, kern::ReturnKind::Void},
+             0,
+             {instruction(Opcode::Pushi, value), instruction(Opcode::Calle, 0), instruction(Opcode::Ret)},
+             {}});
+    }
+    p.functions.push_back(
+        {"wrapper", {0, kern::ReturnKind::Void}, 0, {instruction(Opcode::Call, 126), instruction(Opcode::Ret)}, {}});
+    p.functions.push_back(
+        {"valued", {0, kern::ReturnKind::Value}, 0, {instruction(Opcode::Pushi, 9), instruction(Opcode::Ret)}, {}});
+    p.functions.push_back({"argument", {1, kern::ReturnKind::Void}, 1, {instruction(Opcode::Ret)}, {}});
+    VirtualMachine vm(nullptr);
+    int captured = -1;
+    vm.addFunction("capture", new Host({1, kern::ReturnKind::Void},
+                                       [&](kern::IExternCall &call) { return call.getArgument(0, captured); }));
+    auto input = bytes(p);
+    REQUIRE(vm.load(input));
+    for (int value = 126; value >= 0; --value)
+    {
+        CAPTURE(value);
+        REQUIRE(vm.callFunction("entry_" + std::to_string(value)));
+        REQUIRE(captured == value);
+    }
+    REQUIRE(vm.callFunction("wrapper"));
+    REQUIRE(captured == (126 * 37) % 127);
+    REQUIRE_FALSE(vm.callFunction("entry_"));
+    REQUIRE_FALSE(vm.callFunction("Entry_1"));
+    REQUIRE_FALSE(vm.callFunction("entry_127"));
+    REQUIRE_THROWS_AS(vm.callFunction("valued"), kern::RuntimeError);
+    REQUIRE_THROWS_AS(vm.callFunction("argument"), kern::RuntimeError);
+    REQUIRE(vm.callFunction("entry_1"));
+    REQUIRE(captured == 1);
+}
+
+TEST_CASE("Entry lookup follows replacement clear failed loads and VM moves", "[integration][vm][entry]")
+{
+    auto make = [](const std::string &first, const std::string &second)
+    {
+        Program p;
+        p.functions = {
+            {first, {0, kern::ReturnKind::Void}, 0, {instruction(Opcode::Ret)}, {}},
+            {second, {0, kern::ReturnKind::Value}, 0, {instruction(Opcode::Pushi, 1), instruction(Opcode::Ret)}, {}}};
+        for (int i = 0; i < 32; ++i)
+            p.functions.push_back(
+                {"extra_" + std::to_string(i), {0, kern::ReturnKind::Void}, 0, {instruction(Opcode::Ret)}, {}});
+        return bytes(p);
+    };
+    VirtualMachine original(nullptr);
+    auto first = make("zebra", "alpha");
+    REQUIRE(original.load(first));
+    REQUIRE(original.callFunction("zebra"));
+    REQUIRE_THROWS_AS(original.callFunction("alpha"), kern::RuntimeError);
+    auto second = make("alpha", "zebra");
+    REQUIRE(original.load(second));
+    REQUIRE(original.callFunction("alpha"));
+    REQUIRE_THROWS_AS(original.callFunction("zebra"), kern::RuntimeError);
+    VirtualMachine moved(std::move(original));
+    REQUIRE(moved.callFunction("alpha"));
+    REQUIRE_THROWS_AS(moved.callFunction("zebra"), kern::RuntimeError);
+    VirtualMachine assigned(nullptr);
+    assigned = std::move(moved);
+    REQUIRE(assigned.callFunction("alpha"));
+    assigned.clearScripts();
+    REQUIRE_FALSE(assigned.callFunction("alpha"));
+    auto restored = make("zebra", "alpha");
+    REQUIRE(assigned.load(restored));
+    std::stringstream invalid("invalid bytecode");
+    REQUIRE_FALSE(assigned.load(invalid));
+    REQUIRE_FALSE(assigned.callFunction("zebra"));
+    auto final = make("alpha", "zebra");
+    REQUIRE(assigned.load(final));
+    REQUIRE(assigned.callFunction("alpha"));
+}
+
+TEST_CASE("Entry lookup remains available at the exact existing program budget", "[integration][vm][entry][limits]")
+{
+    Program p;
+    kern::VMConfig limits;
+    limits.maxProgramBytes = 0;
+    for (int i = 63; i >= 0; --i)
+    {
+        const std::string name = "entry_" + std::to_string(i);
+        p.functions.push_back({name, {0, kern::ReturnKind::Void}, 0, {instruction(Opcode::Ret)}, {}});
+        limits.maxProgramBytes += sizeof(ProgramFunction) + name.size() + sizeof(Instruction);
+    }
+    auto input = bytes(p);
+    VirtualMachine vm(nullptr, limits);
+    REQUIRE(vm.load(input));
+    for (int i = 0; i < 64; ++i)
+        REQUIRE(vm.callFunction("entry_" + std::to_string(i)));
+    REQUIRE_FALSE(vm.callFunction("missing"));
+}

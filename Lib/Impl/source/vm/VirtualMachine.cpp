@@ -11,6 +11,9 @@
 
 namespace
 {
+// Linear search is cheaper for short function lists in the lookup benchmarks.
+constexpr size_t kLinearEntryLimit = 16;
+
 class ExternCall final : public kern::IExternCall
 {
     std::span<const Value> m_arguments;
@@ -92,6 +95,7 @@ void VirtualMachine::clearScripts()
     m_locals.clear();
     m_operands.clear();
     std::vector<Value>().swap(m_constants);
+    std::vector<uint32_t>().swap(m_entryIndex);
     m_program.reset();
 }
 bool VirtualMachine::load(std::istream &input)
@@ -142,7 +146,21 @@ bool VirtualMachine::load(std::istream &input)
         constants.reserve(verified->data().strings.size());
         for (const auto &s : verified->data().strings)
             constants.emplace_back(s);
+        std::vector<uint32_t> entryIndex;
+        const auto &functions = verified->data().functions;
+        // The index is optional: a program that fits its existing budget must
+        // still load when there is no room for this acceleration structure.
+        if (functions.size() > kLinearEntryLimit && functions.size() <= remaining / sizeof(uint32_t))
+        {
+            charge(functions.size(), sizeof(uint32_t));
+            entryIndex.reserve(functions.size());
+            for (size_t i = 0; i < functions.size(); ++i)
+                entryIndex.push_back(static_cast<uint32_t>(i));
+            std::sort(entryIndex.begin(), entryIndex.end(),
+                      [&](uint32_t a, uint32_t b) { return functions[a].name < functions[b].name; });
+        }
         m_constants = std::move(constants);
+        m_entryIndex = std::move(entryIndex);
         m_program = std::move(verified);
         return true;
     }
@@ -231,10 +249,31 @@ bool VirtualMachine::callFunction(const std::string &name)
     if (!m_program)
         return false;
     const auto &p = m_program->data();
-    auto it = std::find_if(p.functions.begin(), p.functions.end(), [&](const auto &f) { return f.name == name; });
-    if (it == p.functions.end())
+    if (p.functions.empty())
         return false;
-    if (it->signature != kern::FunctionSignature{0, kern::ReturnKind::Void})
+    uint32_t target = 0;
+    // Keep the common single-function/first-entry case as cheap as before.
+    if (p.functions.front().name != name)
+    {
+        if (!m_entryIndex.empty())
+        {
+            const auto it =
+                std::lower_bound(m_entryIndex.begin(), m_entryIndex.end(), name,
+                                 [&](uint32_t index, const std::string &key) { return p.functions[index].name < key; });
+            if (it == m_entryIndex.end() || p.functions[*it].name != name)
+                return false;
+            target = *it;
+        }
+        else
+        {
+            const auto it =
+                std::find_if(p.functions.begin() + 1, p.functions.end(), [&](const auto &f) { return f.name == name; });
+            if (it == p.functions.end())
+                return false;
+            target = static_cast<uint32_t>(it - p.functions.begin());
+        }
+    }
+    if (p.functions[target].signature != kern::FunctionSignature{0, kern::ReturnKind::Void})
         fail("Entry function must have zero arguments and return void.");
     m_frames.clear();
     m_locals.clear();
@@ -255,7 +294,7 @@ bool VirtualMachine::callFunction(const std::string &name)
     {
         if (m_profile)
             ++m_profile->calls;
-        enter(static_cast<uint32_t>(it - p.functions.begin()));
+        enter(target);
         uint64_t steps = 0;
         while (true)
         {
