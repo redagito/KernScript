@@ -1,75 +1,19 @@
 # Canvas
 
-Canvas is a small PNG image editor whose brushes, filters, and procedural
-generators run as KernScript modules. The host provides a document, image
-storage, undo history, and a portable FLTK interface.
+Canvas is a PNG editor whose brushes, filters and generators are KernScript modules. The host owns image storage, undo history and the FLTK interface.
 
-## Make and save an image
+## Use and files
 
-1. Select a document size and click **New**, or **Open** an existing PNG.
-2. Choose Pencil, Spray, or Line. Drag on the canvas to paint. Adjust brush
-   radius and opacity; choose a swatch or open **Choose color**.
-3. Try Grayscale, Edges, Threshold, or Mandelbrot. With **Preview filters**
-   enabled, **Apply** keeps the result and **Cancel** restores the original.
-   Adjusting Threshold after its preview finishes recalculates the preview
-   from the original image.
-4. Use **Undo** and **Redo** for strokes, clears, and applied filters.
-5. **Save** writes a PNG; **Save As** chooses another destination. Unsaved
-   changes are indicated in the title and checked before closing or opening
-   another document.
+Build and run the `Canvas` target with GUI samples enabled. Create a 320 x 200, 640 x 400 or 960 x 600 image, or open a PNG up to 2048 x 2048. Transparency is flattened onto black. PNG is the document and export format; undo history lasts for the current session and is capped at 32 MiB of stored pixels. Use Pencil, Spray or Line to draw; filters and generators operate on the current image. Preview mode applies or cancels filter results.
 
-New documents are 320 x 200, 640 x 400, or 960 x 600. PNGs up to 2048 x 2048
-can be opened. The viewport fits images while preserving their aspect ratio.
-Transparency is flattened onto black when opening a PNG. PNG is the editable
-document and export format; undo history is kept only for the current session.
-History is limited to 32 MiB of stored pixels, dropping oldest edits as needed.
+## Scripts
 
-## Customize a tool
+Scripts are copied beside the executable. Edit them and select the associated tool or filter to reload; failed compilation keeps the previous VM. Brush modules export `paint() -> void`; filters export `run() -> void` and `run_band() -> void`. The host schedules filter bands between UI events and gives each VM call a finite instruction budget.
 
-Scripts are copied beside the executable. Edit those files, then click the
-tool or filter again to reload it. A failed compilation keeps the previous
-working VM. Compiler diagnostics appear in the error dialog and on stderr.
-No C++ rebuild is needed to change the brush or filter algorithm.
+Host functions include `canvas_w()` and `canvas_h()`; `get_pixel(x,y)` and `set_pixel(x,y,rgb)`; `dab_pixel(x,y,rgb)`; pointer functions `mouse_x()`, `mouse_y()`, `mouse_down()`; `stroke_x()` and `stroke_y()`; settings `pen_color()`, `brush_radius()`, `filter_threshold()`; band bounds `band_lo()` and `band_hi()`; and `present()`. Pixels use packed `0xRRGGBB`; out-of-bounds reads return zero and writes are ignored. `filter_threshold()` is 0–255; `band_hi()` is exclusive. `dab_pixel` uses the selected opacity.
 
-Try changing the square pencil into a circular brush: in
-`scripts/tools/pencil.ks`, paint only when
-`dx * dx + dy * dy <= radius * radius`. Or modify
-`scripts/filters/threshold.ks` to output two colors of your choice.
+Declare readers as `-> value`; `set_pixel`, `dab_pixel` and `present` return `void`.
 
-| Host function | Meaning |
-| --- | --- |
-| `canvas_w()`, `canvas_h()` | Current document dimensions |
-| `get_pixel(x, y)` | Read packed `0xRRGGBB`; out-of-bounds reads return zero |
-| `set_pixel(x, y, rgb)` | Replace a pixel; out-of-bounds writes are ignored |
-| `dab_pixel(x, y, rgb)` | Paint a pixel using the selected opacity |
-| `mouse_x()`, `mouse_y()`, `mouse_down()` | Document coordinates and button state |
-| `stroke_x()`, `stroke_y()` | Initial press coordinates for an anchored line |
-| `pen_color()`, `brush_radius()` | Current brush settings |
-| `filter_threshold()` | Threshold slider value, from 0 to 255 |
-| `band_lo()`, `band_hi()` | Half-open row range for the current filter batch |
-| `present()` | Refresh the displayed image |
+For example, make the pencil circular in `scripts/tools/pencil.ks` by painting only when `dx * dx + dy * dy <= radius * radius`. Shared `color` and `geom` modules affect their importers.
 
-Brush modules export `paint() -> void`. Filters export `run() -> void` and
-`run_band() -> void`. The host schedules filter bands between UI events;
-the VM itself runs each call to completion with a finite instruction budget.
-Editing the shared `color` and `geom` modules also changes their importers.
-
-The Line tool previews a straight line from the initial press position to the
-cursor. Releasing the mouse commits it as one undoable edit. Brush radius
-controls Pencil and Spray; Line draws a one-pixel path.
-
-## Verification and larger projects
-
-`Canvas --verify-headless [directory]` exercises real script execution, larger
-document coordinates, brush settings, PNG round trips, undo, cancelled
-previews, and failed reload preservation without creating a window. CTest
-registers this verifier. Files are written to the supplied directory, or
-`build/test-tmp/Canvas` when none is supplied. Unit tests cover document
-transactions, saved state, history branching, and memory limits.
-
-`Canvas --verify` is the optional interactive verifier and opens a window.
-
-For a realistic larger workload, open a 960 x 600 image, apply several filters,
-undo and redo them, and generate a Mandelbrot background. Larger documents
-exercise script loops and host calls while band scheduling keeps work in
-separate calls. Preview cancellation discards partial processing.
+`Canvas --verify-headless [directory]` runs the headless verifier; files go under the supplied directory or `build/test-tmp/Canvas`. CTest registers this verifier. `Canvas --verify` opens the optional interactive verifier.

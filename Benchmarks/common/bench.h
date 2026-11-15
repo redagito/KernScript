@@ -111,8 +111,8 @@ inline int report(const std::string &name, double nsPerOp, long long opsPerRun, 
     return ok ? 0 : 1;
 }
 
-// One-line machine note for benchmark log provenance. The full baseline
-// record (CPU model, RAM, OS, date, commit) lives in Benchmarks/README.md.
+// One-line machine note for benchmark logs. Run-Benchmarks.ps1 records
+// additional machine and build metadata alongside each run's results.
 inline std::string machineNote()
 {
     std::string os = "unknown OS";

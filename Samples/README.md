@@ -23,27 +23,25 @@ Folders, build targets, and executable names match.
 | [Dialogue](Dialogue/README.md) | Authorable support and NPC conversations, saved replay, and rule/state inspection |
 
 For a Visual Studio Release build, an executable is located at
-`build/<build-folder>/Samples/<Application>/Release/<Application>.exe`.
+`<build-folder>/Samples/<Application>/Release/<Application>.exe`.
 Other generators generally omit the `Release` directory. Script modules
 are copied beside applications that load them from disk. Run the executable
 from its own directory, or use its repository-relative script fallback.
 
-See [the roadmap](../docs/Sample%20Roadmap.md) for the staged upgrade scope,
-old-to-new name mapping and validation record. Each application README describes
-its shipped workflow, script API and a useful customization.
+Each application README describes its workflow, script API, and a useful
+customization.
 
 ## Verification and layout previews
 
-The full sample configuration adds twelve application workflow verifiers to the
-library suites in CTest. The larger apps exercise their production models,
-VM bindings, document formats and
-failure handling without opening windows. On Windows, ten additional layout
-checks render the nine FLTK applications and the separate Notes tool to
+The sample configuration adds application workflow verifiers to CTest.
+The larger apps exercise their production models, VM bindings, document formats,
+and failure handling without opening windows. On Windows, layout checks render
+the FLTK applications and the separate Notes tool to
 `<build-folder>/sample-previews/`. Those checks draw only each app's own widget
 hierarchy into an offscreen image. They do not capture the desktop or show
 native windows.
 
-The nine larger GUI apps accept `--preview output.png` for the same isolated
+The larger GUI apps accept `--preview output.png` for the same isolated
 rendering. Workflow verifiers and previews serve different purposes: the former
 check application behavior, and the latter make widget layout review repeatable.
 HelloKern and the two event-binding tutorials remain compact introductions.

@@ -1,4 +1,4 @@
-# KernScript Assembly Language (1.0)
+# KernScript assembly language
 
 The assembler parses typed text assembly into the shared program model and
 verifies signatures, control flow, and stack use before accepting it. Names are
@@ -60,5 +60,5 @@ unreachable malformed instructions, and functions that fall through. Loading
 bad bytecode fails and clears the previously loaded program.
 
 The portable wire format is major version 1, minor version 0. It uses fixed
-width little-endian fields and explicit typed operands; it is not compatible
-with older bytecode. Recompile source scripts when upgrading to 1.0.
+width little-endian fields and explicit typed operands. The VM rejects
+unsupported versions; regenerate bytecode from source if the format does not match.

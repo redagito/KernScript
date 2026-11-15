@@ -1,9 +1,8 @@
 # Getting Started with KernScript
 
-15-minute path: build, run, script, extend,
-diagnose.
+Build the library, run a sample, register a host function, and diagnose an error.
 
-## 1. Build (5 min)
+## 1. Build
 
 Needs CMake 4.4.3+, Conan 2, a C++23 compiler.
 
@@ -13,11 +12,15 @@ cmake --preset conan-default
 cmake --build build --config Debug
 ```
 
-## 2. Run the HelloKern sample (2 min)
+## 2. Run the HelloKern sample
+
+For a Visual Studio build:
 
 ```sh
 build/Samples/HelloKern/Debug/HelloKern.exe
 ```
+
+Other generators generally omit `Debug`; non-Windows executables omit `.exe`.
 
 Prints:
 
@@ -26,9 +29,7 @@ hello from script
 42
 ```
 
-Ran: exit 0.
-
-## 3. Write and run a first script (4 min)
+## 3. Write and run a first script
 
 hello.ks:
 
@@ -40,17 +41,17 @@ func main() -> void {
 }
 ```
 
-Compile, assemble, load and call "main" exactly
-like Samples/HelloKern/source/main.cpp:27-60
-(compiler, assembler, VM, `addFunction` for
-`println`, `load`, `callFunction`). Prints
-"hi" and 42. That sample source is this script.
+Compile, assemble, load, and call `main` using the embedding pattern in
+[HelloKern](../Samples/HelloKern/source/main.cpp). Register `println` with
+`addFunction` before executing the script. This script prints "hi" and 42.
 
-## 4. Add one extern (3 min)
+## 4. Add one extern
 
 ```cpp
 int double_it(int x) { return 2 * x; }
+void emit(int value) { std::cout << value << '\n'; }
 vm->addFunction("double_it", &double_it);
+vm->addFunction("emit", &emit);
 ```
 
 ```ks
@@ -61,9 +62,9 @@ func main() -> void {
 }
 ```
 
-Emits "42". Ran end-to-end.
+The host's `emit` function receives 42.
 
-## 5. Read one real error (1 min)
+## 5. Read one error
 
 Drop the extern declaration:
 
@@ -73,21 +74,17 @@ func main() -> void {
 }
 ```
 
-Compile fails and logs exactly this:
+Compilation fails. With `hello.ks` passed as the source name, diagnostics include:
 
 ```text
 hello.ks:2:3: error: Call to undeclared function.
 note: declare it with extern or func
 ```
 
-Ran: byte-for-byte output above. `compile`
-returns false; fix by declaring the extern.
+`compile` returns false; fix the error by declaring the extern.
 
-Prove the tree is green:
+Run the test suite:
 
 ```sh
 ctest --test-dir build -C Debug
 ```
-
-Verified: ran the sample, the extern snippet
-and the error run above.

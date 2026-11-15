@@ -34,9 +34,9 @@ intermediate variables.
 The assembler and bytecode loader verify symbol references, declared
 signatures, stack effects, return stacks, and control-flow joins. Errors
 include unknown symbols, mismatched call signatures, inconsistent stack
-types/heights, malformed operands, and reachable fallthrough. Correct the
-assembly or regenerate bytecode from source. Bytecode format 1.0 is not
-compatible with earlier formats; rebuild older scripts.
+heights, malformed operands, and reachable fallthrough. Correct the assembly
+or regenerate bytecode from source. Unsupported bytecode versions require
+recompilation with a matching compiler.
 
 ## Runtime errors
 

@@ -2,8 +2,8 @@
 
 Compile source to verified bytecode with `ICompiler::compileBytecode`, or
 compile source to typed assembly and assemble it. Load the bytecode and call a
-zero argument, void entry function. `Samples/HelloKern/source/main.cpp`
-shows the basic host flow.
+zero-argument, void entry function. [HelloKern](../Samples/HelloKern/source/main.cpp)
+shows the complete host flow.
 
 ## Factories and ownership
 
@@ -16,10 +16,9 @@ again replaces the previous binding; `removeFunction` deletes it. Empty names,
 null bindings, and registry changes during execution are rejected. Referenced
 host objects must outlive their bindings.
 
-Register a normal C++ function pointer directly. The typed `addFunction`
-overload supports any parameter count when each argument and return type is
-one of `int`, `unsigned int`, `float`, `double`, `bool`, or `std::string`
-(arguments may be const or references to these types):
+Register a C++ function pointer with `addFunction`. Bindings accept any
+parameter count using `int`, `unsigned int`, `float`, `double`, `bool`, or
+`std::string`. Returns may also be `void`; arguments may be const or references:
 
 ```cpp
 int mix(int left, unsigned int right, bool enabled, const std::string &label);
@@ -33,9 +32,8 @@ the script value to have the exact C++ type. Strings cannot convert to numeric
 types or `bool`. Out-of-range numeric conversions fail with
 `kern::RuntimeError`.
 
-`createExternFunction(functionPointer)` remains available when you want to
-construct the wrapper explicitly. It supports the same types and arbitrary
-parameter counts, and exposes the signature through `getSignature()`.
+`createExternFunction(functionPointer)` constructs a binding explicitly.
+Its signature is available through `getSignature()`.
 
 ## Custom extern bindings
 
@@ -77,11 +75,13 @@ only during `call`.
 
 The VM checks execution budget before each instruction. Budgets cannot
 interrupt C++ code inside a binding. Program accounting bounds decoded data
-before allocation. It counts stored objects and contents, including cached constant storage;
-allocator overhead and spare capacity are excluded.
+before allocation. It counts stored objects and contents, including cached
+constants and optional entry-lookup indices. Allocator overhead and spare
+capacity are excluded. Lookup falls back to linear search if an index would
+exceed the program budget.
 Strings are immutable and length-aware, including embedded zero bytes;
-copies share storage. Host allocations and argument copies read into C++ are outside VM
-budgets.
+copies share storage. Host allocations and argument copies read into C++ are
+outside VM budgets.
 
 ## Errors and recovery
 
@@ -97,8 +97,8 @@ unknown function. Script failures throw `kern::RuntimeError`; normal `ret`
 and `exit` terminate successfully. Exceptions thrown by host code propagate.
 
 Each call starts with clean value and call stacks, including after failure.
-Calls run to completion. There is no yield or suspend API; split long work
-into separate host calls as needed.
+Calls and configuration changes on a running VM are rejected. Calls run to
+completion; split long work into separate host calls as needed.
 
 ## Imports and diagnostics
 

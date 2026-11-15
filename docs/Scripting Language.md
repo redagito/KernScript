@@ -1,4 +1,4 @@
-# KernScript Scripting Language (1.0)
+# KernScript scripting language
 
 Source compiles to typed assembly or directly to portable bytecode. A source
 file has an optional `module` header, imports, extern declarations, and at

@@ -14,33 +14,21 @@ func main() -> void {
 }
 ```
 
-## Discard a valued call
-
-The first `read()` result is intentionally discarded; the second is passed
-to `emit`.
-
-```ks
-extern read() -> value;
-extern emit(x) -> void;
-func main() -> void {
-  read();
-  emit(read());
-}
-```
-
-## Nested calls
+## Nested calls and discarded results
 
 ```ks
 extern read() -> value;
 extern double_it(x) -> value;
 extern emit(x) -> void;
 func main() -> void {
+  read();
   emit(double_it(read()));
 }
 ```
 
-Calls preserve earlier expression values, so `1 + read()` and
-`combine(1, read())` work without temporary variables.
+The first result is discarded. The second call passes its result directly
+to `double_it`. Calls preserve earlier expression values, so expressions
+such as `1 + read()` do not need temporary variables.
 
 ## Host state across calls
 
@@ -58,23 +46,6 @@ func report() -> void {
 
 The host can call `step` repeatedly and then call `report`. Each call starts
 with clean VM stacks while host bindings preserve their state.
-
-## Return paths
-
-Every reachable path in a value function must return a value:
-
-```ks
-func abs(x) -> value {
-  if (x < 0) {
-    return 0 - x;
-  } else {
-    return x;
-  }
-}
-```
-
-Void functions use `return;` or reach the end of the body. A void call cannot
-be used as a value.
 
 ## Modules
 
